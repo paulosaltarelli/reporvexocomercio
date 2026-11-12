@@ -278,7 +278,7 @@ class FiscalTest extends TestCase
         $this->product->update(['ncm' => '84713012', 'origin' => '0']);
         $certificate = FiscalFixtures::certificate();
         $issuer = app(CompanyFiscalConfiguration::class)->save($this->tenant, [
-            'provider_company_id' => '123', 'series' => 1, 'next_number' => 1, 'crt' => '1', 'natureza_operacao' => 'VENDA TESTE', 'identification_limit' => '10000.00', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'Referência de teste sem validade fiscal', 'csc_required' => false,
+            'timezone' => 'America/Sao_Paulo', 'provider_company_id' => '123', 'series' => 1, 'next_number' => 1, 'crt' => '1', 'natureza_operacao' => 'VENDA TESTE', 'identification_limit' => '10000.00', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'Referência de teste sem validade fiscal', 'csc_required' => false,
         ], ['emission_token' => 'emission-secret-test', 'management_token' => 'management-secret-test', 'certificate_password' => $certificate['password']], $certificate['pfx']);
         $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
         $credential->synced_hash = app(CompanyFiscalConfiguration::class)->hash($issuer);
@@ -505,11 +505,12 @@ class FiscalTest extends TestCase
         $stock = $this->product->fresh()->quantity;
         $queue->cancel($this->tenant, $doc->id, 'Cancelamento fiscal de teste sem valor fiscal');
         $this->resetFiscalHttp();
-        $cancelled = false;
+        $cancelled = false; $cancelRequests=0;
         $xml = FiscalFixtures::xml($doc->snapshot['payload'], $cert)['xml'];
         $event = '<procEventoNFe xmlns="http://www.portalfiscal.inf.br/nfe"><retEvento><infEvento><tpAmb>2</tpAmb><cStat>135</cStat><chNFe>'.$key.'</chNFe><tpEvento>110111</tpEvento><nProt>135260000000002</nProt></infEvento></retEvento></procEventoNFe>';
-        Http::fake(function ($request) use (&$cancelled, $doc, $key, $xml, $event) {
+        Http::fake(function ($request) use (&$cancelled, &$cancelRequests, $doc, $key, $xml, $event) {
             if ($request->method() === 'DELETE') {
+                $cancelRequests++; if($cancelRequests===1) throw new \Illuminate\Http\Client\ConnectionException('Cancellation response lost');
                 $cancelled = true;
 
                 return Http::response(['status' => 'cancelado'], 200);
@@ -524,6 +525,10 @@ class FiscalTest extends TestCase
             return Http::response(['ref' => $doc->reference, 'cnpj_emitente' => '11222333000181', 'status' => $cancelled ? 'cancelado' : 'autorizado', 'status_sefaz' => $cancelled ? '135' : '100', 'chave_nfe' => 'NFe'.$key, 'caminho_xml_nota_fiscal' => '/arquivos/test.xml', 'caminho_xml_cancelamento' => '/arquivos/cancel.xml'], 200);
         });
         $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->where('operation', 'cancel')->value('id'));
+        $this->assertSame('authorized',$doc->fresh()->state);
+        DB::connection('tenant')->table('fiscal_outbox')->where('operation','cancel')->update(['available_at'=>now()->subMinute()]);
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->where('operation','cancel')->value('id'));
+        $this->assertSame(2,$cancelRequests);
         $this->assertSame('cancelled', $doc->fresh()->state, $doc->fresh()->operator_message ?? '');
         $this->assertSame('completed', $this->sale->fresh()->status);
         $this->assertSame($stock, $this->product->fresh()->quantity);
@@ -658,18 +663,45 @@ class FiscalTest extends TestCase
                 return Http::response([], 404);
             }
             if (str_contains($r->url(), '/arquivos/')) {
-                return Http::response($xml['xml'],200);
+                return Http::response($xml['xml'], 200);
             }
             $posted++;
-            $this->assertSame((string) $doc->number,$r['numero']);
-            $this->assertStringContainsString($doc->reference,$r->url());
+            $this->assertSame((string) $doc->number, $r['numero']);
+            $this->assertStringContainsString($doc->reference, $r->url());
 
-            return Http::response(['ref' => $doc->reference, 'cnpj_emitente' => '11222333000181', 'status' => 'autorizado', 'status_sefaz' => '100', 'chave_nfe' => 'NFe'.$xml['key'], 'caminho_xml_nota_fiscal' => '/arquivos/test.xml'],201);
+            return Http::response(['ref' => $doc->reference, 'cnpj_emitente' => '11222333000181', 'status' => 'autorizado', 'status_sefaz' => '100', 'chave_nfe' => 'NFe'.$xml['key'], 'caminho_xml_nota_fiscal' => '/arquivos/test.xml'], 201);
         });
         $this->runFiscalWorker($jobId);
-        $this->assertSame('authorized',$doc->fresh()->state,$doc->fresh()->operator_message ?? '');
-        $this->assertSame(1,$posted);
-        $this->assertSame(1,FiscalDocument::count());
-        $this->assertSame(2,DB::connection('tenant')->table('fiscal_sequences')->value('next_number'));
+        $this->assertSame('authorized', $doc->fresh()->state, $doc->fresh()->operator_message ?? '');
+        $this->assertSame(1, $posted);
+        $this->assertSame(1, FiscalDocument::count());
+        $this->assertSame(2, DB::connection('tenant')->table('fiscal_sequences')->value('next_number'));
+    }
+
+    public function test_discount_and_commission_snapshots_are_preserved_in_fiscal_payload(): void
+    {
+        $this->configuredFiscal();
+        $this->product->update(['discount_enabled' => true, 'max_discount_percent' => '20', 'commission_percent' => '5']);
+        $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'pix', 'paid' => true, 'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10.01', 'discount_percent' => '10']]], $this->user->id);
+        $doc = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $this->operation());
+        $p = $doc->snapshot['payload'];
+        $this->assertSame('10.01', $p['valor_produtos']);
+        $this->assertSame('1.00', $p['valor_desconto']);
+        $this->assertSame('9.01', $p['valor_total']);
+        $this->assertSame('10.01', $p['items'][0]['valor_bruto']);
+        $this->assertSame('1.00', $p['items'][0]['valor_desconto']);
+        $this->assertSame('9.01', $p['formas_pagamento'][0]['valor_pagamento']);
+        $this->assertSame('0.45', $sale->fresh()->commission_total);
+    }
+
+    public function test_commercial_cancellation_before_first_send_blocks_transmission(): void
+    {
+        $this->configuredFiscal();
+        $doc = app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $this->sale->update(['status' => 'cancelled']);
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));
+        $this->assertSame('uncertain', $doc->fresh()->state);
+        $this->assertStringContainsString('commercial_sale_cancelled', $doc->fresh()->operator_message);
+        Http::assertNothingSent();
     }
 }

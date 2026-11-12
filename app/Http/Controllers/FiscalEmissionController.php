@@ -32,7 +32,7 @@ class FiscalEmissionController extends Controller
         $this->admin($r);
         $data = $r->validate([
             'environment' => 'required|in:homologation', 'provider_company_id' => 'required|digits_between:1,20', 'series' => 'required|integer|min:0|max:889', 'next_number' => 'required|integer|min:1|max:999999999',
-            'crt' => 'required|in:1,2,3,4', 'natureza_operacao' => 'required|string|max:60', 'identification_limit' => 'required|numeric|min:0|max:999999999.99|decimal:0,2',
+            'timezone' => 'required|timezone', 'crt' => 'required|in:1,2,3,4', 'natureza_operacao' => 'required|string|max:60', 'identification_limit' => 'required|numeric|min:0|max:999999999.99|decimal:0,2',
             'cancellation_minutes' => 'required|integer|min:0|max:30', 'uf_validation_reference' => 'required|string|max:180', 'csc_required' => 'required|boolean',
             'certificate' => 'nullable|file|max:2048', 'certificate_password' => 'nullable|string|max:256', 'csc' => 'nullable|string|max:100', 'csc_id' => 'nullable|digits_between:1,6',
             'emission_token' => 'nullable|string|max:512', 'management_token' => 'nullable|string|max:512', 'tenant_id' => 'prohibited',

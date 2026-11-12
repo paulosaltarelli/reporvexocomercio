@@ -53,8 +53,13 @@ final class NfcePayload
         $items = [];
         $rules = [];
         $goods = '0.00';
+        $goodsGross = '0.00';
+        $goodsDiscount = '0.00';
         $services = '0.00';
         foreach ($sale->items->sortBy('id') as $line) {
+            if ($line->product_id && $line->service_id) {
+                $fail('Item com vínculos ambíguos: revisar o histórico antes da emissão.');
+            }
             if ($line->fiscal_kind === 'service' || $line->service_id) {
                 $services = bcadd($services, $line->total, 2);
 
@@ -72,9 +77,14 @@ final class NfcePayload
                 $fail('Produto '.$product->name.': confira NCM, origem e unidade.');
             }
             $tax = app(TaxProfile::class)->fields($rule->parameters, $line->total, (string) $c['crt']);
+            if (bccomp(bcsub($line->gross_total, $line->discount_amount, 2), $line->total, 2) !== 0) {
+                $fail('Bruto, desconto e líquido divergem do histórico do item.');
+            }
             $rules[$product->id] = ['parameters' => $rule->parameters, 'accountant_reference' => $rule->accountant_reference, 'validated_at' => $rule->updated_at->toIso8601String()];
-            $items[] = array_merge($tax, ['numero_item' => (string) (count($items) + 1), 'codigo_ncm' => $product->ncm, 'codigo_produto' => $product->sku, 'descricao' => $line->description, 'quantidade_comercial' => $line->quantity, 'quantidade_tributavel' => $line->quantity, 'valor_unitario_comercial' => $line->unit_price, 'valor_unitario_tributavel' => $line->unit_price, 'valor_bruto' => $line->total, 'unidade_comercial' => $product->unit, 'unidade_tributavel' => $product->unit, 'icms_origem' => $product->origin]);
+            $items[] = array_merge($tax, ['numero_item' => (string) (count($items) + 1), 'codigo_ncm' => $product->ncm, 'codigo_produto' => $product->sku, 'descricao' => $line->description, 'quantidade_comercial' => $line->quantity, 'quantidade_tributavel' => $line->quantity, 'valor_unitario_comercial' => $line->unit_price, 'valor_unitario_tributavel' => $line->unit_price, 'valor_bruto' => $line->gross_total, 'valor_desconto' => $line->discount_amount, 'unidade_comercial' => $product->unit, 'unidade_tributavel' => $product->unit, 'icms_origem' => $product->origin]);
             $goods = bcadd($goods, $line->total, 2);
+            $goodsGross = bcadd($goodsGross, $line->gross_total, 2);
+            $goodsDiscount = bcadd($goodsDiscount, $line->discount_amount, 2);
         }
         if (! $items || bccomp($goods, '0', 2) <= 0) {
             $fail('Não há mercadorias para NFC-e. Serviços exigem NFS-e separada.');
@@ -85,7 +95,7 @@ final class NfcePayload
         if (! $sale->paid || ! in_array($sale->payment_method, ['cash', 'pix', 'transfer'], true)) {
             $fail('Este fluxo requer venda recebida em dinheiro, Pix ou transferência. Cartão/a prazo exige dados fiscais de pagamento adicionais.');
         }
-        $payload = ['cnpj_emitente' => $issuer->document, 'data_emissao' => now()->toIso8601String(), 'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1', 'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items, 'formas_pagamento' => [['forma_pagamento' => ['cash' => '01', 'pix' => '17', 'transfer' => '18'][$sale->payment_method], 'valor_pagamento' => $goods]], 'valor_total' => $goods, 'valor_produtos' => $goods];
+        $payload = ['cnpj_emitente' => $issuer->document, 'data_emissao' => now()->setTimezone($c['timezone'])->toIso8601String(), 'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1', 'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items, 'formas_pagamento' => [['forma_pagamento' => ['cash' => '01', 'pix' => '17', 'transfer' => '18'][$sale->payment_method], 'valor_pagamento' => $goods]], 'valor_total' => $goods, 'valor_produtos' => $goodsGross, 'valor_desconto' => $goodsDiscount];
         // Required legal homologation label; business/issuer data are never fixtures.
         $payload['items'][0]['descricao'] = 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
         $document = TaxpayerDocument::normalize((string) $sale->customer?->document);
@@ -102,6 +112,6 @@ final class NfcePayload
             $fail('Identificação do consumidor exigida pelo limite configurado para a UF.');
         }
 
-        return ['payload' => $payload, 'issuer_snapshot' => $profile->only(['legal_name', 'trade_name', 'document', 'state_registration', 'tax_regime', 'street', 'number', 'district', 'city', 'state', 'postal_code', 'municipality_code']), 'services_total' => $services, 'goods_total' => $goods, 'operation' => $operation, 'tax_rules' => $rules, 'configuration_hash' => app(CompanyFiscalConfiguration::class)->hash($issuer), 'certificate_fingerprint' => $credential->certificate_fingerprint, 'schema_package'=>FiscalSchema::PACKAGE];
+        return ['payload' => $payload, 'issuer_snapshot' => $profile->only(['legal_name', 'trade_name', 'document', 'state_registration', 'tax_regime', 'street', 'number', 'district', 'city', 'state', 'postal_code', 'municipality_code']), 'services_total' => $services, 'goods_total' => $goods, 'operation' => $operation, 'tax_rules' => $rules, 'configuration_hash' => app(CompanyFiscalConfiguration::class)->hash($issuer), 'certificate_fingerprint' => $credential->certificate_fingerprint, 'schema_package' => FiscalSchema::PACKAGE];
     }
 }

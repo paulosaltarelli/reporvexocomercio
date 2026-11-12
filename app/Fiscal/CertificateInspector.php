@@ -16,7 +16,7 @@ final class CertificateInspector
             if (! @openssl_pkcs12_read($pfx, $keys, $password) || ! @openssl_x509_check_private_key($keys['cert'], $keys['pkey'])) {
                 throw new \RuntimeException;
             }
-            if (! hash_equals(TaxpayerDocument::normalize($cnpj), TaxpayerDocument::normalize((string)$certificate->getCnpj()))) {
+            if (! hash_equals(TaxpayerDocument::normalize($cnpj), TaxpayerDocument::normalize((string) $certificate->getCnpj()))) {
                 throw ValidationException::withMessages(['certificate' => 'O CNPJ do certificado deve corresponder ao emitente cadastrado.']);
             }
             if ($certificate->getValidFrom()->getTimestamp() > time() || $certificate->getValidTo()->getTimestamp() <= time()) {
@@ -27,7 +27,7 @@ final class CertificateInspector
                 throw ValidationException::withMessages(['certificate' => 'Certificado sem uso de assinatura digital.']);
             }
 
-            return ['certificate_fingerprint' => openssl_x509_fingerprint($keys['cert'], 'sha256'), 'certificate_document' => TaxpayerDocument::normalize((string)$certificate->getCnpj()), 'valid_from' => Carbon::instance($certificate->getValidFrom())->setTimezone(config('app.timezone')), 'valid_until' => Carbon::instance($certificate->getValidTo())->setTimezone(config('app.timezone'))];
+            return ['certificate_fingerprint' => openssl_x509_fingerprint($keys['cert'], 'sha256'), 'certificate_document' => TaxpayerDocument::normalize((string) $certificate->getCnpj()), 'valid_from' => Carbon::instance($certificate->getValidFrom())->setTimezone(config('app.timezone')), 'valid_until' => Carbon::instance($certificate->getValidTo())->setTimezone(config('app.timezone'))];
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable) {

@@ -22,7 +22,14 @@ final class CompanyFiscalConfiguration
         }
 
         return DB::connection('tenant')->transaction(function () use ($configuration, $input, $pfx, $cnpj) {
-            BusinessProfile::whereKey(1)->lockForUpdate()->firstOrFail();
+            $profile = BusinessProfile::whereKey(1)->lockForUpdate()->firstOrFail();
+            if (empty($configuration['timezone']) || ! in_array($configuration['timezone'], \DateTimeZone::listIdentifiers(), true)) {
+                throw ValidationException::withMessages(['timezone' => 'Informe o fuso horário fiscal do emitente.']);
+            }
+            $allowed = ['mei' => ['4'], 'simples' => ['1', '2'], 'presumido' => ['3'], 'real' => ['3']];
+            if (! in_array((string) $configuration['crt'], $allowed[$profile->tax_regime] ?? [], true)) {
+                throw ValidationException::withMessages(['crt' => 'CRT incompatível com o regime tributário cadastrado. Confirme os dois campos com o contador.']);
+            }
             $issuer = FiscalIssuer::firstOrCreate(['document' => $cnpj, 'environment' => 'homologation'], ['provider' => 'focus', 'enabled' => false]);
             $credential = FiscalCredential::where('issuer_id', $issuer->id)->first();
             $secrets = $credential?->secrets ?? [];

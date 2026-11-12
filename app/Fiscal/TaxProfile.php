@@ -22,12 +22,20 @@ final class TaxProfile
             'ibs_municipal_rate' => 'nullable|required_if:rtc_mode,standard|numeric|min:0|max:100|decimal:0,4',
             'cbs_rate' => 'nullable|required_if:rtc_mode,standard|numeric|min:0|max:100|decimal:0,4',
             'transparency_rate' => 'required|numeric|min:0|max:100|decimal:0,4',
-         ])->validate();
-        if($validated['gtin']!=='SEM GTIN') {
-            $gtin=$validated['gtin']; $sum=0; $weight=3;
-            for($i=strlen($gtin)-2;$i>=0;$i--) { $sum+=(int)$gtin[$i]*$weight; $weight=$weight===3?1:3; }
-            if(preg_match('/^0+$/D',$gtin) || (int)substr($gtin,-1)!==(10-$sum%10)%10) throw ValidationException::withMessages(['gtin'=>'Dígito verificador do GTIN inválido.']);
+        ])->validate();
+        if ($validated['gtin'] !== 'SEM GTIN') {
+            $gtin = $validated['gtin'];
+            $sum = 0;
+            $weight = 3;
+            for ($i = strlen($gtin) - 2; $i >= 0; $i--) {
+                $sum += (int) $gtin[$i] * $weight;
+                $weight = $weight === 3 ? 1 : 3;
+            }
+            if (preg_match('/^0+$/D', $gtin) || (int) substr($gtin, -1) !== (10 - $sum % 10) % 10) {
+                throw ValidationException::withMessages(['gtin' => 'Dígito verificador do GTIN inválido.']);
+            }
         }
+
         return $validated;
     }
 

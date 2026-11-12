@@ -93,7 +93,7 @@ final class FiscalReadiness
             foreach ($sale->items->sortBy('id') as $item) {
                 $kind = $item->fiscal_kind === 'service' || $item->service_id ? 'services' : ($item->fiscal_kind === 'product' ? 'goods' : 'unclassified');
                 $totals[$kind] = bcadd($totals[$kind], $item->total, 2);
-                $line = $item->only(['id', 'product_id', 'service_id', 'description', 'quantity', 'unit_price', 'total']);
+                $line = $item->only(['id', 'product_id', 'service_id', 'description', 'quantity', 'unit_price', 'gross_total', 'discount_amount', 'total']);
                 $line['kind'] = $kind;
                 // Prices/amounts come exclusively from sale history. Tax metadata
                 // below is current at review time, NOT historical or approved.

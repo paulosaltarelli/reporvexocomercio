@@ -22,7 +22,7 @@ final class FocusProvider implements FiscalProvider
 
     public function issue(string $reference, #[\SensitiveParameter] array $frozenPayload): ProviderResult
     {
-        $this->payload = $frozenPayload + array_intersect_key($this->payload, ['_certificate_fingerprint' => true,'_schema_package'=>true]);
+        $this->payload = $frozenPayload + array_intersect_key($this->payload, ['_certificate_fingerprint' => true, '_schema_package' => true]);
 
         return $this->normalize(app(FocusClient::class)->request('POST', '/nfce?ref='.rawurlencode($reference).'&completa=1', $this->token(), $frozenPayload), $reference);
     }

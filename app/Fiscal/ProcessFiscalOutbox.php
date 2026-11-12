@@ -6,6 +6,7 @@ use App\Models\DemoRun;
 use App\Models\FiscalCredential;
 use App\Models\FiscalDocument;
 use App\Models\FiscalIssuer;
+use App\Models\Sale;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
 use Carbon\Carbon;
@@ -63,7 +64,7 @@ final class ProcessFiscalOutbox
                 $payload = $doc->snapshot['payload'];
                 $payload['_access_key'] = $doc->access_key;
                 $payload['_certificate_fingerprint'] = $doc->snapshot['certificate_fingerprint'];
-                $payload['_schema_package']=$doc->snapshot['schema_package'];
+                $payload['_schema_package'] = $doc->snapshot['schema_package'];
                 $provider = new FocusProvider($issuer, $credential, $payload);
                 if ($send) {
                     if ($credential->valid_until->isPast()) {
@@ -71,6 +72,9 @@ final class ProcessFiscalOutbox
                     }
                     if (! hash_equals($doc->snapshot['configuration_hash'], app(CompanyFiscalConfiguration::class)->hash($issuer))) {
                         throw new FiscalTransportException('issuer_configuration_changed');
+                    }
+                    if (Sale::whereKey($doc->sale_id)->value('status') !== 'completed') {
+                        throw new FiscalTransportException('commercial_sale_cancelled');
                     }
                     $result = $provider->issue($doc->reference, $doc->snapshot['payload']);
                 } else {
@@ -85,9 +89,12 @@ final class ProcessFiscalOutbox
                         }
                         // Explicitly requested replay after a fresh 404. Same reference,
                         // same number, same frozen payload; no new document is created.
+                        if (Sale::whereKey($doc->sale_id)->value('status') !== 'completed') {
+                            throw new FiscalTransportException('commercial_sale_cancelled');
+                        }
                         $result = $provider->issue($doc->reference, $doc->snapshot['payload']);
                     }
-                    if ($job->operation === 'cancel' && $job->attempts === 0 && $result->state === DocumentState::Authorized) {
+                    if ($job->operation === 'cancel' && $result->state === DocumentState::Authorized) {
                         $params = json_decode($job->parameters, true, flags: JSON_THROW_ON_ERROR);
                         $result = $provider->cancel($doc->reference, $params['reason'], $job->operation_id);
                     }

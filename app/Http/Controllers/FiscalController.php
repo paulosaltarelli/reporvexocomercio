@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Fiscal\FiscalReadiness;
 use App\Fiscal\PrepareFiscalReview;
 use App\Fiscal\Snapshot;
+use App\Models\FiscalDocument;
 use App\Models\FiscalPreparation;
 use App\Models\FiscalSetting;
+use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FiscalController extends Controller
 {
@@ -25,9 +28,9 @@ class FiscalController extends Controller
             'settings' => FiscalSetting::find(1),
             'report' => $readiness->inspect($request->attributes->get('tenant')),
             'preparations' => FiscalPreparation::latest('id')->paginate(15),
-            'documents' => \App\Models\FiscalDocument::latest('id')->limit(20)->get(),
-            'taxProducts' => \App\Models\Product::where('type','product')->orderBy('name')->limit(100)->get(),
-            'voids' => \Illuminate\Support\Facades\DB::connection('tenant')->table('fiscal_voids')->latest('id')->limit(20)->get(),
+            'documents' => FiscalDocument::latest('id')->limit(20)->get(),
+            'taxProducts' => Product::where('type', 'product')->orderBy('name')->limit(100)->get(),
+            'voids' => DB::connection('tenant')->table('fiscal_voids')->latest('id')->limit(20)->get(),
         ]);
     }
 

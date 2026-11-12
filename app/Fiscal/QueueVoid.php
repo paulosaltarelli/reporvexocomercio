@@ -30,7 +30,7 @@ final class QueueVoid
             if ($last < $seq->next_number || $last > 999999999 || $last - $seq->next_number > 1000) {
                 throw ValidationException::withMessages(['last_number' => 'Informe faixa de até 1001 números a partir da próxima numeração disponível.']);
             }
-            $id = $voids->insertGetId(['issuer_id' => $issuer->id, 'operation_id' => $key, 'model' => 65, 'series' => $seq->series, 'year' => (int) now()->format('Y'), 'first_number' => $seq->next_number, 'last_number' => $last, 'reason' => $reason, 'state' => 'pending', 'requested_by' => $userId, 'created_at' => now(), 'updated_at' => now()]);
+            $id = $voids->insertGetId(['issuer_id' => $issuer->id, 'operation_id' => $key, 'model' => 65, 'series' => $seq->series, 'year' => (int) now()->setTimezone($issuer->validated_configuration['timezone'])->format('Y'), 'first_number' => $seq->next_number, 'last_number' => $last, 'reason' => $reason, 'state' => 'pending', 'requested_by' => $userId, 'created_at' => now(), 'updated_at' => now()]);
             DB::connection('tenant')->table('fiscal_sequences')->where('id', $seq->id)->update(['next_number' => $last + 1]);
             DB::connection('tenant')->table('fiscal_outbox')->insert(['tenant_id' => $tenant->id, 'void_id' => $id, 'document_id' => null, 'operation_id' => $key, 'operation' => 'invalidate', 'available_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
 

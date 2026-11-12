@@ -1,6 +1,6 @@
 # Emissão fiscal do Vendra
 
-Revisão: 12/11/2026. Branch `feature/fiscal-nfce`, integrada à `main` `06cbed9` por merge, preservando catálogo unificado, serviços legados, caixa, precificação e histórico. Um pacote comum, banco central e banco operacional por assinante. Nenhuma customização por cliente.
+Revisão: 12/11/2026. Branch `feature/fiscal-nfce`, integrada à `main` `25eea15` por merge, preservando catálogo unificado, serviços legados, caixa, precificação e histórico. Um pacote comum, banco central e banco operacional por assinante. Nenhuma customização por cliente.
 
 ## Estado e escopo
 
@@ -18,7 +18,7 @@ Em **Minha empresa**:
 
 1. Preencher razão social, CNPJ, IE, regime, endereço completo, UF, CEP e código IBGE. O CRT fiscal é confirmado explicitamente pelo contador, sem inferência automática a partir do regime comercial.
 2. Informar contador responsável, operação pretendida e confirmação do credenciamento NFC-e em homologação.
-3. Informar ID da empresa já cadastrada na Focus, tokens próprios de gestão e emissão de homologação, natureza da operação, série e próximo número reconciliado, limite de identificação e prazo de cancelamento aplicáveis à UF. O prazo é limitado ao máximo de 30 minutos informado pela API; prazo inferior da UF deve ser cadastrado. Sem valor fictício padrão.
+3. Informar ID da empresa já cadastrada na Focus, tokens próprios de gestão e emissão de homologação, fuso horário do emitente, natureza da operação, série e próximo número reconciliado, limite de identificação e prazo de cancelamento aplicáveis à UF. O prazo é limitado ao máximo de 30 minutos informado pela API; prazo inferior da UF deve ser cadastrado. Sem valor fictício padrão.
 4. Enviar A1 `.pfx`/`.p12` (até 2 MB) e senha em formulário privado, autenticado e com CSRF. Conferem-se abertura, chave privada, CNPJ exato, assinatura digital e período de validade. Datas X.509 UTC são convertidas para o fuso da aplicação antes de persistir. Isso não equivale à validação completa da cadeia ICP-Brasil/revogação: a aceitação efetiva também depende do provedor e da SEFAZ. A3 e e-CPF sem CNPJ correspondente não atendem este fluxo inicial.
 5. Informar CSC/identificador de homologação quando exigidos, ou declarar a dispensa com fundamento validado. Certificado, senha, CSC e tokens são cifrados pelo Laravel, no banco do próprio tenant, e ocultos na serialização. Campos secretos nunca são repopulados em HTML ou `old input` de erro. Campos vazios mantêm segredos já cadastrados; trocar PFX exige a senha correspondente. Não enviar estes valores pelo chat.
 6. Autorizar explicitamente a sincronização do cadastro/certificado com a Focus. O sistema consulta primeiro a empresa remota e verifica CNPJ antes do PUT, usa `certificado_especifico=true` e não cria empresa/plano nem habilita produção. Uma alteração local concorrente invalida a sincronização. Mudanças posteriores no cadastro, certificado, CSC ou credenciais exigem nova sincronização.
@@ -27,7 +27,7 @@ Em **Minha empresa**:
 
 Em **Fiscal → Regras por produto**, registrar CFOP, CST/CSOSN, PIS/COFINS, GTIN/SEM GTIN, CEST quando aplicável, percentual aproximado de tributos e tratamento IBS/CBS, sempre com referência da aprovação do contador. NCM, origem e unidade vêm do catálogo. GTIN tem formato e dígito verificador conferidos; isso não consulta o cadastro GS1.
 
-Cálculo inicial suporta CSOSN 102/103/300/400 sem grupos especiais, CST 00/40/41/50, PIS/COFINS 01/02 ou 04/06/07/08/09, e IBS/CBS integral CST 000 com classificação e alíquotas explícitas, ou não aplicabilidade justificada. Usa BCMath, arredondamento por componente e base efetivamente vendida; não usa custo médio. Para a operação simples suportada, a base IBS/CBS deduz ICMS, PIS e COFINS destacados. ST, combustíveis, reduções, benefícios, importação, monofásicos especiais, IPI, DIFAL, frete/descontos destacados e demais situações não cobertas exigem extensão, nunca troca artificial de código para permitir emissão. O provedor e a SEFAZ continuam responsáveis pela aceitação oficial do XML.
+Cálculo inicial suporta CSOSN 102/103/300/400 sem grupos especiais, CST 00/40/41/50, PIS/COFINS 01/02 ou 04/06/07/08/09, e IBS/CBS integral CST 000 com classificação e alíquotas explícitas, ou não aplicabilidade justificada. Usa BCMath, arredondamento por componente e base efetivamente vendida; não usa custo médio. Para a operação simples suportada, a base IBS/CBS deduz ICMS, PIS e COFINS destacados. ST, combustíveis, reduções, benefícios, importação, monofásicos especiais, IPI, DIFAL, frete e descontos fiscais especiais e demais situações não cobertas exigem extensão, nunca troca artificial de código para permitir emissão. O provedor e a SEFAZ continuam responsáveis pela aceitação oficial do XML.
 
 ## Venda, snapshots e pagamentos
 
@@ -37,7 +37,7 @@ Na venda, **Conferir dados fiscais** permite registrar uma conferência imutáve
 
 **Solicitar emissão em homologação** exige confirmação explícita de operação e de compartilhamento para teste. Sob lock da venda, valida emitente/certificado, sincronização, operação, regras, destinatário e valores. Sob lock da sequência, reserva um único número e grava documento e outbox na mesma transação. Repetir a solicitação retorna o documento existente. Não usa MAX+1.
 
-O snapshot de emissão congela payload, emitente, regras e referências contábeis, valores, operação, versão XSD, fingerprint do certificado e hash da configuração. Preço/cadastro alterados depois não recalculam a nota. Apenas o total de mercadorias e a parcela correspondente da forma comercial de pagamento entram na NFC-e; a parcela dos serviços é preservada separadamente. Não há segundo lançamento de estoque ou financeiro ao autorizar/reconciliar.
+O snapshot de emissão congela payload, emitente, regras e referências contábeis, valores, operação, versão XSD, fingerprint do certificado e hash da configuração. Preço/cadastro alterados depois não recalculam a nota. Bruto e desconto comerciais ficam separados no payload; bases e total usam o líquido vendido. Comissão do vendedor não é somada à nota. Apenas o total de mercadorias e a parcela correspondente da forma comercial de pagamento entram na NFC-e; a parcela dos serviços é preservada separadamente. Não há segundo lançamento de estoque ou financeiro ao autorizar/reconciliar.
 
 ## Transmissão e recuperação
 
