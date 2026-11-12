@@ -2,7 +2,7 @@
 @extends('layout')
 @section('title','Venda #'.$sale->id)
 @section('subtitle','Comprovante interno. Este documento não é uma nota fiscal.')
-@section('actions')<button class="button secondary no-print" onclick="window.print()">Imprimir</button>
+@section('actions')<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$sale->salesperson_id]) }}">Próximo atendimento</a><button class="button secondary no-print" onclick="window.print()">Imprimir</button>
 @endsection
 @section('content')<section class="panel"><div class="split"><div><h2>{{ $tenant->name }}</h2><p>{{ $sale->customer?->name??'Consumidor final' }}</p><p class="muted">{{ $sale->created_at->format('d/m/Y H:i') }} · {{ ['cash'=>'Dinheiro','pix'=>'Pix','credit'=>'Crédito','debit'=>'Débito','transfer'=>'Transferência','invoice'=>'A prazo'][$sale->payment_method] }}</p></div><div><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span>
 @if($sale->due_date)<p>Vencimento: {{ \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y') }}</p>

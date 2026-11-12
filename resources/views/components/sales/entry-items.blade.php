@@ -1,6 +1,7 @@
 <section class="panel">
     <h2>{{ $itemsHeading??'Itens da venda' }}</h2>
     <p class="hint">Reduzir o preço unitário também conta como desconto. O limite é conferido pelo servidor contra o preço de cadastro.</p>
+    <div class="field"><label for="pos-search">Localizar por nome, SKU ou código de barras</label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite e pressione Enter" maxlength="200"><p id="pos-search-status" class="hint" role="status" aria-live="polite"></p><div id="pos-results" class="actions" aria-label="Itens encontrados"></div></div>
     <div id="items"></div>
     <button type="button" id="add" class="button secondary">+ Adicionar item</button>
     <div class="sale-totals" role="status" aria-live="polite"><div><span>Bruto</span><strong id="gross-total">R$ 0,00</strong></div><div><span>Descontos</span><strong id="discount-total">R$ 0,00</strong></div><div class="sale-net-total"><span>Total líquido</span><strong id="total">R$ 0,00</strong></div></div>
@@ -13,7 +14,7 @@
                 @foreach($products as $product)
                     @php($isService=($product->type??'product')==='service')
                     @php($stockControlled=!$isService && ($product->controls_stock??true))
-                    <option value="product:{{ $product->id }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
+                    <option value="product:{{ $product->id }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
                 @endforeach
             </select><input type="hidden" class="kind"><input type="hidden" class="item-id"><input type="hidden" class="catalog-seen"></div>
             <div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div>
@@ -88,7 +89,35 @@
         container.append(block);Vendra.associateLabels(block);
         if(data){choice.value=data.kind+':'+data.id;row.querySelector('.qty').value=data.quantity;row.querySelector('.price').value=data.offered_unit_price??data.unit_price;discount.value=data.explicit_discount_percent??data.discount_percent??'0';choose(false);}
         else choose(true);
+        return block;
     }
+    const search=document.querySelector('#pos-search');
+    const results=document.querySelector('#pos-results');
+    const status=document.querySelector('#pos-search-status');
+    const catalog=Array.from(document.querySelector('#row').content.querySelectorAll('.choice option')).filter(o=>o.value);
+    function insert(option){
+        const empty=Array.from(container.querySelectorAll('.sale-line-block')).find(b=>!b.querySelector('.choice').value);
+        const block=empty||add();
+        const choice=block.querySelector('.choice');
+        choice.value=option.value;choice.dispatchEvent(new Event('change'));
+        search.value='';results.replaceChildren();status.textContent='Item adicionado: '+option.dataset.name;search.focus();
+    }
+    function matches(){
+        const term=search.value.trim().toLocaleLowerCase('pt-BR');
+        return term?catalog.filter(o=>[o.dataset.name,o.dataset.sku,o.dataset.barcode].some(v=>(v||'').toLocaleLowerCase('pt-BR').includes(term))):[];
+    }
+    search.addEventListener('input',()=>{
+        results.replaceChildren();const found=matches();
+        status.textContent=search.value.trim()?(found.length+' item(ns) encontrado(s). Selecione ou use o código exato.') : '';
+        found.slice(0,10).forEach(option=>{const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent=option.dataset.name+' · '+option.dataset.sku;button.addEventListener('click',()=>insert(option));results.append(button);});
+    });
+    search.addEventListener('keydown',event=>{
+        if(event.key!=='Enter')return;event.preventDefault();
+        const term=search.value.trim().toLocaleLowerCase('pt-BR');
+        const exact=catalog.filter(o=>[o.dataset.sku,o.dataset.barcode].some(v=>v&&v.toLocaleLowerCase('pt-BR')===term));
+        const found=exact.length?exact:matches();
+        if(found.length===1)insert(found[0]);else status.textContent=found.length?'Selecione um dos itens encontrados.':'Nenhum item encontrado.';
+    });
     addButton.addEventListener('click',()=>add());
     if(previous.length)previous.forEach(add);else add();
 })();

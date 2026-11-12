@@ -64,3 +64,7 @@ O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores 
 `/app/vexo/desk` reúne busca de cliente, criação de orçamento/venda, orçamentos em andamento e vendas do dia do vendedor selecionado. Operadores entram nesse painel após o login; administradores mantêm a visão geral e podem abrir o painel pelo menu. Cliente e vendedor seguem pré-selecionados para os formulários.
 
 Cadastros → Vendedores permite trabalhar com vendedores sem login ou vincular um usuário. O orçamento fixa o vendedor creditado e a conversão preserva essa atribuição, separando quem registra a operação. Trocas anteriores ao faturamento são administrativas, justificadas e auditadas; documentos antigos sem vínculo exigem atribuição explícita.
+
+### Frente de caixa no painel
+
+`/app/{empresa}/desk` permite selecionar o cliente e o vendedor, localizar produtos e serviços por nome, SKU ou código de barras, montar os itens e registrar o pagamento sem abrir outra tela. A conclusão usa o mesmo checkout transacional das vendas: descontos, saldo, financeiro e chave de repetição continuam conferidos pelo servidor. O comprovante oferece “Próximo atendimento”. Pix e cartões são registros manuais. A conclusão comercial não comprova autorização fiscal; o módulo fiscal mantém seu próprio estado.
