@@ -58,3 +58,9 @@ Em Cadastros → Grupos ou no produto, configure descontos permitidos, limite pe
 Relatórios → Comissões apresenta apuração por vendedor e a parcela proporcional aos recebimentos acumulados, sem gerar pagamento automático. Consulte [docs/COMISSOES_E_DESCONTOS.md](docs/COMISSOES_E_DESCONTOS.md).
 
 O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores mensais. O ano completo mais recente com dados é a seleção inicial; na base de informática, 2025 contém 528 vendas distribuídas pelos 12 meses.
+
+## Atendimento e vendedores
+
+`/app/vexo/desk` reúne busca de cliente, criação de orçamento/venda, orçamentos em andamento e vendas do dia do vendedor selecionado. Operadores entram nesse painel após o login; administradores mantêm a visão geral e podem abrir o painel pelo menu. Cliente e vendedor seguem pré-selecionados para os formulários.
+
+Cadastros → Vendedores permite trabalhar com vendedores sem login ou vincular um usuário. O orçamento fixa o vendedor creditado e a conversão preserva essa atribuição, separando quem registra a operação. Trocas anteriores ao faturamento são administrativas, justificadas e auditadas; documentos antigos sem vínculo exigem atribuição explícita.

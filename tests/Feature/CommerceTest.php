@@ -716,6 +716,7 @@ class CommerceTest extends TestCase
         foreach ([$this->user->id, $seller->id] as $requested) {
             if ($requested === $seller->id) {
                 $seller->update(['active' => false]);
+                \App\Models\Seller::where('user_id', $seller->id)->update(['active' => false]);
                 $actor = $this->user->id;
             } else {
                 $actor = $seller->id;
@@ -799,7 +800,7 @@ class CommerceTest extends TestCase
         $group->update(['discount_enabled' => false, 'max_discount_percent' => '0.00', 'commission_percent' => '20.00']);
         $payment = ['payment_method' => 'pix', 'paid' => false, 'due_date' => now()->toDateString()];
         $sale = $documents->invoice($document->id, $payment, $this->user->id);
-        $oldSale = $documents->invoice($legacy->id, $payment, $this->user->id);
+        $oldSale = $documents->invoice($legacy->id, $payment + ['seller_id' => $this->user->id], $this->user->id);
         $this->assertSame('90.00', $sale->total);
         $this->assertSame('18.00', $sale->commission_total);
         $this->assertSame('60.00', $oldSale->total);
@@ -852,6 +853,124 @@ class CommerceTest extends TestCase
             $this->get('/app/a?year=2027')->assertSessionHasErrors('year');
         } finally {
             $this->travelBack();
+        }
+    }
+
+    public function test_independent_seller_without_login_retains_credit_separate_from_executor(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '10.0000']);
+        ProductGroup::findOrFail($this->product->product_group_id)->update(['commission_percent' => '10.00']);
+        $seller = \App\Models\Seller::create(['name' => 'Consultora sem login', 'active' => true]);
+        $data = $this->saleData();
+        $data['salesperson_id'] = $seller->id;
+        $sale = app(Checkout::class)->complete($data, $this->user->id);
+        $this->assertSame($seller->id, $sale->salesperson_id);
+        $this->assertNull($sale->seller_id);
+        $this->assertSame($this->user->id, $sale->user_id);
+        $this->assertSame('Consultora sem login', $sale->seller_name);
+        $this->assertSame('10.00', $sale->commission_total);
+        $seller->update(['name' => 'Nome revisado', 'active' => false]);
+        $this->assertSame('Consultora sem login', $sale->fresh()->seller_name);
+        $this->assertSame($sale->id, app(Checkout::class)->complete($data, $this->user->id)->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a/commissions?salesperson_id='.$seller->id)->assertOk()
+            ->assertViewHas('totals', fn ($totals) => $totals['commission'] === '10.00');
+    }
+
+    public function test_document_seller_carries_to_invoice_and_reassignment_is_authorized_and_audited(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '10.0000']);
+        $first = \App\Models\Seller::create(['name' => 'Dona do orçamento', 'active' => true]);
+        $next = \App\Models\Seller::create(['name' => 'Nova responsável', 'active' => true]);
+        $executor = User::create(['name' => 'Executor', 'email' => 'executor@example.test', 'password' => 'executor-password-test', 'role' => 'operator']);
+        $data = $this->saleData(); $data['type'] = 'quote'; $data['salesperson_id'] = $first->id;
+        $documents = app(Documents::class);
+        $assignment = app(\App\Services\SellerAssignment::class);
+        $doc = $documents->create($data, $this->user->id);
+        $documents->transition($doc->id, 'approved');
+        $payment = ['payment_method' => 'pix', 'paid' => false, 'due_date' => now()->toDateString()];
+        $reject = function (callable $action) use ($doc): void {
+            try { $action(); $this->fail('Atribuição inválida deve ser rejeitada.'); }
+            catch (ValidationException) { $this->assertNull($doc->fresh()->sale_id); }
+        };
+        $reject(fn () => $documents->invoice($doc->id, $payment + ['salesperson_id' => $next->id], $executor->id));
+        $reject(fn () => $assignment->assign($doc->id, $executor->id, $next->id, 'Tentativa de transferência'));
+        $reject(fn () => $assignment->assign($doc->id, $this->user->id, $next->id));
+        $first->update(['active' => false]);
+        $reject(fn () => $documents->invoice($doc->id, $payment, $executor->id));
+        $assignment->assign($doc->id, $this->user->id, $next->id, 'Transferência autorizada');
+        $assignment->assign($doc->id, $this->user->id, $next->id, 'Repetição sem alteração');
+        $logs = $doc->assignments()->orderBy('id')->get();
+        $this->assertCount(2, $logs);
+        $this->assertSame($first->id, $logs->last()->previous_seller_id);
+        $this->assertSame($next->id, $logs->last()->new_seller_id);
+        $this->assertSame($this->user->id, $logs->last()->actor_id);
+        $this->assertSame('Transferência autorizada', $logs->last()->reason);
+        $sale = $documents->invoice($doc->id, $payment, $executor->id);
+        $this->assertSame($next->id, $sale->salesperson_id);
+        $this->assertSame($executor->id, $sale->user_id);
+        $this->assertSame('Nova responsável', $sale->seller_name);
+        try { $assignment->assign($doc->id, $this->user->id, $first->id, 'Depois da venda'); $this->fail('Faturado não pode ser reatribuído.'); }
+        catch (ValidationException) { $this->assertSame($next->id, $sale->fresh()->salesperson_id); }
+    }
+
+    public function test_seller_migration_backfills_only_explicit_legacy_sales_without_changing_snapshots(): void
+    {
+        app(TenantConnection::class)->connect($this->b);
+        $previous = DB::getDefaultConnection();
+        DB::setDefaultConnection('tenant');
+        $migration = require database_path('tenant-migrations/2026_01_01_000013_create_seller_master.php');
+        $restored = false;
+        try {
+            $migration->down();
+            $actor = User::create(['name' => 'Autor legado', 'email' => 'migration@example.test', 'password' => 'migration-password-test', 'role' => 'admin']);
+            $base = ['user_id' => $actor->id, 'payment_method' => 'pix', 'paid' => false, 'total' => '100.00', 'cost_total' => '20.0000', 'subtotal' => '100.00', 'commission_total' => '7.00', 'created_at' => '2025-03-01 10:00:00', 'updated_at' => '2025-03-01 10:00:00'];
+            DB::table('sales')->insert($base + ['request_key' => (string) Str::uuid(), 'seller_id' => $actor->id, 'seller_name' => 'Nome histórico']);
+            DB::table('sales')->insert($base + ['request_key' => (string) Str::uuid(), 'seller_id' => null, 'seller_name' => null]);
+            $doc = \App\Models\Document::create(['request_key' => (string) Str::uuid(), 'type' => 'quote', 'user_id' => $actor->id, 'items' => [], 'total' => '50.00']);
+            $before = DB::table('sales')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+            $migration->up(); $restored = true;
+            $after = DB::table('sales')->orderBy('id')->get()->map(function ($row) { $row = (array) $row; unset($row['salesperson_id']); return $row; })->all();
+            $this->assertSame($before, $after);
+            $profile = \App\Models\Seller::where('user_id', $actor->id)->firstOrFail();
+            $rows = Sale::orderBy('id')->get();
+            $this->assertSame($profile->id, $rows[0]->salesperson_id);
+            $this->assertNull($rows[1]->salesperson_id);
+            $this->assertNull($doc->fresh()->salesperson_id);
+            $this->assertSame(0, \App\Models\SellerAssignment::count());
+        } finally {
+            if (! $restored) { $migration->up(); }
+            DB::setDefaultConnection($previous);
+            app(TenantConnection::class)->connect($this->a);
+        }
+    }
+
+    public function test_sales_desk_scopes_operator_and_prefills_admin_seller_and_customer(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '10.0000']);
+        $operator = User::create(['name' => 'Balcão', 'email' => 'desk@example.test', 'password' => 'desk-password-test', 'role' => 'operator']);
+        $own = app(\App\Services\CommercialRules::class)->seller($operator->id);
+        $other = \App\Models\Seller::create(['name' => 'Externa sem login', 'active' => true]);
+        $customer = \App\Models\Customer::create(['name' => 'Cliente procurado', 'email' => 'busca@example.test']);
+        \App\Models\Customer::create(['name' => 'Cliente diferente']);
+        foreach ([$own->id, $other->id] as $id) {
+            $data = $this->saleData(); $data['salesperson_id'] = $id;
+            app(Checkout::class)->complete($data, $this->user->id);
+            $data['request_key'] = (string) Str::uuid(); $data['type'] = 'quote';
+            app(Documents::class)->create($data, $this->user->id);
+        }
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $operator->id]);
+        $this->get('/app/a/desk?q=procurado')->assertOk()
+            ->assertViewHas('metrics', fn ($metrics) => $metrics['sales_count'] === 1 && $metrics['quotes_count'] === 1 && bccomp($metrics['sales_total'], '100.00', 2) === 0)
+            ->assertViewHas('myQuotes', fn ($rows) => $rows->every(fn ($doc) => $doc->salesperson_id === $own->id))
+            ->assertViewHas('customerMatches', fn ($rows) => $rows->modelKeys() === [$customer->id]);
+        $this->get('/app/a/desk?salesperson_id='.$other->id)->assertForbidden();
+        $this->get('/app/a/sales/new?salesperson_id='.$other->id)->assertSessionHasErrors('salesperson_id');
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $query = '?salesperson_id='.$other->id.'&customer_id='.$customer->id;
+        $this->get('/app/a/desk'.$query)->assertOk()->assertViewHas('salesperson', fn ($seller) => $seller->id === $other->id);
+        foreach (['sales/new', 'documents/new'] as $path) {
+            $this->get('/app/a/'.$path.$query)->assertOk()->assertViewHas('selectedSalespersonId', $other->id)->assertViewHas('selectedCustomerId', (string) $customer->id);
         }
     }
 

@@ -1,6 +1,6 @@
 # Testes
 
-Última execução consolidada em 12/11/2026: **60 testes passaram, 956 verificações, nenhum teste pulado ou falha, saída 0, duração de 138,42 segundos**, em checkout QA isolado.
+Última execução consolidada em 12/11/2026: **65 testes passaram, 1.011 verificações, nenhum teste pulado ou falha, saída 0, duração de 138,12 segundos**, em checkout QA isolado.
 
 `php artisan test` executa cálculos decimais e, quando configurado, integração MySQL.
 A suíte de integração recria EXCLUSIVAMENTE `vendra_test_central`, `vendra_t_test_a`, `vendra_t_test_b`.
@@ -159,3 +159,17 @@ Após corrigir as diretivas Blade coladas ao texto e agrupar o PHP local, o lint
 O novo caso fixa novembro de 2026 e verifica janeiro/dezembro de 2025 com vendas de 100,00/200,00 e uma venda cancelada de 999,00, além de fevereiro de 2026 com 500,00. O ano padrão é 2025, com total 300,00 e duas vendas, 12 rótulos e dez meses intermediários zerados. Selecionar 2026 produz 500,00 e uma venda; selecionar 2027 gera erro de validação. Os outros filtros confirmam renderização das telas e ausência de gráfico/indicador agregado para operador.
 
 A evidência final é **baseline completo de 60 testes / 956 verificações mais estes três filtros de 66 verificações após o patch mensal**. Existem 61 casos na fonte, mas não foi executada uma suíte completa de 61 nesta etapa; as contagens de execuções distintas não são somadas.
+
+
+## Vendedor independente, atribuição de orçamento e painel operacional
+
+Quatro novos casos passaram inicialmente no checkout QA isolado `/srv/vendra-seller-qa.yiZk44`: **4 testes, 42 verificações, nenhum skip/falha, saída 0, em 52,54 segundos**.
+
+A venda de um vendedor sem login conserva seu ID e nome em snapshot, tem `seller_id` de usuário nulo e registra o usuário executor separado. Alterar ou inativar o cadastro depois não muda a venda nem o relatório histórico. O documento conserva seu dono quando outro usuário executa o faturamento; override por payload, reatribuição por operador, troca sem justificativa e faturamento com vendedor inativo são rejeitados. A troca administrativa gera histórico com IDs anteriores/novos, executor e justificativa, sem duplicar no replay; depois do faturamento não permite transferir o crédito.
+
+O teste da migração reverte e reaplica apenas a migração 13 no banco dedicado `vendra_t_test_b`. Confere que vendas com vínculo explícito antigo recebem perfil vendedor, vendas sem esse vínculo e documentos com mero autor permanecem sem atribuição. Todas as colunas anteriores de vendas, incluindo nomes históricos, valores e timestamps, permanecem iguais. O schema é restaurado no próprio caso.
+
+O painel do operador apresenta somente seus totais, vendas e orçamentos, rejeita selecionar outro vendedor e filtra a busca de clientes. Administrador pode escolher vendedor sem login e levar vendedor/cliente aos formulários existentes. As fixtures anteriores foram ajustadas somente para a nova regra: inativar explicitamente o perfil vendedor quando a intenção é bloquear comissão e informar vendedor explícito para faturar documento legado sem atribuição.
+
+
+Após os quatro filtros, a suíte completa foi executada uma vez no mesmo checkout isolado: **65 testes passaram, 1.011 verificações, nenhum skip/falha, saída 0, em 138,12 segundos**. Inclui todo o baseline comercial, o gráfico mensal agora na consolidação, as cargas anuais de 2025/2026, concorrência e as quatro regressões de vendedor/painel. Nenhuma contagem foi somada entre execuções. Nenhum runner permaneceu ativo ao liberar a operação.

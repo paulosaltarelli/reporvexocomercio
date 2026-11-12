@@ -10,18 +10,21 @@
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 <aside aria-label="Navegação da empresa">
     <div class="sidebar-heading">
-        <a class="brand" href="{{ route('dashboard',['company'=>$tenant->slug]) }}" aria-label="Vendra por Vexo, visão geral">vendra<span>por Vexo</span></a>
+        <a class="brand" href="{{ route($currentUser?->role==='admin'?'dashboard':'desk',['company'=>$tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span>por Vexo</span></a>
         <button type="button" class="menu-toggle" aria-controls="company-navigation" aria-expanded="true">Menu <span aria-hidden="true">☰</span></button>
     </div>
     <div class="company">{{ $tenant->name }}</div>
     <div id="company-navigation" class="sidebar-menu">
-        @php($registrationNavigation=request()->routeIs('products','product.*','catalog'))
+        @php($registrationNavigation=request()->routeIs('products','product.*','catalog','sellers'))
         @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*','stock','prices','price.*','purchases','purchase.*'))
         @php($financeNavigation=request()->routeIs('finance','finance.*','cashflow','cash','cash.*'))
         @php($reportNavigation=request()->routeIs('reports','report.*','commissions'))
         @php($settingsNavigation=request()->routeIs('business','users','account.password'))
         <nav aria-label="Menu da empresa" class="grouped-navigation">
+            <a class="nav {{ request()->routeIs('desk')?'selected':'' }}" href="{{ route('desk',['company'=>$tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif>Painel de operação</a>
+            @if($currentUser?->role==='admin')
             <a class="nav {{ request()->routeIs('dashboard')?'selected':'' }}" href="{{ route('dashboard',['company'=>$tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif>Visão geral</a>
+            @endif
             <details class="nav-group {{ $registrationNavigation?'current-group':'' }}" @if($registrationNavigation) open @endif>
                 <summary>Cadastros</summary>
                 <div class="nav-group-links">
@@ -29,6 +32,7 @@
                     @foreach(['groups'=>($currentUser?->role==='admin'?'Grupos e margens':'Grupos'),'customers'=>'Clientes','suppliers'=>'Fornecedores'] as $kind=>$label)
                         <a class="nav {{ request()->route('kind')===$kind?'selected':'' }}" href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}" @if(request()->route('kind')===$kind) aria-current="page" @endif>{{ $label }}</a>
                     @endforeach
+                    @if($currentUser?->role==='admin')<a class="nav {{ request()->routeIs('sellers')?'selected':'' }}" href="{{ route('sellers',['company'=>$tenant->slug]) }}" @if(request()->routeIs('sellers')) aria-current="page" @endif>Vendedores</a>@endif
                 </div>
             </details>
             <details class="nav-group {{ $operationNavigation?'current-group':'' }}" @if($operationNavigation) open @endif>

@@ -26,6 +26,8 @@ class Documents
                 $subtotal = '0';
                 $discountTotal = '0';
                 $rules = app(CommercialRules::class);
+                $seller = $rules->seller($userId, isset($data['seller_id']) ? (int) $data['seller_id'] : null,
+                    isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null);
                 foreach ($data['items'] as $line) {
                     if (! in_array($line['kind'], ['product', 'service'], true)) {
                         throw ValidationException::withMessages(['items' => 'Tipo de item inválido.']);
@@ -43,7 +45,10 @@ class Documents
                 Decimal::input($subtotal, 2, 'items');
                 Decimal::input($discountTotal, 2, 'items');
 
-                return Document::create(['commercial_version' => 1, 'subtotal' => $subtotal, 'discount_total' => $discountTotal, 'type' => $data['type'], 'request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'items' => $items, 'total' => $total, 'valid_until' => $data['valid_until'] ?? null, 'asset' => $data['asset'] ?? null, 'technician' => $data['technician'] ?? null, 'notes' => $data['notes'] ?? null]);
+                $document = Document::create(['salesperson_id' => $seller->id, 'seller_name' => $seller->name, 'commercial_version' => 1, 'subtotal' => $subtotal, 'discount_total' => $discountTotal, 'type' => $data['type'], 'request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'items' => $items, 'total' => $total, 'valid_until' => $data['valid_until'] ?? null, 'asset' => $data['asset'] ?? null, 'technician' => $data['technician'] ?? null, 'notes' => $data['notes'] ?? null]);
+                app(SellerAssignment::class)->recordInitial($document, $seller, $userId);
+
+                return $document;
             }, 3);
         } catch (UniqueConstraintViolationException $exception) {
             $existing = Document::where('request_key', $data['request_key'])->lockForUpdate()->first();

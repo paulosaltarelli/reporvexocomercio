@@ -5,22 +5,67 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Service;
+use App\Models\Seller;
+use Illuminate\Database\UniqueConstraintViolationException;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
 class CommercialRules
 {
-    public function seller(int $actorId, ?int $requestedId = null): User
+    /** Legacy user ID remains parameter two; the master salesperson ID is parameter three. */
+    public function seller(int $actorId, ?int $legacyUserId = null, ?int $salespersonId = null): Seller
     {
         $actor = User::where('active', true)->sharedLock()->find($actorId);
-        if (! $actor) throw ValidationException::withMessages(['seller_id' => 'O usuário responsável precisa estar ativo.']);
-        $requestedId ??= $actorId;
-        if ($actor->role !== 'admin' && $requestedId !== $actorId) {
-            throw ValidationException::withMessages(['seller_id' => 'Operadores só podem registrar vendas em seu próprio nome.']);
+        if (! $actor) throw ValidationException::withMessages(['salesperson_id' => 'O usuário responsável precisa estar ativo.']);
+        if ($actor->role !== 'admin') {
+            if ($legacyUserId !== null && $legacyUserId !== $actorId) {
+                throw ValidationException::withMessages(['salesperson_id' => 'Operadores só podem escolher seu próprio perfil de vendedor.']);
+            }
+            $own = $this->profileFor($actor);
+            if ($salespersonId !== null && $salespersonId !== $own->id) {
+                throw ValidationException::withMessages(['salesperson_id' => 'Operadores só podem escolher seu próprio perfil de vendedor.']);
+            }
+            return $this->activeSeller($own);
+        }
+        if ($salespersonId !== null) {
+            $seller = Seller::whereKey($salespersonId)->sharedLock()->first();
+            if (! $seller) throw ValidationException::withMessages(['salesperson_id' => 'Selecione um vendedor ativo.']);
+            if ($legacyUserId !== null) {
+                $legacy = $this->legacyProfile($legacyUserId);
+                if ($legacy->id !== $seller->id) {
+                    throw ValidationException::withMessages(['salesperson_id' => 'Os identificadores de vendedor e usuário apontam para pessoas diferentes.']);
+                }
+            }
+            return $this->activeSeller($seller);
         }
 
-        $seller = $requestedId === $actorId ? $actor : User::where('active', true)->sharedLock()->find($requestedId);
-        if (! $seller) throw ValidationException::withMessages(['seller_id' => 'Selecione um vendedor ativo.']);
+        return $this->activeSeller($legacyUserId !== null ? $this->legacyProfile($legacyUserId) : $this->profileFor($actor));
+    }
+
+    private function legacyProfile(int $userId): Seller
+    {
+        $user = User::whereKey($userId)->sharedLock()->first();
+        if (! $user) throw ValidationException::withMessages(['seller_id' => 'O usuário informado não possui um perfil de vendedor válido.']);
+
+        return $this->profileFor($user);
+    }
+
+    private function profileFor(User $user): Seller
+    {
+        $existing = Seller::where('user_id', $user->id)->sharedLock()->first();
+        if ($existing) return $existing; // Never rename or reactivate an existing master profile implicitly.
+        try {
+            return Seller::create(['user_id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'active' => (bool) $user->active]);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = Seller::where('user_id', $user->id)->lockForUpdate()->first();
+            if ($existing) return $existing;
+            throw $exception;
+        }
+    }
+
+    private function activeSeller(Seller $seller): Seller
+    {
+        if (! $seller->active) throw ValidationException::withMessages(['salesperson_id' => 'O perfil de vendedor está inativo. Solicite a revisão de um administrador.']);
 
         return $seller;
     }
