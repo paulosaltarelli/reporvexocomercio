@@ -5,7 +5,6 @@ namespace App\Fiscal;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
-use App\Models\FiscalItemRule;
 use App\Models\FiscalSetting;
 use App\Models\Product;
 use App\Models\Sale;
@@ -70,8 +69,9 @@ final class FiscalReadiness
         } elseif ($credential->valid_until->isPast() || ! $credential->validated_hash || ! hash_equals($credential->validated_hash, app(CompanyFiscalConfiguration::class)->hash($configuredIssuer))) {
             $add('credentials.validation', 'Confira a validade do certificado e valide localmente a configuração fiscal atual.');
         }
-        if (Product::where('type', 'product')->whereNotIn('id', FiscalItemRule::select('product_id'))->exists()) {
-            $add('tax.validation', 'Há produtos sem regra fiscal específica validada pelo contador.');
+        $catalogRules = app(FiscalRuleResolver::class)->resolveMany(Product::where('type', 'product')->get());
+        if (collect($catalogRules)->contains(fn ($rule) => ! ($rule['available'] ?? false))) {
+            $add('tax.validation', 'Há produtos sem regra fiscal disponível. Confira o perfil, a exceção individual e a identificação própria de cada produto.');
         }
         if (! $configuredIssuer?->enabled) {
             $add('transport.disabled', 'A emissão depende da configuração de homologação em Minha empresa. Registrar conferência não emite nota.');
@@ -90,6 +90,7 @@ final class FiscalReadiness
             $totals = ['goods' => '0.00', 'services' => '0.00', 'unclassified' => '0.00'];
             $lines = [];
             $products = Product::whereIn('id', $sale->items->pluck('product_id')->filter())->get()->keyBy('id');
+            $resolvedRules = app(FiscalRuleResolver::class)->resolveMany($products);
             foreach ($sale->items->sortBy('id') as $item) {
                 $kind = $item->fiscal_kind === 'service' || $item->service_id ? 'services' : ($item->fiscal_kind === 'product' ? 'goods' : 'unclassified');
                 $totals[$kind] = bcadd($totals[$kind], $item->total, 2);
@@ -100,6 +101,11 @@ final class FiscalReadiness
                 if ($kind === 'goods') {
                     $product = $products->get($item->product_id);
                     $line['tax_metadata_at_review'] = $product?->only(['ncm', 'origin', 'unit']) ?? [];
+                    $effective = $resolvedRules[$item->product_id] ?? null;
+                    $line['tax_rule_at_review'] = $effective;
+                    if (! ($effective['available'] ?? false)) {
+                        $add('item.'.$item->id.'.tax_rule', 'Item #'.$item->id.': '.app(FiscalRuleResolver::class)->explain($effective));
+                    }
                     if (! preg_match('/^[0-9]{8}$/D', (string) $product?->ncm)) {
                         $add('item.'.$item->id.'.ncm', 'Item #'.$item->id.': complete e valide o NCM do produto.');
                     }

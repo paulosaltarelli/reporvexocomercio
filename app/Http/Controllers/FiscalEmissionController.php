@@ -9,6 +9,9 @@ use App\Fiscal\QueueNfce;
 use App\Fiscal\QueueVoid;
 use App\Fiscal\TaxpayerDocument;
 use App\Fiscal\TaxProfile;
+use App\Fiscal\FiscalRuleResolver;
+use App\Fiscal\FiscalProfileManager;
+use App\Models\FiscalTaxProfile;
 use App\Models\BusinessProfile;
 use App\Models\FiscalDocument;
 use App\Models\FiscalIssuer;
@@ -97,7 +100,7 @@ class FiscalEmissionController extends Controller
         $this->admin($r);
         $product = Product::where('type', 'product')->findOrFail($id);
 
-        return view('fiscal.product', ['product' => $product, 'rule' => FiscalItemRule::where('product_id', $id)->first()]);
+        return view('fiscal.product', ['product' => $product, 'rule' => FiscalItemRule::where('product_id', $id)->first(), 'effectiveRule' => app(FiscalRuleResolver::class)->resolve($product), 'fiscalProfiles' => FiscalTaxProfile::orderBy('name')->get(), 'bindingHash' => app(FiscalProfileManager::class)->bindingHash($product), 'individualHash' => app(FiscalProfileManager::class)->individualHash($product), 'fiscalGroupProfile' => $product->product_group_id ? FiscalTaxProfile::find(DB::connection('tenant')->table('product_groups')->where('id', $product->product_group_id)->value('fiscal_tax_profile_id')) : null]);
     }
 
     public function saveProduct(Request $r, string $company, int $id, TaxProfile $profile)
@@ -106,7 +109,11 @@ class FiscalEmissionController extends Controller
         Product::where('type', 'product')->findOrFail($id);
         $reference = $r->validate(['accountant_reference' => 'required|string|max:180']);
         $parameters = $profile->validate($r->all());
-        FiscalItemRule::updateOrCreate(['product_id' => $id], ['parameters' => $parameters, 'accountant_reference' => $reference['accountant_reference'], 'validated_by' => $r->attributes->get('currentUser')->id]);
+        DB::connection('tenant')->transaction(function () use ($id, $parameters, $reference, $r) {
+            $product = Product::whereKey($id)->lockForUpdate()->firstOrFail();
+            $product->update(['fiscal_gtin' => $parameters['gtin'], 'fiscal_cest' => $parameters['cest'] ?? null]);
+            FiscalItemRule::updateOrCreate(['product_id' => $id], ['parameters' => $parameters, 'accountant_reference' => $reference['accountant_reference'], 'validated_by' => $r->attributes->get('currentUser')->id]);
+        }, 3);
 
         return back()->with('success', 'Regra fiscal do produto salva com referência da validação contábil.');
     }

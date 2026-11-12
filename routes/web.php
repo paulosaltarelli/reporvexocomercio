@@ -13,6 +13,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\FiscalController;
 use App\Http\Controllers\FiscalEmissionController;
+use App\Http\Controllers\FiscalProfileController;
 use App\Http\Controllers\SimulationFiscalController;
 
 use App\Http\Controllers\SellerController;
@@ -41,6 +42,19 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
+        Route::get('fiscal/profiles', [FiscalProfileController::class, 'index'])->name('fiscal.profiles.index');
+        Route::get('fiscal/profiles/create', [FiscalProfileController::class, 'create'])->name('fiscal.profiles.create');
+        Route::post('fiscal/profiles', [FiscalProfileController::class, 'store'])->name('fiscal.profiles.store');
+        Route::get('fiscal/profiles/{id}/edit', [FiscalProfileController::class, 'edit'])->whereNumber('id')->name('fiscal.profiles.edit');
+        Route::post('fiscal/profiles/{id}', [FiscalProfileController::class, 'update'])->whereNumber('id')->name('fiscal.profiles.update');
+        Route::get('fiscal/profiles/{id}/bulk', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.bulk');
+        Route::get('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.preview.back');
+        Route::post('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'preview'])->whereNumber('id')->name('fiscal.profiles.preview');
+        Route::post('fiscal/profiles/{id}/apply', [FiscalProfileController::class, 'apply'])->whereNumber('id')->name('fiscal.profiles.apply');
+        Route::post('fiscal/products/{id}/profile', [FiscalProfileController::class, 'bindProduct'])->whereNumber('id')->name('fiscal.products.profile');
+        Route::post('fiscal/groups/{id}/profile', [FiscalProfileController::class, 'assignGroup'])->whereNumber('id')->name('fiscal.groups.profile');
+        Route::post('fiscal/products/{id}/individual/clear', [FiscalProfileController::class, 'clearIndividual'])->whereNumber('id')->name('fiscal.products.individual.clear');
+
         Route::get('fiscal/simulations', [SimulationFiscalController::class, 'index'])->name('fiscal.simulations.index');
         Route::post('sales/{id}/fiscal/simulate', [SimulationFiscalController::class, 'create'])->whereNumber('id')->name('fiscal.simulations.create');
         Route::get('fiscal/simulations/{id}', [SimulationFiscalController::class, 'show'])->whereNumber('id')->name('fiscal.simulations.show');

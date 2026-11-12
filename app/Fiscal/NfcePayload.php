@@ -5,7 +5,6 @@ namespace App\Fiscal;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
-use App\Models\FiscalItemRule;
 use App\Models\FiscalSetting;
 use App\Models\Payment;
 use App\Models\Product;
@@ -78,17 +77,17 @@ final class NfcePayload
                 $fail('Venda antiga sem classificação fiscal congelada. Faça revisão assistida antes de emitir.');
             }
             $product = Product::findOrFail($line->product_id);
-            $rule = FiscalItemRule::where('product_id', $product->id)->first();
-            if (! $rule || ! $rule->accountant_reference) {
-                $fail('Produto '.$product->name.': falta regra fiscal validada pelo contador.');
+            $rule = app(FiscalRuleResolver::class)->resolve($product);
+            if (! $rule || ! ($rule['available'] ?? false) || empty($rule['accountant_reference'])) {
+                $fail('Produto '.$product->name.': '.app(FiscalRuleResolver::class)->explain($rule));
             }
             if (! preg_match('/^[0-9]{8}$/D', (string) $product->ncm) || ! preg_match('/^[0-8]$/D', (string) $product->origin) || ! $product->unit) {
                 $fail('Produto '.$product->name.': confira NCM, origem e unidade.');
             }
             $amounts = $this->fiscalAmounts((string) $line->quantity, (string) $line->unit_price,
                 (string) $line->gross_total, (string) $line->discount_amount, (string) $line->total);
-            $tax = app(TaxProfile::class)->fields($rule->parameters, $amounts['net'], (string) $c['crt']);
-            $rules[$product->id] = ['parameters' => $rule->parameters, 'accountant_reference' => $rule->accountant_reference, 'validated_at' => $rule->updated_at->toIso8601String()];
+            $tax = app(TaxProfile::class)->fields($rule['parameters'], $amounts['net'], (string) $c['crt']);
+            $rules[$product->id] = ['parameters' => $rule['parameters'], 'accountant_reference' => $rule['accountant_reference'], 'validated_at' => $rule['validated_at'], 'source' => $rule['source'], 'profile_id' => $rule['profile_id'] ?? null, 'profile_revision' => $rule['profile_revision'] ?? null, 'group_id' => $rule['group_id'] ?? null];
             $items[] = array_merge($tax, [
                 'numero_item' => (string) (count($items) + 1), 'codigo_ncm' => $product->ncm, 'codigo_produto' => $product->sku,
                 'descricao' => $line->description, 'quantidade_comercial' => $amounts['quantity'], 'quantidade_tributavel' => $amounts['quantity'],

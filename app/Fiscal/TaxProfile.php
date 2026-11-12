@@ -40,6 +40,15 @@ final class TaxProfile
         return $validated;
     }
 
+    /** Reusable taxation only: identity/classification belongs to each product. */
+    public function validateShared(array $data): array
+    {
+        Validator::make($data, ['gtin' => 'prohibited', 'cest' => 'prohibited', 'ncm' => 'prohibited', 'origin' => 'prohibited', 'unit' => 'prohibited'])->validate();
+        $validated = $this->validate($data + ['gtin' => 'SEM GTIN']);
+        unset($validated['gtin'], $validated['cest']);
+        return $validated;
+    }
+
     public function fields(array $rule, string $gross, string $crt): array
     {
         $r = $this->validate($rule);

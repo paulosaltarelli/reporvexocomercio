@@ -365,6 +365,20 @@ class FiscalTest extends TestCase
         return $facts;
     }
 
+    private function sharedFiscalProfileData(string $name, array $changes = []): array
+    {
+        $parameters = array_diff_key(FiscalFixtures::rule(), array_flip(['gtin', 'cest']));
+        return ['name' => $name, 'active' => true, 'accountant_reference' => 'Perfil sintético para QA, sem validação contábil real',
+            'parameters' => array_replace($parameters, $changes)];
+    }
+
+    private function fiscalProfileProduct(string $sku, array $changes = []): Product
+    {
+        return Product::create(array_replace(['name' => 'Produto '.$sku, 'sku' => $sku,
+            'product_group_id' => $this->product->product_group_id, 'unit' => 'UN', 'sale_price' => '10.01',
+            'ncm' => '84713012', 'origin' => '0', 'fiscal_gtin' => 'SEM GTIN', 'fiscal_cest' => '2106400'], $changes));
+    }
+
     private function operation(): array
     {
         return ['consumer_final' => true, 'not_taxpayer' => true, 'destination_state' => 'SP', 'presence' => '1', 'pix_mode' => 'dynamic'];
@@ -748,6 +762,186 @@ class FiscalTest extends TestCase
         $this->assertSame('authorized', $doc->fresh()->state);
         $this->assertNull(DB::connection('tenant')->table('fiscal_outbox')->where('id', $nextId)->value('completed_at'));
         $this->assertSame(1, FiscalDocument::count());
+    }
+
+    public function test_tax_profiles_precedence_inheritance_and_inactive_bindings_fail_closed(): void
+    {
+        $this->forbidSimulationTransport();
+        $manager = app(\App\Fiscal\FiscalProfileManager::class);
+        $resolver = app(\App\Fiscal\FiscalRuleResolver::class);
+        $groupProfile = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Grupo QA'));
+        $directProfile = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Direto QA', ['transparency_rate' => '1']));
+        $group = ProductGroup::findOrFail($this->product->product_group_id);
+        $manager->assignGroup($this->tenant, $this->user->id, $group->id, $groupProfile->id, $manager->groupBindingHash($group), (string) Str::uuid());
+        $product = $this->fiscalProfileProduct('PROFILE-PRIORITY', ['fiscal_gtin' => '7894900011517']);
+        $manager->bindProduct($this->tenant, $this->user->id, $product->id, $directProfile->id, $product->fiscal_gtin, $product->fiscal_cest, $manager->bindingHash($product), (string) Str::uuid());
+        FiscalItemRule::create(['product_id' => $product->id, 'parameters' => array_replace(FiscalFixtures::rule(), ['transparency_rate' => '2', 'cest' => '0100100']),
+            'accountant_reference' => 'Exceção individual sintética', 'validated_by' => $this->user->id]);
+        $individual = $resolver->resolve($product->fresh());
+        $this->assertSame('individual', $individual['source']);
+        $this->assertTrue($individual['available']);
+        $this->assertSame(0, bccomp((string) $individual['parameters']['transparency_rate'], '2', 4));
+        $this->assertSame('7894900011517', $individual['parameters']['gtin']);
+        $this->assertSame('2106400', $individual['parameters']['cest']);
+        try {
+            $manager->bindProduct($this->tenant, $this->user->id, $product->id, $directProfile->id, null, null, $manager->bindingHash($product->fresh()), (string) Str::uuid());
+            $this->fail('Vínculo não pode limpar o GTIN obrigatório de uma exceção individual.');
+        } catch (ValidationException $exception) { $this->assertArrayHasKey('fiscal_gtin', $exception->errors()); }
+        $this->assertSame('7894900011517', $product->fresh()->fiscal_gtin);
+        $manager->bindProduct($this->tenant, $this->user->id, $product->id, $directProfile->id, '7894900011517', null, $manager->bindingHash($product->fresh()), (string) Str::uuid());
+        $this->assertNull($resolver->resolve($product->fresh())['parameters']['cest'] ?? null);
+        FiscalItemRule::where('product_id', $product->id)->delete();
+        $direct = $resolver->resolve($product->fresh());
+        $this->assertSame('product_profile', $direct['source']);
+        $this->assertSame($directProfile->id, $direct['profile_id']);
+        $manager->save($this->tenant, $this->user->id, array_replace($this->sharedFiscalProfileData('Direto QA', ['transparency_rate' => '1']), ['active' => false]), $directProfile->id, $directProfile->revision);
+        $blocked = $resolver->resolve($product->fresh());
+        $this->assertFalse($blocked['available']);
+        $this->assertSame($directProfile->id, $blocked['profile_id']);
+        $this->assertSame('product_profile', $blocked['source']);
+        $new = $this->fiscalProfileProduct('PROFILE-NEW', ['fiscal_gtin' => null]);
+        $inherited = $resolver->resolve($new);
+        $this->assertSame('group_profile', $inherited['source']);
+        $this->assertSame($groupProfile->id, $inherited['profile_id']);
+        $this->assertFalse($inherited['available']);
+        $manager->bindProduct($this->tenant, $this->user->id, $new->id, null, 'SEM GTIN', $new->fiscal_cest, $manager->bindingHash($new), (string) Str::uuid());
+        $this->assertTrue($resolver->resolve($new->fresh())['available']);
+        $this->assertNull($new->fresh()->fiscal_tax_profile_id);
+        Http::assertNothingSent();
+    }
+
+    public function test_tax_profiles_bulk_rejects_stale_previews_atomically_and_preserves_exceptions_and_identity(): void
+    {
+        $this->forbidSimulationTransport();
+        $manager = app(\App\Fiscal\FiscalProfileManager::class);
+        $target = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Alvo QA'));
+        $other = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Exceção de perfil QA'));
+        $a = $this->fiscalProfileProduct('BULK-A', ['fiscal_gtin' => '7894900011517']);
+        $b = $this->fiscalProfileProduct('BULK-B');
+        $c = $this->fiscalProfileProduct('BULK-C');
+        $d = $this->fiscalProfileProduct('BULK-D');
+        $individual = FiscalItemRule::create(['product_id' => $b->id, 'parameters' => FiscalFixtures::rule(), 'accountant_reference' => 'Exceção preservada', 'validated_by' => $this->user->id]);
+        $manager->bindProduct($this->tenant, $this->user->id, $c->id, $other->id, $c->fiscal_gtin, $c->fiscal_cest, $manager->bindingHash($c), (string) Str::uuid());
+        $ids = [$a->id, $b->id, $c->id, $d->id];
+        $identityColumns = ['id', 'ncm', 'origin', 'unit', 'fiscal_gtin', 'fiscal_cest', 'quantity', 'average_cost', 'sale_price'];
+        $identities = Product::whereIn('id', $ids)->orderBy('id')->get($identityColumns)->toArray();
+        $individualHash = Snapshot::hash($individual->parameters);
+        $preview = $manager->preview($this->tenant, $this->user->id, $target->id, $ids);
+        $this->assertSame(2, $preview['applied']);
+        $this->assertSame(2, $preview['skipped']);
+        $target = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Alvo QA', ['transparency_rate' => '1']), $target->id, $target->revision);
+        try {
+            $manager->apply($this->tenant, $this->user->id, $target->id, $ids, $preview['hash'], (string) Str::uuid());
+            $this->fail('Edição do perfil invalida toda a prévia.');
+        } catch (ValidationException) { $this->assertNull($a->fresh()->fiscal_tax_profile_id); $this->assertNull($d->fresh()->fiscal_tax_profile_id); }
+        $preview = $manager->preview($this->tenant, $this->user->id, $target->id, $ids);
+        $manager->bindProduct($this->tenant, $this->user->id, $d->id, $other->id, $d->fiscal_gtin, $d->fiscal_cest, $manager->bindingHash($d), (string) Str::uuid());
+        try {
+            $manager->apply($this->tenant, $this->user->id, $target->id, $ids, $preview['hash'], (string) Str::uuid());
+            $this->fail('Mudança de vínculo de um produto invalida a aplicação inteira.');
+        } catch (ValidationException) { $this->assertNull($a->fresh()->fiscal_tax_profile_id); }
+        $preview = $manager->preview($this->tenant, $this->user->id, $target->id, $ids);
+        $key = (string) Str::uuid();
+        $result = $manager->apply($this->tenant, $this->user->id, $target->id, $ids, $preview['hash'], $key);
+        $this->assertSame(1, $result['applied']); $this->assertSame(3, $result['skipped']);
+        $auditCount = \App\Models\FiscalTaxProfileAudit::count();
+        $this->assertSame(Snapshot::hash($result), Snapshot::hash($manager->apply($this->tenant, $this->user->id, $target->id, $ids, $preview['hash'], $key)));
+        $this->assertSame($auditCount, \App\Models\FiscalTaxProfileAudit::count());
+        $this->assertSame($target->id, $a->fresh()->fiscal_tax_profile_id);
+        $this->assertNull($b->fresh()->fiscal_tax_profile_id);
+        $this->assertSame($other->id, $c->fresh()->fiscal_tax_profile_id);
+        $this->assertSame($other->id, $d->fresh()->fiscal_tax_profile_id);
+        $this->assertSame($identities, Product::whereIn('id', $ids)->orderBy('id')->get($identityColumns)->toArray());
+        $this->assertSame($individualHash, Snapshot::hash($individual->fresh()->parameters));
+        $replacePreview = $manager->preview($this->tenant, $this->user->id, $other->id, $ids, true);
+        $replacement = $manager->apply($this->tenant, $this->user->id, $other->id, $ids, $replacePreview['hash'], (string) Str::uuid(), true);
+        $this->assertSame(1, $replacement['applied']);
+        $this->assertSame($other->id, $a->fresh()->fiscal_tax_profile_id);
+        $this->assertNull($b->fresh()->fiscal_tax_profile_id);
+        $this->assertSame($individualHash, Snapshot::hash($individual->fresh()->parameters));
+        $this->assertSame($identities, Product::whereIn('id', $ids)->orderBy('id')->get($identityColumns)->toArray());
+        foreach (['gtin', 'cest', 'ncm', 'origin', 'unit'] as $field) { $this->assertArrayNotHasKey($field, $target->parameters); }
+        Http::assertNothingSent();
+    }
+
+    public function test_tax_profiles_frozen_nfce_and_simulation_snapshots_keep_original_profile_revision(): void
+    {
+        $this->configuredFiscal();
+        $manager = app(\App\Fiscal\FiscalProfileManager::class);
+        $profile = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Histórico QA'));
+        FiscalItemRule::where('product_id', $this->product->id)->delete();
+        $manager->bindProduct($this->tenant, $this->user->id, $this->product->id, $profile->id, 'SEM GTIN', null, $manager->bindingHash($this->product->fresh()), (string) Str::uuid());
+        $doc = app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $simulation = app(\App\Fiscal\SimulationFiscal::class)->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid());
+        $oldSnapshot = Snapshot::hash($doc->snapshot);
+        $oldXml = $doc->signed_xml;
+        $oldSimulation = Snapshot::hash($simulation->snapshot);
+        $rule = $doc->snapshot['tax_rules'][$this->product->id];
+        $this->assertSame($profile->id, $rule['profile_id']);
+        $this->assertSame($profile->revision, $rule['profile_revision']);
+        $updated = $manager->save($this->tenant, $this->user->id, $this->sharedFiscalProfileData('Histórico QA', ['transparency_rate' => '1']), $profile->id, $profile->revision);
+        $this->assertSame($profile->revision + 1, $updated->revision);
+        $this->assertSame($oldSnapshot, Snapshot::hash($doc->fresh()->snapshot));
+        $this->assertSame($oldXml, $doc->fresh()->signed_xml);
+        $this->assertSame($oldSimulation, Snapshot::hash($simulation->fresh()->snapshot));
+        $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'pix', 'paid' => true,
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10.01']]], $this->user->id);
+        $next = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $this->operation());
+        $nextRule = $next->snapshot['tax_rules'][$this->product->id];
+        $this->assertSame($updated->revision, $nextRule['profile_revision']);
+        $this->assertSame(0, bccomp((string) $nextRule['parameters']['transparency_rate'], '1', 4));
+        $this->assertSame(0, bccomp((string) $rule['parameters']['transparency_rate'], '0', 4));
+        $this->assertSame([], $this->transportCalls);
+        Http::assertNothingSent();
+    }
+
+    public function test_tax_profiles_http_permissions_tenant_isolation_and_shared_metadata_are_enforced(): void
+    {
+        $this->forbidSimulationTransport();
+        $manager = app(\App\Fiscal\FiscalProfileManager::class);
+        foreach (['gtin' => 'SEM GTIN', 'cest' => '2106400', 'ncm' => '84713012', 'origin' => '0', 'unit' => 'UN'] as $field => $value) {
+            $invalid = $this->sharedFiscalProfileData('Metadado proibido QA');
+            $invalid['parameters'][$field] = $value;
+            try { $manager->save($this->tenant, $this->user->id, $invalid); $this->fail('Identidade de produto não pode virar parâmetro compartilhado.'); }
+            catch (ValidationException $exception) { $this->assertArrayHasKey($field, $exception->errors()); }
+        }
+        $this->assertSame(0, \App\Models\FiscalTaxProfile::count());
+        $this->login();
+        $data = $this->sharedFiscalProfileData('Perfil HTTP QA');
+        $form = array_merge($data['parameters'], ['name' => $data['name'], 'active' => '1', 'accountant_reference' => $data['accountant_reference']]);
+        $this->post('/app/a/fiscal/profiles', $form)->assertRedirect('/app/a/fiscal/profiles')->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $profile = \App\Models\FiscalTaxProfile::firstOrFail();
+        $product = $this->fiscalProfileProduct('PROFILE-HTTP');
+        foreach (['/app/a/fiscal/profiles', '/app/a/fiscal/profiles/create', '/app/a/fiscal/profiles/'.$profile->id.'/edit', '/app/a/fiscal/profiles/'.$profile->id.'/bulk'] as $url) { $this->get($url)->assertOk(); }
+        $previewResponse = $this->post('/app/a/fiscal/profiles/'.$profile->id.'/preview', ['product_ids' => [$product->id], 'replace_existing' => '0'])->assertOk();
+        $preview = $previewResponse->viewData('preview');
+        $apply = ['product_ids' => [$product->id], 'replace_existing' => '0', 'request_key' => (string) Str::uuid(), 'expected_hash' => $preview['hash']];
+        $previewUrl = '/app/a/fiscal/profiles/'.$profile->id.'/preview';
+        $this->from($previewUrl)->post('/app/a/fiscal/profiles/'.$profile->id.'/apply', $apply)->assertSessionHasErrors('confirm')->assertRedirect($previewUrl);
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertNull($product->fresh()->fiscal_tax_profile_id);
+        $this->get($previewUrl)->assertOk();
+        $this->post('/app/a/fiscal/profiles/'.$profile->id.'/apply', $apply + ['confirm' => '1'])->assertRedirect('/app/a/fiscal/profiles')->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertSame($profile->id, $product->fresh()->fiscal_tax_profile_id);
+        $this->user->update(['role' => 'operator']);
+        foreach (['/app/a/fiscal/profiles', '/app/a/fiscal/profiles/create', '/app/a/fiscal/profiles/'.$profile->id.'/edit', $previewUrl] as $url) { $this->get($url)->assertForbidden(); }
+        foreach (['/app/a/fiscal/profiles', '/app/a/fiscal/profiles/'.$profile->id.'/preview', '/app/a/fiscal/profiles/'.$profile->id.'/apply',
+            '/app/a/fiscal/products/'.$product->id.'/profile', '/app/a/fiscal/groups/'.$product->product_group_id.'/profile'] as $url) { $this->post($url, [])->assertForbidden(); }
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->user->update(['role' => 'admin']);
+        $other = Tenant::where('slug', 'b')->firstOrFail();
+        app(TenantConnection::class)->connect($other);
+        $otherUser = User::forceCreate(['id' => $this->user->id, 'name' => 'Admin B', 'email' => 'profiles-b@example.test', 'password' => 'profile-password-test', 'role' => 'admin']);
+        $this->withSession(['tenant_id' => $other->id, 'user_id' => $otherUser->id, 'auth_version' => 0]);
+        $this->get('/app/b/fiscal/profiles/'.$profile->id.'/edit')->assertNotFound();
+        $this->post('/app/b/fiscal/profiles', $form + ['tenant_id' => $this->tenant->id])->assertSessionHasErrors('tenant_id');
+        app(TenantConnection::class)->connect($other);
+        try { $manager->preview($this->tenant, $otherUser->id, $profile->id, [$product->id]); $this->fail('Conexão de outra empresa deve ser rejeitada.'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(403, $exception->getStatusCode()); }
+        $this->assertSame(0, \App\Models\FiscalTaxProfile::count());
+        Http::assertNothingSent();
     }
 
     public function test_internal_simulation_scenarios_consult_and_cancel_have_no_real_fiscal_or_commercial_effects(): void
