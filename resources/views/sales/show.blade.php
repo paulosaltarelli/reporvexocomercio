@@ -23,7 +23,7 @@
         @if(bccomp((string)$received,'0',2)>0)
             <div class="form-note">Esta venda tem R$ {{ number_format($received,2,',','.') }} recebidos. O sistema registra o estorno financeiro, mas não transfere o dinheiro de volta ao cliente.</div>
             <input type="hidden" name="refund_confirmed" value="0">
-            <label class="checkbox-line"><input type="checkbox" name="refund_confirmed" value="1" required> Confirmo que o reembolso de R$ {{ number_format($received,2,',','.') }} já foi realizado e conferido fora do sistema.</label>
+            <label class="checkbox-line"><input type="checkbox" name="refund_confirmed" value="1" required> Confirmo que o reembolso de R$ {{ number_format($received,2,',','.') }} já foi realizado e conferido pelos mesmos meios dos pagamentos originais, fora do sistema.</label>
         @endif
         <div class="actions"><button class="button danger">Confirmar cancelamento</button></div>
     </form>

@@ -14,9 +14,11 @@ use App\Models\User;
 use App\Services\Checkout;
 use App\Services\FinancialService;
 use App\Services\Inventory;
+use App\Services\PricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Ramsey\Uuid\Uuid;
 
 class CommerceController extends Controller
@@ -30,40 +32,56 @@ class CommerceController extends Controller
     {
         $sales = Sale::where('status', 'completed');
 
+        $from=now()->startOfDay()->subDays(13);$until=now()->endOfDay();
+        $period=(clone $sales)->whereBetween('created_at',[$from,$until]);
+        $daily=(clone $period)->selectRaw('DATE(created_at) as day, SUM(total) as total')->groupByRaw('DATE(created_at)')->get()->keyBy('day');
+        $salesTrend=[];for($i=0;$i<14;$i++){$date=$from->copy()->addDays($i)->toDateString();$salesTrend[]=['date'=>$date,'total'=>(string)($daily->get($date)?->total??'0.00')];}
         return view('dashboard', [
+            'salesTrend'=>$salesTrend,'salesPeriodTotal'=>(string)(clone $period)->sum('total'),'salesPeriodCount'=>(clone $period)->count(),
             'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'),
-            'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as balance')->value('balance'),
+            'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total'),
             'stockValue' => Product::selectRaw('COALESCE(SUM(quantity * average_cost),0) as value')->value('value'),
-            'lowStock' => Product::where('active', true)->whereColumn('quantity', '<=', 'minimum_stock')->orderBy('name')->limit(8)->get(),
+            'lowStock' => Product::where('active', true)->where('type', 'product')->where('controls_stock', true)->whereColumn('quantity', '<=', 'minimum_stock')->orderBy('name')->limit(8)->get(),
             'recent' => Sale::with('customer')->latest()->limit(8)->get(),
         ]);
     }
 
     public function products(Request $r)
     {
-        return view('products.index', ['products' => Product::with('group')->when($r->q, fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('sku', 'like', '%'.$r->q.'%')->orWhere('barcode', 'like', '%'.$r->q.'%')))->orderBy('name')->paginate(20)->withQueryString()]);
+        $r->validate(['type'=>'nullable|in:product,service']);
+        return view('products.index', ['products' => Product::with('group','priceReview')->when($r->query('type'),fn($q)=>$q->where('type',$r->query('type')))->when($r->q, fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('sku', 'like', '%'.$r->q.'%')->orWhere('barcode', 'like', '%'.$r->q.'%')))->orderBy('name')->paginate(20)->withQueryString()]);
     }
 
     public function productForm(Request $r, string $company, ?int $id = null)
     {
         $this->admin($r);
 
-        return view('products.form', ['product' => $id ? Product::findOrFail($id) : new Product(['unit' => 'UN', 'sale_price' => 0, 'minimum_stock' => 0, 'active' => true]), 'groups' => ProductGroup::orderBy('name')->get()]);
+        return view('products.form', ['product' => $id ? Product::findOrFail($id) : new Product(['type'=>$r->query('type')==='service'?'service':'product','controls_stock'=>$r->query('type')!=='service','reference_cost'=>'0.0000','unit' => 'UN', 'sale_price' => 0, 'minimum_stock' => 0, 'active' => true]), 'groups' => ProductGroup::orderBy('name')->get()]);
     }
 
     public function saveProduct(Request $r, string $company, ?int $id = null)
     {
         $this->admin($r);
         $p = $id ? Product::findOrFail($id) : new Product;
-        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => 'required|in:UN,KG,M,L,CX,PC,PAR', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999.99|decimal:0,2', 'minimum_stock' => 'required|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => 'required|in:UN,KG,M,L,CX,PC,PAR', 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
         $d['active'] = $r->boolean('active');
-        $p->fill($d)->save();
+        $d['type']=$d['type']??$p->type??'product';
+        $d['controls_stock']=$d['type']==='product' ? ($r->has('controls_stock')?$r->boolean('controls_stock'):($p->exists?(bool)$p->controls_stock:true)) : false;
+        if(!$d['controls_stock'])$d['minimum_stock']='0.000';
+        $d['reference_cost']=$d['reference_cost']??$p->reference_cost??'0.0000';
+        DB::connection('tenant')->transaction(function()use($r,$p,$d){
+            if($p->exists){$locked=Product::lockForUpdate()->findOrFail($p->id);$previous=(string)$locked->sale_price;}else{$locked=$p;$previous=null;}
+            if($locked->exists&&bccomp((string)$locked->quantity,'0',3)!==0&&(!$d['controls_stock']||$d['type']==='service'))throw ValidationException::withMessages(['controls_stock'=>'Zere o saldo com uma movimentação identificada antes de desativar o estoque ou trocar o tipo para serviço.']);
+            $locked->fill($d)->save();
+            app(PricingService::class)->syncProduct($locked->id,$r->attributes->get('currentUser')->id,$previous===null?'product:create':'product:update',$previous);
+        },3);
 
         return redirect()->route('products', ['company' => $company])->with('success', 'Produto salvo.');
     }
 
     public function catalog(Request $r, string $company, string $kind)
     {
+        if($kind==='services')return redirect()->route('products',['company'=>$company,'type'=>'service']);
         [$model,$title,$fields] = $this->catalogSpec($kind);
 
         return view('catalog', ['rows' => $model::orderBy('name')->paginate(20), 'title' => $title, 'fields' => $fields, 'kind' => $kind, 'editing' => $r->integer('edit') ? $model::findOrFail($r->integer('edit')) : null]);
@@ -72,7 +90,7 @@ class CommerceController extends Controller
     private function catalogSpec(string $kind): array
     {
         return match ($kind) {
-            'groups' => [ProductGroup::class, 'Grupos de produtos', ['name' => 'Nome', 'margin' => 'Margem padrão (%)']],
+            'groups' => [ProductGroup::class, 'Grupos de produtos', ['name' => 'Nome', 'margin' => 'Margem padrão (%)','price_policy'=>'Atualização do preço de venda']],
             'suppliers' => [Supplier::class, 'Fornecedores', ['name' => 'Nome / razão social', 'document' => 'CPF / CNPJ', 'email' => 'E-mail', 'phone' => 'Telefone', 'address' => 'Endereço']],
             'customers' => [Customer::class, 'Clientes', ['name' => 'Nome / razão social', 'document' => 'CPF / CNPJ', 'email' => 'E-mail', 'phone' => 'Telefone', 'address' => 'Endereço']],
             'services' => [Service::class, 'Serviços', ['name' => 'Descrição do serviço', 'price' => 'Preço (R$)', 'cost' => 'Custo (R$)', 'municipal_service_code' => 'Código municipal (futuro fiscal)', 'iss_rate' => 'Alíquota ISS (%)']],
@@ -83,21 +101,27 @@ class CommerceController extends Controller
     public function saveCatalog(Request $r, string $company, string $kind)
     {
         $this->admin($r);
+        if($kind==='services')return $this->saveLegacyService($r,$company);
         [$model] = $this->catalogSpec($kind);
         $row = $r->integer('id') ? $model::findOrFail($r->integer('id')) : new $model;
         $rules = match ($kind) {
-            'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2'],
+            'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2','price_policy'=>'sometimes|required|in:alert,automatic'],
             'customers','suppliers' => ['name' => 'required|string|max:180', 'document' => 'nullable|string|max:20', 'email' => 'nullable|email|max:180', 'phone' => 'nullable|string|max:30', 'address' => 'nullable|string|max:1000'],
-            'services' => ['name' => 'required|string|max:180', 'price' => 'required|numeric|min:0|max:999999999.99|decimal:0,2', 'cost' => 'required|numeric|min:0|max:999999999.99|decimal:0,2', 'municipal_service_code' => 'nullable|string|max:30', 'iss_rate' => 'nullable|numeric|min:0|max:100|decimal:0,2'],
+            'services' => ['name' => 'required|string|max:180', 'price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'cost' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'municipal_service_code' => 'nullable|string|max:30', 'iss_rate' => 'nullable|numeric|min:0|max:100|decimal:0,2'],
         };
-        $row->fill($r->validate($rules))->save();
+        $data=$r->validate($rules);
+        DB::connection('tenant')->transaction(function()use($row,$data,$kind,$r){
+            if($kind==='groups'&&$row->exists)$row=ProductGroup::lockForUpdate()->findOrFail($row->id);
+            $row->fill($data)->save();
+            if($kind==='groups')app(PricingService::class)->syncGroup($row->id,$r->attributes->get('currentUser')->id);
+        },3);
 
         return redirect()->route('catalog', ['company' => $company, 'kind' => $kind])->with('success', 'Cadastro salvo.');
     }
 
     public function stock()
     {
-        return view('stock', ['products' => Product::where('active', true)->orderBy('name')->get(), 'movements' => StockMovement::with('product')->latest()->paginate(25)]);
+        return view('stock', ['products' => Product::with('group')->where('active', true)->where('type','product')->where('controls_stock',true)->orderBy('name')->get(), 'movements' => StockMovement::with('product')->latest()->paginate(25)]);
     }
 
     public function moveStock(Request $r, string $company)
@@ -116,12 +140,12 @@ class CommerceController extends Controller
 
     public function saleForm()
     {
-        return view('sales.form', ['customers' => Customer::orderBy('name')->get(), 'products' => Product::where('active', true)->orderBy('name')->get(), 'services' => Service::where('active', true)->orderBy('name')->get()]);
+        return view('sales.form', ['customers' => Customer::orderBy('name')->get(), 'products' => Product::where('active', true)->orderBy('name')->get(), 'services' => collect()]);
     }
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999.99|decimal:0,2']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 
@@ -173,6 +197,19 @@ class CommerceController extends Controller
         $d['must_change_password'] = true;
         User::create($d);
 
-        return back()->with('success','Usuário criado.');
+        return back()->with('success', 'Usuário criado.');
+    }
+    private function saveLegacyService(Request $r,string $company){
+        $d=$r->validate(['name'=>'required|string|max:180','price'=>'required|numeric|min:0|max:999999999999.99|decimal:0,2','cost'=>'required|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2']);
+        DB::connection('tenant')->transaction(function()use($r,$d){
+            $group=ProductGroup::firstOrCreate(['name'=>'Serviços'],['margin'=>'30.00','price_policy'=>'alert']);
+            if($r->integer('id')){$legacy=Service::findOrFail($r->integer('id'));$p=Product::where('legacy_service_id',$legacy->id)->lockForUpdate()->firstOrFail();}
+            else{$p=new Product(['sku'=>'SERV-'.strtoupper(bin2hex(random_bytes(5))),'product_group_id'=>$group->id,'unit'=>'UN','active'=>true,'price_policy'=>'alert']);}
+            $before=$p->exists?(string)$p->sale_price:null;
+            if($p->exists&&bccomp((string)$p->quantity,'0',3)!==0)throw ValidationException::withMessages(['type'=>'Este cadastro possui saldo. Ajuste o estoque antes de trocar o tipo.']);
+            $p->fill(['name'=>$d['name'],'type'=>'service','controls_stock'=>false,'reference_cost'=>$d['cost'],'sale_price'=>$d['price'],'minimum_stock'=>0,'municipal_service_code'=>$d['municipal_service_code']??null,'iss_rate'=>$d['iss_rate']??null])->save();
+            app(PricingService::class)->syncProduct($p->id,$r->attributes->get('currentUser')->id,'service:update',$before);
+        },3);
+        return redirect()->route('products',['company'=>$company,'type'=>'service'])->with('success','Serviço salvo no cadastro unificado.');
     }
 }

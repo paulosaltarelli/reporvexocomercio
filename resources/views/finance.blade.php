@@ -1,6 +1,7 @@
 @extends('layout')
 @section('title','Financeiro')
 @section('subtitle','Contas, parcelas e baixas manuais. Registre o que foi pago ou recebido e acompanhe o saldo restante.')
+@section('actions')<button type="button" class="button secondary no-print" onclick="window.print()">Imprimir / salvar PDF</button>@endsection
 @section('content')
 <div class="cards">
     <div class="card"><small>A pagar · saldo pendente</small><strong>R$ {{ number_format($payable,2,',','.') }}</strong></div>

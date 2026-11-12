@@ -9,8 +9,10 @@ window.Vendra = (() => {
         return BigInt(whole + fraction.padEnd(scale, '0'));
     }
     function centsText(cents) {
-        const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-        return 'R$ ' + whole + ',' + (cents % 100n).toString().padStart(2, '0');
+        const negative=cents<0n;
+        const absolute=negative?-cents:cents;
+        const whole = (absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return 'R$ ' + (negative?'−':'') + whole + ',' + (absolute % 100n).toString().padStart(2, '0');
     }
     function lineCents(quantity, price, priceScale = 2) {
         const qty = decimalUnits(quantity, 3);
@@ -97,13 +99,26 @@ window.Vendra = (() => {
             select.addEventListener('change', updateDueDate);
             updateDueDate();
         });
-        document.querySelectorAll('.scroll').forEach(region => {
-            if (region.scrollWidth > region.clientWidth) {
-                region.tabIndex = 0;
-                region.setAttribute('role', 'region');
-                region.setAttribute('aria-label', 'Tabela com rolagem horizontal');
-            }
+        function markScrollableTables() {
+            document.querySelectorAll('.scroll').forEach(region => {
+                if (region.scrollWidth > region.clientWidth && region.clientWidth>0) {
+                    region.tabIndex = 0;
+                    region.setAttribute('role', 'region');
+                    if(!region.hasAttribute('aria-label'))region.setAttribute('aria-label', 'Tabela com rolagem horizontal');
+                }
+            });
+        }
+        markScrollableTables();
+        document.querySelectorAll('details').forEach(details=>details.addEventListener('toggle',markScrollableTables));
+        window.addEventListener('resize',markScrollableTables);
+        const printDetails=[];
+        window.addEventListener('beforeprint',()=>{
+            document.querySelectorAll('main details:not([open])').forEach(details=>{
+                if(details.matches('.no-print,.payment-disclosure,.chart-values') || details.closest('form') || details.querySelector(':scope > form'))return;
+                printDetails.push(details);details.open=true;
+            });
         });
+        window.addEventListener('afterprint',()=>{printDetails.splice(0).forEach(details=>details.open=false);});
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
     return {decimalUnits, centsText, lineCents, suggestedCents, associateLabels};

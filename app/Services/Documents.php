@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Document;
 use App\Models\Product;
 use App\Models\Sale;
-use App\Models\Service;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,12 +28,13 @@ class Documents
                     if (! in_array($line['kind'], ['product', 'service'], true)) {
                         throw ValidationException::withMessages(['items' => 'Tipo de item inválido.']);
                     }
-                    $model = ($line['kind'] === 'product' ? Product::query() : Service::query())->where('active', true)->findOrFail($line['id']);
+                    $model = $line['kind'] === 'product' ? Product::where('active', true)->findOrFail($line['id'])
+                        : Product::resolveLegacyService((int) $line['id']);
                     $quantity = Decimal::input((string) $line['quantity'], 3, 'items', '0.001', '999999');
-                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999.99');
+                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999999.99');
                     $amount = Decimal::input(Decimal::round(bcmul($quantity, $price, 8)), 2, 'items');
                     $total = bcadd($total, $amount, 2);
-                    $items[] = ['kind' => $line['kind'], 'id' => $model->id, 'description' => $model->name, 'quantity' => $quantity, 'unit_price' => $price, 'total' => $amount];
+                    $items[] = ['kind' => $line['kind'], 'id' => $line['kind'] === 'product' ? $model->id : (int) $line['id'], 'description' => $model->name, 'quantity' => $quantity, 'unit_price' => $price, 'total' => $amount];
                 }
 
                 Decimal::input($total, 2, 'items');

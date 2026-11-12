@@ -11,4 +11,9 @@ class ProductGroup extends Model
     protected $table = 'product_groups';
 
     protected $guarded = ['id'];
+
+    public function products()
+    {
+        return $this->hasMany(Product::class);
+    }
 }

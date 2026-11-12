@@ -1,6 +1,6 @@
 # Análise funcional de ERP — Vendra por Vexo
 
-Data: 12/11/2026. Revisão estática do código e da documentação; não executei testes nem alterei a VPS. A evidência executada disponível na leitura foi a de `VALIDACAO.md` (19 testes, 79 verificações). A análise foi atualizada após leitura do pacote ampliado (compras, financeiro, contas de usuário, relatórios e cadastro da empresa). Esses recursos estão **implementados em validação**; seus testes finais e o deploy devem ser confirmados pelo QA/integrador. Não transfiro a evidência antiga de 19 testes para os recursos novos.
+Data: 12/11/2026. Revisão estática do código e da documentação; não executei testes nem alterei a VPS. A evidência executada mais recente lida em `TESTES.md` registra 42 testes/660 verificações aprovados, incluindo caixa diário e demo; não executei pessoalmente essa suíte. A análise foi atualizada após leitura do pacote ampliado (compras, financeiro, contas de usuário, relatórios e cadastro da empresa). Compras/financeiro/acessos/relatórios têm evidência anterior de integração em `TESTES.md`; o caixa/demo ampliou a suíte para 42 testes. Os incrementos mais recentes são discriminados abaixo e ainda exigem QA/deploy. Políticas de preço, tipos unificados, logo e novas visualizações estão implementados/em integração aguardando QA final; os 49 testes preparados ainda não constituem evidência de aprovação. Não transfiro a aprovação dos 42 testes para esses incrementos.
 
 ## Parecer e limite da primeira versão
 
@@ -19,9 +19,9 @@ A homologação pode prosseguir sem emissão fiscal, integração bancária ou m
 | Empresas e isolamento | Implementado no núcleo; administração SaaS parcial | `ResolveTenant`, `TenantAuthenticated`, `TenantConnection`; bancos e usuários por empresa. Cadastro/suspensão de assinantes, planos e cobrança não têm painel web. |
 | Usuários | Implementado em validação | `AccountController` permite senha própria, edição/desativação, redefinição por admin e proteção do último admin ativo; `auth_version` revoga sessões e `must_change_password` exige troca. Recuperação autônoma por e-mail não foi implementada. |
 | Clientes e fornecedores | Implementado básico | Cadastro/edição de nome, documento, contatos e endereço livre. Não há validação de dígitos de CPF/CNPJ, histórico consolidado, limite de crédito ou endereço fiscal estruturado. |
-| Grupos e margens | Implementado | Margem padrão do grupo, margem opcional do produto, sugestão baseada no custo médio. Margem é sobre venda, não markup; preço efetivo é editável e não é atualizado automaticamente ao mudar a margem. |
-| Produtos | Implementado básico | SKU e código de barras únicos por empresa, unidade, grupo, preço, estoque mínimo e inativação. Sem matriz tamanho/cor, marca, fotos, kits, conversão de unidade ou múltiplas tabelas de preço. |
-| Custo médio e saldo | Implementado | `Inventory::move`; média ponderada móvel nas entradas, saída pelo custo médio, saldo não negativo e histórico com usuário. Quantidade em 3 casas, custo médio em 4; não é controle de custo por lote/série. |
+| Grupos, margens e políticas | Implementado aguardando QA final | Margem e política têm heranças independentes; grupo/produto escolhem alerta ou automático. Sem custo não zera preço; alerta detecta qualquer divergência; aplicação de sugestão exige admin e revisão atual. Ver `PRECIFICACAO.md`. |
+| Produtos e serviços unificados | Implementado aguardando QA final | `Product.type` separa físico/serviço; `controls_stock` governa saldo. Controlado usa média, não controlado/serviço usa referência. Alteração de tipo/controle exige saldo zero; migração preserva vendas legadas. Sem grade, kits ou múltiplas tabelas. |
+| Custo médio e saldo | Núcleo validado; extensão de tipo aguardando QA | Média móvel aplica-se somente ao produto com controle. Saída preserva média; não controlados usam referência e não geram saldo. Cancelamento respeita participação histórica no estoque, não apenas o tipo atual. |
 | Inventário | Parcial | Ajuste por diferença via entrada/saída manual com motivo. Não há sessão de contagem, comparação de saldo congelado, aprovação e fechamento de inventário. |
 | Compras | Implementado em validação | `PurchaseService::receive` confirma fornecedor/itens, gera entrada e custo médio e cria parcelas a pagar na mesma transação. Custo unitário efetivo é informado pelo operador já com custos alocados; sem rateio automático, recebimento parcial, devolução ou edição após confirmar. A movimentação referencia compra/item no motivo e na chave; não há FK específica de compra no estoque. |
 | Vendas | Implementado básico; ampliação financeira em validação | Venda mista, cliente opcional, preço por item e baixa transacional; `Checkout` gera parcelas e pagamentos imediatos quando declarado recebido. Sem PDV offline, TEF/POS, comissão ou emissão fiscal. |
@@ -36,6 +36,14 @@ A homologação pode prosseguir sem emissão fiscal, integração bancária ou m
 | Fiscal | Dados preparatórios ampliados em validação; emissão ausente | `BusinessProfile` guarda emitente/endereço/regime/inscrições e código municipal; produto tem NCM/origem e serviço código/ISS. Não há validação fiscal completa, cálculo tributário, contrato com emissor ou ciclo de emissão/cancelamento de NF-e/NFC-e/NFS-e. |
 | Operação do SaaS | Parcial | Serviço isolado e ferramentas operacionais propostas. Backup externo, restauração ensaiada, observabilidade, suporte e atualização controlada por empresa ainda precisam de evidência operacional. |
 
+## Incrementos da última integração
+
+- **Caixa diário e demo:** `CashService` consolida snapshots imutáveis, separa dinheiro dos demais métodos, exige continuidade pelo valor contado e bloqueia baixa retroativa em data consolidada. Evidência relatada em `TESTES.md`: 42 testes/660 verificações aprovados. A demo de informática tem 15 produtos físicos, 6 serviços, 16 vendas e 9 fechamentos fictícios, com carga aditiva/idempotente e dados sinalizados como demonstração; não equivale a dados reais do cliente.
+- **Previsão:** `CashflowController` projeta 7/15/30/60/90 dias a partir dos títulos pendentes; atrasados entram no primeiro dia e seguem identificados. Saldo inicial padrão é líquido de baixas registradas, ajustável; não é saldo bancário conciliado. Tabelas e datasets foram lidos. As novas apresentações gráficas estão em integração/aguardando QA e não foram validadas por esta revisão.
+- **Precificação e catálogo:** regras detalhadas em `PRECIFICACAO.md`, implementadas aguardando QA final. Não presumir aprovação pela suíte anterior.
+- **Logo e identificação:** `BusinessController` valida imagem PNG/JPEG/WebP até2MiB, reencoda para PNG e guarda caminho privado por empresa, com entrega autenticada e `no-store`. Relatórios/comprovantes HTML e impressão/salvarPDF pelo navegador usam identificação da empresa; CSV contém identificação textual sem imagem por limitação do formato. Isolamento da logo e cabeçalhos novos aguardam QA final.
+- **Landing:** contatos comerciais atuais são WhatsApp `5535999193304` e e-mail `ivancasvilela@gmail.com`; são canais de apresentação, não cobrança integrada.
+
 ## Regras de aceitação do núcleo
 
 Estes cenários devem compor a homologação; não são declaração de que cada um já foi executado.
@@ -46,7 +54,7 @@ Estes cenários devem compor a homologação; não são declaração de que cada
 | RF-02 Saldo inicial | Novo produto inicia com saldo/custo zero; alterar cadastro não modifica esses valores. Primeira entrada de 10 unidades a R$ 10 gera saldo 10 e média 10,0000. |
 | RF-03 Média ponderada | Após RF-02, entrada de 20 a R$ 25 gera saldo 30 e média 20,0000. Saída de 5 preserva média e deixa saldo 25. |
 | RF-04 Fração e arredondamento | Entrada 0,500 a R$ 10 mais 1,000 a R$ 20 resulta em 1,500 e média 16,6667. Valores negativos, escala excessiva e overflow são rejeitados sem saldo parcial. |
-| RF-05 Precificação | Custo 60/margem 40% sugere 100. Campo de margem próprio vazio herda o grupo; margem própria 0% prevalece sobre o grupo. Alterar margem não altera venda histórica nem preço já gravado automaticamente. |
+| RF-05 Precificação | Custo 60/margem 40% sugere 100. Campo de margem próprio vazio herda o grupo; margem própria 0% prevalece sobre o grupo. Alterar margem não altera venda histórica; preço atual é mantido em alerta ou recalculado conforme política automática. Herança de margem é independente da herança de política. |
 | RF-06 Venda | Venda de 2 unidades a 100, com custo histórico 60, gera total 200 e custo 120; estoque baixa 2. Serviço pode coexistir sem gerar movimento de estoque. |
 | RF-07 Atomicidade | Se um item não tem saldo, nenhum item da venda deve baixar estoque e nenhum total/venda parcial deve permanecer. Duas requisições concorrentes com a mesma chave não podem duplicar a operação. |
 | RF-08 Estorno | Cancelar RF-06 uma vez retorna 2 unidades pelo custo da venda; repetir não retorna novamente. Compra ocorrida entre venda e estorno entra na nova ponderação. Se há pagamentos, cancelamento exige confirmação manual de reembolso, preserva pagamentos/reversões e cancela o saldo; nenhuma transferência bancária é executada. |
@@ -75,7 +83,7 @@ As lacunas de recebimento, reembolso e lifecycle identificadas na primeira leitu
 |---|---|
 | Recuperação de dados ainda não comprovada | Backup externo protegido, retenção, alertas e restauração em ambiente separado, conciliando saldos, documentos, APP_KEY e credenciais. Script local de dump não comprova recuperação. |
 | Processo de operação SaaS ainda assistido | Provisionar, suspender, migrar e recuperar uma empresa por procedimento ensaiado sem afetar as demais. Um painel automatizado não é requisito para piloto assistido; procedimento recuperável e responsável definido são. |
-| Matriz de permissões pouco granular | Aprovar explicitamente quem vê custo/resultado, concede descontos e aprova documentos. A versão tem dois perfis; não pressupor que isso atende qualquer equipe de loja. |
+| Matriz de permissões pouco granular | Manter os defaults restritos (custo/margem/finanças para admin) e validar perfil de aprovação/desconto no onboarding. Há dois perfis; permissões configuráveis por função continuam futuras, sem bloquear esta homologação. |
 | Registros legados sem evidência financeira | Conferir saldos marcados como legados; não fabricar data de caixa para baixa antiga. Cancelamento bloqueado até reconciliação é comportamento seguro, não indisponibilidade a ser contornada. |
 | Escopo vendido maior que o entregue | Proposta/onboarding devem distinguir compras confirmadas simples, pagamentos manuais e homologação de integração bancária/fiscal, devolução parcial ou PDV offline. |
 
@@ -105,7 +113,7 @@ São nove roteiros propostos, três para cada segmento. “Atual” indica o cam
 ### Loja de roupas
 
 1. **Precificar coleção.** Criar grupo com margem → cadastrar tamanhos/cores como SKUs independentes → entradas por SKU → conferir média e sugestão → alterar margem própria em um item. Atual: funciona manualmente; lacuna: não existe grade/matriz nem herança de produto-pai. Verificar que trocar margem não reprifica estoque ou vendas sozinho.
-2. **Vender duas peças.** Buscar SKU/código de barras → inserir itens e quantidades → informar preço final → concluir venda → conferir estoque. Atual: venda online básica; lacuna: leitor com fluxo de PDV rápido, desconto explícito e fechamento de caixa. Parcelamento passa a fazer parte do pacote em validação. Não chamar o processo de PDV offline ou integrado a maquininha.
+2. **Vender duas peças.** Buscar SKU/código de barras → inserir itens e quantidades → informar preço final → concluir venda → conferir estoque. Atual: venda online básica; Parcelamento e caixa diário básico estão disponíveis no núcleo validado. Lacuna: leitor com fluxo de PDV rápido, desconto explícito e integração com maquininha; o caixa atual confere dinheiro e separa os outros meios, sem conciliação bancária. Não chamar o processo de PDV offline ou integrado a maquininha.
 3. **Trocar tamanho após recebimento.** Demonstrar cancelamento integral, confirmação manual do reembolso e retorno de saldo em ambiente fictício; não chamar isso de troca parcial. Lacuna: troca/devolução parcial e crédito de cliente continuam posteriores. Critério futuro: retornar só a peça devolvida, vender o novo tamanho e liquidar apenas a diferença, com vínculos de origem.
 
 ### Centro automotivo
@@ -143,7 +151,7 @@ Fontes de contexto: `PRODUTO.md`, `CONCORRENTES.md`, `VALIDACAO.md`; código obs
 5. Abrir relatório/CSV na empresa correta, conferir totais e bases de data, neutralização de fórmulas e conexão válida durante o streaming; conferir UI móvel e linhas dinâmicas de compra/venda/OS.
 6. Registrar resultados executados e tratar falhas remanescentes. Não substituir isso por “código escrito” nem exigir nova expansão de módulos nesta rodada.
 
-Se essas portas passarem, a entrega de homologação pode ser encerrada com acesso ao usuário, limitações claras e plano operacional separado para comercialização. Não recomendo abrir novos módulos agora. Grades completas, depósitos, TEF/POS, offline, integrações e emissão fiscal permanecem fora do pacote.
+Se essas portas passarem, a entrega de homologação pode ser encerrada com acesso ao usuário, limitações claras e plano operacional separado para comercialização. Não recomendo abrir novos módulos agora; a etapa final é validar e integrar os incrementos já escritos. Grades completas, depósitos, TEF/POS, offline, integrações e emissão fiscal permanecem fora do pacote.
 
 ## Evidência após integração
 

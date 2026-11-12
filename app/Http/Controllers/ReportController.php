@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FinancialEntry;
+use App\Models\BusinessProfile;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Sale;
@@ -49,7 +50,9 @@ class ReportController extends Controller
             try {
                 $out = fopen('php://output', 'w');
                 fwrite($out, "\xEF\xBB\xBF");
-                $write = function (array $row) use ($out) {
+                $profile=BusinessProfile::find(1);$companyData=[$profile?->legal_name?:$tenant->name,$profile?->trade_name??'',$profile?->document??'',$profile?->state_registration??'',$profile?->municipal_registration??'',collect([$profile?->street,$profile?->number,$profile?->district,$profile?->city,$profile?->state,$profile?->postal_code])->filter(fn($v)=>filled($v))->implode(' · '),$profile?->phone??'',$profile?->email??''];$firstRow=true;
+                $write = function (array $row) use ($out,$companyData,&$firstRow) {
+                    $row=array_merge($firstRow?['Empresa','Nome fantasia','CNPJ','Inscrição estadual','Inscrição municipal','Endereço da empresa','Telefone da empresa','E-mail da empresa']:$companyData,$row);$firstRow=false;
                     $safe = array_map(function ($v) {
                         $v = (string) ($v ?? '');
 
@@ -59,7 +62,7 @@ class ReportController extends Controller
                 };
                 if ($kind === 'stock') {
                     $write(['SKU', 'Produto', 'Grupo', 'Unidade', 'Saldo atual', 'Custo médio atual', 'Valor atual do estoque', 'Preço venda', 'Margem alvo']);
-                    foreach (Product::with('group')->orderBy('id')->cursor() as $p) {
+                    foreach (Product::with('group')->where('type','product')->where('controls_stock',true)->orderBy('id')->cursor() as $p) {
                         $write([$p->sku, $p->name, $p->group->name, $p->unit, $p->quantity, $p->average_cost, bcmul($p->quantity, $p->average_cost, 4), $p->sale_price, $p->margin ?? $p->group->margin]);
                     }
                 } elseif ($kind === 'movements') {

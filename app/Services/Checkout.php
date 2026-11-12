@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\Service;
+use App\Models\StockMovement;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -35,13 +35,14 @@ class Checkout
                         throw ValidationException::withMessages(['items' => 'Tipo de item inválido.']);
                     }
                     $product = $line['kind'] === 'product';
-                    $item = ($product ? Product::query() : Service::query())->where('active', true)->lockForUpdate()->findOrFail($line['id']);
+                    $item = $product ? Product::where('active', true)->lockForUpdate()->findOrFail($line['id'])
+                        : Product::resolveLegacyService((int) $line['id'], true);
                     $qty = Decimal::input((string) $line['quantity'], 3, 'items', '0.001', '999999');
-                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999.99');
-                    $unitCost = $product ? $item->average_cost : $item->cost;
+                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999999.99');
+                    $unitCost = $item instanceof Product ? $item->pricingCost() : $item->cost;
                     $amount = Decimal::input(Decimal::round(bcmul($qty, $price, 8)), 2, 'items');
-                    SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null, 'service_id' => $product ? null : $item->id, 'description' => $item->name, 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => $unitCost, 'total' => $amount]);
-                    if ($product) {
+                    SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null, 'service_id' => $product ? null : (int) $line['id'], 'description' => $item->name, 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => $unitCost, 'total' => $amount]);
+                    if ($product && $item->controlsStock()) {
                         app(Inventory::class)->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, 'sale-'.$sale->id.'-'.$i, $sale->id);
                     }
                     $total = bcadd($total, $amount, 2);
@@ -94,6 +95,15 @@ class Checkout
             }
             app(FinancialService::class)->cancelSale($sale->id, $userId, $refundConfirmed);
             foreach ($sale->items()->whereNotNull('product_id')->orderBy('product_id')->get() as $line) {
+                // Historical participation, not today's product type, determines a stock return.
+                $hadStock = StockMovement::where('sale_id', $sale->id)->where('product_id', $line->product_id)->where('type', 'sale')->exists();
+                if (! $hadStock) {
+                    continue;
+                }
+                $product = Product::lockForUpdate()->findOrFail($line->product_id);
+                if (! $product->controlsStock()) {
+                    throw ValidationException::withMessages(['product_id' => 'Reative o controle de estoque de '.$product->name.' antes de estornar a venda que originalmente baixou seu saldo.']);
+                }
                 app(Inventory::class)->move($line->product_id, 'return', $line->quantity, $line->unit_cost, 'Estorno venda #'.$sale->id, $userId, 'cancel-'.$line->id, $sale->id);
             }
             $sale->update(['status' => 'cancelled', 'paid' => false]);

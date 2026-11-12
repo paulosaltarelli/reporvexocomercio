@@ -26,7 +26,7 @@ class PurchaseController extends Controller
     {
         $this->admin($r);
 
-        return view('purchases.form', ['suppliers' => Supplier::orderBy('name')->get(), 'products' => Product::where('active', true)->orderBy('name')->get()]);
+        return view('purchases.form', ['suppliers' => Supplier::orderBy('name')->get(), 'products' => Product::where('active', true)->where('type','product')->orderBy('name')->get()]);
     }
 
     public function create(Request $r, string $company)
