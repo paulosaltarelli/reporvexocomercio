@@ -7,11 +7,14 @@ use App\Models\FinancialEntry;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Sale;
+use App\Models\Seller;
 use App\Models\Service;
 use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Checkout;
+use App\Services\CommercialRules;
+use App\Services\SellerFormContext;
 use App\Services\FinancialService;
 use App\Services\Inventory;
 use App\Services\PricingService;
@@ -150,19 +153,26 @@ class CommerceController extends Controller
         return back()->with('success', 'Movimentação registrada.');
     }
 
-    public function sales()
+    public function sales(Request $request)
     {
-        return view('sales.index', ['sales' => Sale::with('customer')->latest()->paginate(20)]);
+        $data = $request->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $sellerId = isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null;
+        return view('sales.index', ['sales'=>Sale::with('customer')->when($sellerId,fn($q)=>$q->where('salesperson_id',$sellerId))->latest()->paginate(20)->withQueryString(),
+            'sellers'=>Seller::orderBy('name')->get(),'sellerId'=>$sellerId]);
     }
 
     public function saleForm(Request $r)
     {
-        return view('sales.form', ['customers' => Customer::orderBy('name')->get(), 'products' => Product::with('group')->where('active', true)->orderBy('name')->get(), 'services' => collect(), 'sellers'=>User::where('active',true)->orderBy('name')->get()]);
+        $data=$r->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','customer_id'=>'nullable|integer|exists:tenant.customers,id']);
+        $context=app(SellerFormContext::class)->forUser($r->attributes->get('currentUser'),isset($data['salesperson_id'])?(int)$data['salesperson_id']:null);
+        return view('sales.form',array_merge($context,['customers'=>Customer::orderBy('name')->get(),
+            'products'=>Product::with('group')->where('active',true)->orderBy('name')->get(),'services'=>collect(),
+            'selectedCustomerId'=>$data['customer_id']??null]));
     }
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 
@@ -171,7 +181,7 @@ class CommerceController extends Controller
 
     public function sale(Request $r, string $company, int $id)
     {
-        return view('sales.show', ['fiscalDocuments'=>\App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get(), 'sale' => Sale::with('items', 'customer')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
+        return view('sales.show', ['fiscalDocuments'=>\App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get(), 'sale' => Sale::with('items', 'customer','creator')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
     }
 
     public function cancel(Request $r, string $company, int $id)

@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Seller;
 use App\Models\StockMovement;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +29,13 @@ class Checkout
             $approved = ($document->type === 'quote' && $document->status === 'approved')
                 || ($document->type === 'work_order' && $document->status === 'completed');
             if (! $approved) throw ValidationException::withMessages(['status' => 'O documento precisa estar aprovado ou concluído antes de gerar a venda.']);
+            $assignedSeller = app(SellerAssignment::class)->forInvoice($document->id, $userId, $payment);
+            $document->refresh();
             $sale = $this->completeInternal(array_merge($payment, [
                 'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:document-sale:'.$document->request_key)->toString(),
                 'customer_id' => $document->customer_id, 'items' => $document->items,
                 'notes' => 'Origem: documento #'.$document->id,
-            ]), $userId, $document);
+            ]), $userId, $document, $assignedSeller);
             if (bccomp($sale->total, $document->total, 2) !== 0) {
                 throw ValidationException::withMessages(['items' => 'O valor da venda não corresponde ao documento aprovado.']);
             }
@@ -42,10 +45,10 @@ class Checkout
         }, 3);
     }
 
-    private function completeInternal(array $data, int $userId, ?Document $document = null): Sale
+    private function completeInternal(array $data, int $userId, ?Document $document = null, ?Seller $assignedSeller = null): Sale
     {
         try {
-            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document) {
+            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller) {
                 $existing = Sale::where('request_key', $data['request_key'])->first();
                 if ($existing) {
                     if ($document && (int) $existing->document_id !== $document->id) {
@@ -54,9 +57,12 @@ class Checkout
                     return $existing;
                 }
                 $rules = app(CommercialRules::class);
-                $seller = $rules->seller($userId, isset($data['seller_id']) ? (int) $data['seller_id'] : null);
+                $seller = $document ? $assignedSeller : $rules->seller($userId,
+                    isset($data['seller_id']) ? (int) $data['seller_id'] : null,
+                    isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null);
+                if (! $seller) throw new \LogicException('O vendedor do documento não foi resolvido pelo fluxo autorizado.');
                 $method = FinancialService::paymentMethod((string) $data['payment_method']);
-                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->id, 'seller_name' => $seller->name, 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
+                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);

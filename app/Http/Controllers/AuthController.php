@@ -31,7 +31,7 @@ class AuthController extends Controller
         $r->session()->regenerate();
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
-        return redirect()->route('dashboard', ['company' => $r->route('company')]);
+        return redirect()->route($user->role==='admin'?'dashboard':'desk', ['company' => $r->route('company')]);
     }
 
     public function logout(Request $r)

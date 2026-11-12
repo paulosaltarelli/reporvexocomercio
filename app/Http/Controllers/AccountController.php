@@ -43,7 +43,7 @@ class AccountController extends Controller
         $r->session()->regenerateToken();
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
-        return redirect()->route('dashboard', ['company' => $company])->with('success', 'Senha alterada. Outras sessões deste usuário foram encerradas.');
+        return redirect()->route($user->role==='admin'?'dashboard':'desk', ['company' => $company])->with('success', 'Senha alterada. Outras sessões deste usuário foram encerradas.');
     }
 
     public function updateUser(Request $r, string $company, int $id)

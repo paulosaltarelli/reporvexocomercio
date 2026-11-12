@@ -14,6 +14,8 @@ Você será o arquiteto e desenvolvedor da integração fiscal do **Vendra, um p
 
 Já existem catálogo unificado, compras, estoque com custo médio, políticas de preço automático/alerta, vendas, orçamentos, OS, financeiro parcelado com baixas parciais, reembolsos vinculados, fluxo/projeção, fechamento diário, usuários, logo e relatórios.
 
+Vendedores agora têm cadastro `Seller` independente de login. `salesperson_id` identifica o vendedor creditado; `user_id` identifica o executor. O `seller_id` antigo continua sendo uma referência legada a usuário, não deve ser confundido com o novo ID. A conversão preserva o vendedor do orçamento e registra o executor separado; mudanças anteriores ao faturamento são auditadas. Não confunda esses papéis com o emitente fiscal.
+
 Classes importantes: `TenantConnection`, `ResolveTenant`, `TenantAuthenticated`, `Product`, `Checkout`, `Inventory`, `Documents`, `FinancialService`, `CashService`, `PricingService`, `BusinessProfile`, `ReportController`.
 
 O catálogo possui `type=product/service` e `controls_stock`. Serviços e itens sem controle não geram movimentação de estoque; usam custo de referência. Preços atuais podem mudar automaticamente, mas vendas e custos históricos são snapshots. Serviços antigos têm compatibilidade legada: não altere IDs nem vínculos históricos.

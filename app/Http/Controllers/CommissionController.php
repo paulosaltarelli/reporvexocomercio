@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Sale;
 use App\Models\User;
+use App\Models\Seller;
 use App\Services\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -19,17 +20,23 @@ class CommissionController extends Controller
             'from' => $request->query('from', now()->startOfMonth()->toDateString()),
             'to' => $request->query('to', now()->toDateString()),
             'seller_id' => $request->query('seller_id'),
+            'salesperson_id' => $request->query('salesperson_id'),
         ], [
             'from'=>'required|date_format:Y-m-d', 'to'=>'required|date_format:Y-m-d|after_or_equal:from',
-            'seller_id'=>'nullable|integer|exists:tenant.users,id',
+            'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id',
         ])->validate();
         if (CarbonImmutable::parse($data['from'])->diffInDays(CarbonImmutable::parse($data['to'])) > 366) {
             throw ValidationException::withMessages(['to'=>'Escolha um período de até 366 dias.']);
         }
-        $sellerId = isset($data['seller_id']) ? (int) $data['seller_id'] : null;
+        $sellerId = isset($data['salesperson_id']) ? (int)$data['salesperson_id'] : null;
+        if(isset($data['seller_id'])) {
+            $legacy=Seller::where('user_id',(int)$data['seller_id'])->first();
+            if(!$legacy || ($sellerId!==null && $sellerId!==(int)$legacy->id)) throw ValidationException::withMessages(['salesperson_id'=>'O filtro de vendedor é inválido ou conflita com o usuário informado.']);
+            $sellerId=(int)$legacy->id;
+        }
         $query = Sale::where('status', 'completed')->where('commission_total', '>', '0')
             ->whereBetween('created_at', [$data['from'].' 00:00:00', $data['to'].' 23:59:59'])
-            ->when($sellerId, fn ($q) => $q->where('seller_id', $sellerId))
+            ->when($sellerId, fn ($q) => $q->where('salesperson_id', $sellerId))
             ->withSum(['entries as settled_amount'=>fn ($q) => $q->whereNull('cancelled_at')], 'paid_amount');
         $totals = ['net_sales'=>'0.00','discounts'=>'0.00','commission'=>'0.00','eligible'=>'0.00','awaiting'=>'0.00'];
         foreach ((clone $query)->orderBy('id')->cursor() as $sale) {
@@ -46,7 +53,7 @@ class CommissionController extends Controller
         }
 
         return view('commissions', ['rows'=>$rows, 'totals'=>$totals, 'from'=>$data['from'],
-            'to'=>$data['to'], 'sellerId'=>$sellerId, 'sellers'=>User::orderBy('name')->get()]);
+            'to'=>$data['to'], 'sellerId'=>$sellerId, 'sellers'=>Seller::orderBy('name')->get()]);
     }
 
     /** Cumulative reconciliation avoids rounding once for each partial receipt. */

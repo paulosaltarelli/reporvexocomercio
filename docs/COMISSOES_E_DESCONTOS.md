@@ -2,7 +2,7 @@
 
 ## Estado da entrega
 
-Implementado e publicado em 12/11/2026, com migração aditiva 000012. A suíte comercial passou em checkout QA isolado: 60 testes e 956 verificações, sem falhas ou skips. A conferência de navegador após o deploy validou configurações de grupo/produto, bloqueio de redução manual fora da permissão, prévia de orçamento, relatório e exclusão da comissão do comprovante impresso. O histórico anterior foi preservado, sem retrocomissões. Detalhes das execuções em TESTES.md e VALIDACAO.md.
+Implementado e publicado em 12/11/2026, com migrações aditivas 000012 e 000013. A suíte consolidada passou em checkout QA isolado: 65 testes e 1.011 verificações, sem falhas ou skips. A conferência de navegador após o deploy validou configurações de grupo/produto, bloqueio de redução manual fora da permissão, prévia de orçamento, relatório e exclusão da comissão do comprovante impresso. O histórico anterior foi preservado, sem retrocomissões. Detalhes das execuções em TESTES.md e VALIDACAO.md.
 
 ## Conceitos que a operação deve distinguir
 
@@ -74,13 +74,48 @@ Não aplicar o percentual sobre o bruto nem recalcular uma comissão global em s
 
 A venda preserva vendedor e os dados comerciais necessários à conferência: bruto, desconto efetivo, líquido, percentual e valor de comissão por item e totais. Alterar grupo/produto/custo/preço ou comissão posteriormente não altera esses fatos.
 
-### Vendedor
+### Vendedor — separação entre pessoa comercial e usuário
 
-- Padrão: usuário atual que registra a venda.
-- Vendedor selecionado deve estar ativo e pertencer à mesma empresa.
-- Operador não pode atribuir a venda a outro usuário por alterar o payload.
-- Administrador pode escolher outro vendedor ativo da empresa.
-- Filtros históricos devem continuar permitindo localizar vendas de um vendedor que foi desativado depois; desativação não remove sua identificação das vendas antigas.
+**Status: atribuição publicada e validada em 12/11/2026.** Esta seção substitui a regra inicial que tratava vendedor como o próprio registro de usuário. Migração 000013 aplicada, com preservação do histórico e sem atribuir documentos antigos por suposição.
+
+#### Cadastro e identidades distintas
+
+- Vendedor é representado pelo modelo `Seller`, cadastro independente de `User`; pode existir sem login. Ter comissão não concede acesso ao sistema.
+- `salesperson_id` identifica quem recebe o crédito comercial; `user_id` identifica quem executou/registrou a operação. Os dois IDs pertencem a tabelas diferentes e não são intercambiáveis.
+- Pode haver vínculo opcional do vendedor com um usuário. Para criar nova venda ou novo orçamento/OS, o operador usa somente seu perfil comercial vinculado; não escolhe outro por adulterar payload. Se não houver perfil válido/ativo, não se deve improvisar usando o número do User como ID de vendedor.
+- Administrador pode selecionar qualquer vendedor ativo da mesma empresa, inclusive vendedor sem login. Vendedor inativo não é escolha para uma operação nova.
+- Atribuição deve guardar ID e nome em snapshot, evitando que uma edição cadastral posterior reescreva o rótulo histórico ou junte créditos de duas pessoas com nomes iguais. Filtros e agrupamento usam ID, não apenas nome.
+
+#### Documento guarda o crédito; conversão guarda o executor
+
+Novo orçamento/OS seleciona e grava o vendedor comercial, com snapshot do nome. Ao gerar a venda, o vendedor é herdado automaticamente desse documento; não é substituído pelo usuário que apertou “gerar venda”.
+
+Exemplo: vendedor Ana (`Salesperson A`) faz o orçamento; usuário Bruno (`User B`) autorizado conclui a OS e emite a venda. A venda mantém Ana como vendedora creditada e registra Bruno como executor em `user_id`. A comissão continua ligada a Ana, apurada com a política vigente na emissão da venda; não vira comissão de Bruno por ele executar a conversão.
+
+A regra “operador só cria para seu próprio perfil” vale para escolher o proprietário comercial de uma **nova operação avulsa/documento**. Ela não autoriza reatribuir um documento existente ao converter. A conversão usa o proprietário aprovado carregado do banco, mantém as autorizações do fluxo e ignora/rejeita tentativa de sobrescrita pelo cliente HTTP.
+
+#### Inativação e reatribuição explícita
+
+- Se o vendedor do documento ficou inativo antes da emissão, bloquear a conversão e explicar a pendência; não transferir automaticamente o crédito para o executor, administrador ou criador.
+- Antes de gerar a venda, administrador pode reatribuir a vendedor ativo mediante motivo obrigatório e registro de auditoria: documento, vendedor anterior/novo, snapshots, usuário autor, motivo e data.
+- A reatribuição é uma decisão comercial explícita; não altera os itens/preços do acordo ou a autoria de criação do documento. O novo proprietário e seu nome ficam registrados no documento e são herdados na conversão.
+- Depois de emitida a venda, a atribuição fica imutável no fluxo corrente. Inativar/renomear vendedor, alterar login ou editar documento não pode redirecionar comissão passada.
+- Verificação de estado e atribuição precisa ocorrer na mesma transação/trava da conversão. Interface mostrando vendedor ativo alguns segundos antes não substitui a verificação no servidor.
+
+#### Legado sem inferência de propriedade
+
+- `sales.seller_id` antigo, FK de `User`, é preservado como dado legado. Backfill de `salesperson_id` só é admitido quando esse vendedor antigo é comprovado; não usar `sale.user_id` ou o criador como suposição de vendedor.
+- Documento legado sem proprietário comercial não ganha vendedor por inferência do criador. Administrador deve vinculá-lo explicitamente antes da emissão, ou a compatibilidade de API deve validar o `seller_id` legado como **User**, resolver seu perfil comercial e registrar primeiro a propriedade autorizada.
+- Nunca copiar o inteiro `seller_id` diretamente para `salesperson_id`: User17 pode ser uma pessoa diferente de Salesperson17. Se o cliente envia os dois campos e eles conflitam, rejeitar a ambiguidade em vez de escolher silenciosamente.
+- Vendas históricas sem prova de proprietário permanecem identificadas como não vinculadas; não atribuir retroativamente para preencher relatório. Desativação não apaga vendedores ou snapshots já utilizados.
+
+#### Incremento mínimo para conferência de comissão
+
+Detalhes do documento/venda e consulta de comissão devem distinguir **“Vendedor creditado”** de **“Registrado por”**. Na conversão, exibir o vendedor herdado em vez de um seletor que sugira troca livre. Esse esclarecimento, junto ao snapshot e à auditoria da reatribuição, é necessário para conferir a comissão sem confundir login, executor e crédito comercial.
+
+Isso não cria folha de pagamento, quitação de comissão, lançamento automático a pagar ou nova forma de cálculo. Comissão apurada/proporcional continua diferente de comissão efetivamente paga.
+
+Critérios de integração: criar vendedor sem login; operador não atribui outro perfil em nova operação; administrador escolhe vendedor ativo; conversão por outro usuário preserva vendedor e separa executor; vendedor inativo bloqueia até reatribuição administrativa auditada; atribuição pós-emissão não muda; legado sem prova não é creditado; filtros por vendedor não juntam pessoas de mesmo nome.
 
 ## Orçamento e ordem de serviço
 

@@ -7,7 +7,7 @@
 <form class="panel toolbar filter-bar commission-filters" method="get">
     <div><label for="commission-from">Vendas de</label><input id="commission-from" type="date" name="from" value="{{ $from }}" required></div>
     <div><label for="commission-to">Vendas até</label><input id="commission-to" type="date" name="to" value="{{ $to }}" required></div>
-    <div><label for="commission-seller">Vendedor</label><select id="commission-seller" name="seller_id"><option value="">Todos os vendedores</option>@foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)$sellerId===(string)$seller->id)>{{ $seller->name }}{{ $seller->active?'':' · inativo' }}</option>@endforeach</select></div>
+    <div><label for="commission-seller">Vendedor</label><select id="commission-seller" name="salesperson_id"><option value="">Todos os vendedores</option>@foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)$sellerId===(string)$seller->id)>{{ $seller->name }}{{ $seller->active?'':' · inativo' }}</option>@endforeach</select></div>
     <button class="primary">Atualizar relatório</button>
 </form>
 <div class="cards">

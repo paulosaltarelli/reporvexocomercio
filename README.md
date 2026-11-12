@@ -62,3 +62,9 @@ O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores 
 ## Fiscal em homologação
 
 Certificado A1, credenciais, CSC e parâmetros do emitente são configurados em **Minha empresa**, com armazenamento privado e cifrado. NFC-e usa adaptador Focus, outbox e arquivos privados; dados comerciais e fiscais são separados. Produção, NF-e 55 e NFS-e não estão habilitadas. Consulte [operação fiscal](docs/FISCAL.md) e [evidência de validação](docs/VALIDACAO_FISCAL.md). Os testes simulados não substituem homologação oficial.
+
+## Atendimento e vendedores
+
+`/app/vexo/desk` reúne busca de cliente, criação de orçamento/venda, orçamentos em andamento e vendas do dia do vendedor selecionado. Operadores entram nesse painel após o login; administradores mantêm a visão geral e podem abrir o painel pelo menu. Cliente e vendedor seguem pré-selecionados para os formulários.
+
+Cadastros → Vendedores permite trabalhar com vendedores sem login ou vincular um usuário. O orçamento fixa o vendedor creditado e a conversão preserva essa atribuição, separando quem registra a operação. Trocas anteriores ao faturamento são administrativas, justificadas e auditadas; documentos antigos sem vínculo exigem atribuição explícita.

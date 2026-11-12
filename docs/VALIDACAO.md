@@ -38,3 +38,11 @@ Publicados em 12/11/2026 após testes em cópia isolada: baseline comercial de 6
 Migração 000012 aplicada à empresa Vexo. Snapshot independente confirmou a preservação das 981 vendas, 26 compras, 1.618 baixas, 1.695 títulos e 680 fechamentos anteriores, assim como quantidades, preços e custos. Novas colunas históricas foram preenchidas de forma neutra; comissões permanecem zero enquanto não configuradas para novas operações. Backup anterior com checksums conferidos.
 
 Chromium no endereço HTTPS real conferiu 12 barras/meses de 2025, total R$396.168,00 e 528 vendas, seletor para 2026 com mês futuro zerado, mobile390 sem overflow, campos de herança no grupo/produto, manutenção do checkbox de estoque com saldo, bloqueio de desconto implícito, prévia de orçamento, relatório com logo e comissão interna oculta na impressão. Nenhuma venda de teste foi gravada na empresa operacional; credenciais do proprietário não foram alteradas.
+
+## Vendedor independente e painel de operação
+
+Publicados em 12/11/2026 com migração 000013, após suíte completa em cópia isolada: **65 testes, 1.011 verificações, nenhum skip/falha**, em 138,12 segundos. Os casos cobrem vendedor sem login, vendedor creditado separado do executor, reatribuição com justificativa/auditoria, preservação da migração e isolamento do painel.
+
+A comparação dos campos anteriores confirmou preservação das 981 vendas, 26 compras, 1.618 pagamentos, 1.695 títulos e 680 fechamentos, além dos documentos, itens, custos, preços e quantidades. A migração vinculou apenas vendas com vendedor explicitamente registrado, sem presumir vendedor pelo autor de documentos antigos. Backup anterior verificado por checksum.
+
+Chromium na URL HTTPS operacional confirmou criação de vendedor temporário sem login pelo formulário, escolha desse vendedor no painel, busca/seleção de cliente e pré-preenchimento de orçamento/venda. Verificou entrada do operador diretamente em `/desk`, bloqueio do cadastro administrativo e do painel de outro vendedor, ausência de overflow móvel e manutenção do gráfico anual. Documento antigo sem vínculo solicita atribuição em vez de assumir responsável. Não foram gravadas vendas ou orçamentos de QA na empresa. Contas, perfis e vendedor temporários foram removidos após verificar ausência de vínculos.

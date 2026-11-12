@@ -12,6 +12,11 @@ class User extends Authenticatable
 
     protected $hidden = ['password'];
 
+    public function seller()
+    {
+        return $this->hasOne(Seller::class);
+    }
+
     protected function casts(): array
     {
         return ['password' => 'hashed', 'active' => 'boolean', 'must_change_password' => 'boolean', 'auth_version' => 'integer', 'password_changed_at' => 'datetime'];

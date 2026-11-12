@@ -20,6 +20,16 @@ class Sale extends Model
         return $this->belongsTo(Document::class);
     }
 
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function salesperson()
+    {
+        return $this->belongsTo(Seller::class, 'salesperson_id');
+    }
+
     public function seller()
     {
         return $this->belongsTo(User::class, 'seller_id');
