@@ -181,7 +181,7 @@ class CommerceController extends Controller
 
     public function sale(Request $r, string $company, int $id)
     {
-        return view('sales.show', ['sale' => Sale::with('items', 'customer','creator')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
+        return view('sales.show', ['fiscalDocuments'=>\App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get(), 'sale' => Sale::with('items', 'customer','creator')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
     }
 
     public function cancel(Request $r, string $company, int $id)

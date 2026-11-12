@@ -1,0 +1,17 @@
+[Unit]
+Description=Vendra fiscal outbox batch
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=vendra-web
+Group=vendra-web
+WorkingDirectory=/srv/reporvexo
+ExecStart=/usr/bin/php -c /opt/reporvexo-tools/php/cli.ini /srv/reporvexo/artisan vendra:fiscal-work --limit=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/reporvexo/storage /srv/reporvexo/bootstrap/cache
+TimeoutStartSec=1800

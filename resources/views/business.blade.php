@@ -1,6 +1,6 @@
 @extends('layout')
 @section('title','Minha empresa')
-@section('subtitle','Identificação e dados preparatórios para a futura integração fiscal.')
+@section('subtitle','Cadastro, identidade e configuração fiscal por empresa.')
 @section('content')
 <form class="panel" method="post" enctype="multipart/form-data">@csrf<h2>Identificação</h2><div class="form-grid">
 @foreach(['legal_name'=>'Razão social','trade_name'=>'Nome fantasia','document'=>'CNPJ','email'=>'E-mail','phone'=>'Telefone'] as $field=>$label)
@@ -28,7 +28,8 @@
 @foreach(explode(',','AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO') as $uf)<option @selected(old('state',$profile->state)===$uf)>{{ $uf }}</option>
 @endforeach</select></div><div class="field"><label>Regime tributário</label><select name="tax_regime"><option value="">Não informado</option>
 @foreach(['mei'=>'MEI','simples'=>'Simples Nacional','presumido'=>'Lucro Presumido','real'=>'Lucro Real'] as $value=>$label)<option value="{{ $value }}" @selected(old('tax_regime',$profile->tax_regime)===$value)>{{ $label }}</option>
-@endforeach</select></div></div></details><p class="hint">Dados cadastrais sujeitos à conferência contábil. Não há cálculo de tributos, emissão de nota, integração municipal ou validação cadastral na Receita nesta etapa.</p><div class="actions"><button class="primary">Salvar dados da empresa</button></div></form>
+@endforeach</select></div></div></details><p class="hint">Dados sujeitos à conferência contábil. O cadastro local não comprova situação na Receita ou credenciamento na SEFAZ. Configure a emissão de mercadorias abaixo; NFS-e é uma integração separada.</p><div class="actions"><button class="primary">Salvar dados da empresa</button></div></form>
+@include('fiscal.company')
 @endsection
 
 @push('scripts')
