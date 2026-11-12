@@ -14,6 +14,6 @@ class Tenant extends Model
 
     protected function casts(): array
     {
-        return ['db_password' => 'encrypted', 'active' => 'boolean'];
+        return ['db_password' => 'encrypted', 'active' => 'boolean', 'fiscal_demonstration' => 'boolean', 'fiscal_production_approved_at' => 'datetime'];
     }
 }

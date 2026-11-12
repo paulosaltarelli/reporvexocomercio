@@ -34,6 +34,7 @@
             <small>ADMINISTRAÇÃO</small>
             <nav aria-label="Administração da empresa">
                 <a class="nav {{ request()->routeIs('business') ? 'selected':'' }}" href="{{ route('business',['company'=>$tenant->slug]) }}">Minha empresa</a>
+                <a class="nav {{ request()->routeIs('fiscal','fiscal.*') ? 'selected':'' }}" href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Fiscal · preparação</a>
                 <a class="nav {{ request()->routeIs('users') ? 'selected':'' }}" href="{{ route('users',['company'=>$tenant->slug]) }}" @if(request()->routeIs('users')) aria-current="page" @endif>Usuários e acesso</a>
             </nav>
         @endif
