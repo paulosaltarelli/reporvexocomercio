@@ -11,8 +11,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->trimStrings(except: ['certificate_password','csc','emission_token','management_token']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->dontFlash(['password', 'password_confirmation', 'current_password', 'certificate', 'certificate_password', 'pfx', 'csc', 'csc_id', 'token', 'emission_token', 'management_token', 'secret_reference']);
     })->create();
