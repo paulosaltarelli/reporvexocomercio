@@ -2,7 +2,13 @@
 @section('title','Conferência fiscal da venda #'.$sale->id)
 @section('subtitle','Prévia para revisão. Não é NFC-e, DANFE nem autorização fiscal.')
 @section('content')
-<section class="panel">@include('fiscal.summary') @include('fiscal.blockers')
+<section class="panel"><h2>Simular o fluxo sem certificado</h2><div class="notice"><strong>Simulação interna · sem valor fiscal</strong><p>Não se comunica com a SEFAZ, não usa certificado e não gera NFC-e, DANFE ou XML fiscal. As pendências da conferência abaixo não impedem o teste local.</p></div>
+@if($sale->status==='completed')<form method="post" action="{{ route('fiscal.simulations.create',['company'=>$tenant->slug,'id'=>$sale->id]) }}">
+@csrf
+<input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
+<div class="field"><label for="simulation-scenario">Cenário de teste</label><select id="simulation-scenario" name="scenario" required><option value="accepted">Aceite simulado</option><option value="rejected">Rejeição simulada</option><option value="uncertain">Timeout e consulta posterior simulados</option></select><small class="hint">O resultado é determinado pelo cenário escolhido; não representa validação tributária.</small></div><div class="actions"><button class="primary">Iniciar simulação interna</button><a href="{{ route('fiscal.simulations.index',['company'=>$tenant->slug]) }}">Histórico de simulações</a></div></form>@else<p>Esta venda foi cancelada. Abra uma venda concluída para iniciar um novo teste.</p>@endif</section>
+
+<section class="panel"><h2>Conferência para homologação SEFAZ</h2><p class="hint">As pendências desta seção se referem à integração com a SEFAZ, e não à simulação interna.</p>@include('fiscal.summary') @include('fiscal.blockers')
 @if($sale->status==='completed')<form method="post" action="{{ route('fiscal.prepare',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 <input type="hidden" name="request_key" value="{{ old('request_key',(string)\Illuminate\Support\Str::uuid()) }}">
 <p>A conferência registra os dados exibidos agora, incluindo as pendências. Não reserva numeração, não transmite e não altera estoque ou financeiro.</p>

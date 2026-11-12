@@ -13,6 +13,7 @@ use App\Models\BusinessProfile;
 use App\Models\FiscalDocument;
 use App\Models\FiscalIssuer;
 use App\Models\FiscalItemRule;
+use App\Models\FiscalSetting;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -29,6 +30,10 @@ class FiscalEmissionController extends Controller
     public function configure(Request $r, CompanyFiscalConfiguration $configuration)
     {
         $this->admin($r);
+        $r->validate(['intent' => 'nullable|in:draft,activate']);
+        if ($r->input('intent') === 'draft') {
+            return $this->saveDraft($r);
+        }
         $data = $r->validate([
             'environment' => 'required|in:homologation', 'provider_company_id' => 'prohibited', 'series' => 'required|integer|min:0|max:889', 'next_number' => 'required|integer|min:1|max:999999999',
             'timezone' => 'required|timezone', 'crt' => 'required|in:1,2,3,4', 'natureza_operacao' => 'required|string|max:60', 'identification_limit' => 'required|numeric|min:0|max:999999999.99|decimal:0,2',
@@ -43,6 +48,40 @@ class FiscalEmissionController extends Controller
         $configuration->save($r->attributes->get('tenant'), $data, $secrets, $r->file('certificate')?->get());
 
         return back()->with('success', 'Configuração fiscal salva de forma privada. Valide o certificado e a configuração localmente antes da homologação.');
+    }
+
+    private function saveDraft(Request $r)
+    {
+        $data = $r->validate([
+            'environment' => 'required|in:homologation',
+            'series' => 'nullable|integer|min:0|max:889', 'next_number' => 'nullable|integer|min:1|max:999999999',
+            'timezone' => 'nullable|timezone', 'crt' => 'nullable|in:1,2,3,4',
+            'natureza_operacao' => 'nullable|string|max:60',
+            'identification_limit' => 'nullable|numeric|min:0|max:999999999.99|decimal:0,2',
+            'cancellation_minutes' => 'nullable|integer|min:0|max:30',
+            'uf_validation_reference' => 'nullable|string|max:180', 'csc_required' => 'sometimes|nullable|accepted',
+            'certificate' => 'prohibited', 'certificate_password' => 'prohibited', 'csc' => 'prohibited', 'csc_id' => 'prohibited',
+            'emission_token' => 'prohibited', 'management_token' => 'prohibited', 'provider_company_id' => 'prohibited',
+            'tenant_id' => 'prohibited', 'fiscal_production_approved_at' => 'prohibited',
+        ]);
+        $data = array_intersect_key($data, array_flip(['series', 'next_number', 'timezone', 'crt', 'natureza_operacao', 'identification_limit', 'cancellation_minutes', 'uf_validation_reference', 'csc_required']));
+        $tenant = $r->attributes->get('tenant');
+        abort_unless($tenant->active && DB::connection('tenant')->getDatabaseName() === $tenant->db_name, 403);
+        DB::connection('tenant')->transaction(function () use ($r, $data) {
+            $profile = BusinessProfile::whereKey(1)->lockForUpdate()->first();
+            $document = TaxpayerDocument::normalize((string) $profile?->document);
+            if (! TaxpayerDocument::cnpj($document)) {
+                throw ValidationException::withMessages(['document' => 'Salve primeiro o CNPJ válido em Identificação da empresa.']);
+            }
+            $settings = FiscalSetting::whereKey(1)->lockForUpdate()->first() ?? new FiscalSetting;
+            $settings->id = 1;
+            $settings->provider = 'sefaz_direct';
+            $settings->environment = 'homologation';
+            $settings->configuration_draft = ['document' => $document, 'values' => $data];
+            $settings->updated_by = $r->attributes->get('currentUser')->id;
+            $settings->save();
+        }, 3);
+        return back()->with('success', 'Rascunho fiscal salvo sem certificado. Nenhuma numeração foi reservada e nenhuma emissão foi habilitada.');
     }
 
     public function validateLocal(Request $r, CompanyFiscalConfiguration $configuration)
