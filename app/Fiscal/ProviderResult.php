@@ -1,0 +1,24 @@
+<?php
+
+namespace App\Fiscal;
+
+use InvalidArgumentException;
+
+/** Normalized evidence, never a raw HTTP response or a personal-data payload. */
+final readonly class ProviderResult
+{
+    public function __construct(
+        public DocumentState $state,
+        public ?string $officialCode = null,
+        public ?string $accessKey = null,
+        public ?string $protocol = null,
+    ) {
+        // Signature, issuer/environment/reference and XML correspondence still
+        // MUST be verified by the adapter before persisting authorization.
+        if ($state === DocumentState::Authorized && (
+            $officialCode !== '100' || ! preg_match('/^[0-9A-Z]{44}$/D', $accessKey ?? '') || ! $protocol
+        )) {
+            throw new InvalidArgumentException('Autorização exige evidência fiscal oficial; HTTP 200 não é autorização.');
+        }
+    }
+}
