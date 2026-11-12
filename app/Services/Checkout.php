@@ -41,7 +41,7 @@ class Checkout
                     $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999999.99');
                     $unitCost = $item instanceof Product ? $item->pricingCost() : $item->cost;
                     $amount = Decimal::input(Decimal::round(bcmul($qty, $price, 8)), 2, 'items');
-                    SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null, 'service_id' => $product ? null : (int) $line['id'], 'description' => $item->name, 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => $unitCost, 'total' => $amount]);
+                    SaleItem::create(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null, 'service_id' => $product ? null : (int) $line['id'], 'description' => $item->name, 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => $unitCost, 'total' => $amount]);
                     if ($product && $item->controlsStock()) {
                         app(Inventory::class)->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, 'sale-'.$sale->id.'-'.$i, $sale->id);
                     }

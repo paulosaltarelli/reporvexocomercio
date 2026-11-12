@@ -3,6 +3,9 @@
 namespace App\Fiscal;
 
 use App\Models\BusinessProfile;
+use App\Models\FiscalCredential;
+use App\Models\FiscalIssuer;
+use App\Models\FiscalItemRule;
 use App\Models\FiscalSetting;
 use App\Models\Product;
 use App\Models\Sale;
@@ -57,11 +60,22 @@ final class FiscalReadiness
         if (! $settings?->operation) {
             $add('issuer.operation', 'Informe se a operação é presencial, delivery ou ambas.');
         }
-        // These cannot be cleared by a browser checkbox or inferred from tax regime.
-        $add('nfce.uf_review', 'A adequação do modelo 65 à UF e à operação ainda exige validação; certas vendas podem exigir NF-e.');
-        $add('credentials.pending', 'Certificado A1 e CSC, quando exigido, aguardam configuração privada.');
-        $add('tax.validation', 'Regras por produto, CRT, CFOP, CST/CSOSN e IBS/CBS ainda precisam de parametrização validada pelo contador.');
-        $add('transport.disabled', 'A transmissão fiscal está desabilitada nesta etapa. A conferência não emite nota.');
+        $configuredIssuer = FiscalIssuer::where('document', TaxpayerDocument::normalize((string) ($issuer['document'] ?? '')))->where('environment', 'homologation')->first();
+        $credential = $configuredIssuer ? FiscalCredential::where('issuer_id', $configuredIssuer->id)->first() : null;
+        if (! $configuredIssuer || empty($configuredIssuer->validated_configuration['uf_validation_reference'])) {
+            $add('nfce.uf_review', 'A adequação do modelo 65 à UF e à operação exige validação; certas vendas podem exigir NF-e.');
+        }
+        if (! $credential) {
+            $add('credentials.pending', 'Configure o certificado A1 e as credenciais de homologação em Minha empresa.');
+        } elseif ($credential->valid_until->isPast() || ! $credential->synced_hash || ! hash_equals($credential->synced_hash, app(CompanyFiscalConfiguration::class)->hash($configuredIssuer))) {
+            $add('credentials.sync', 'Confira a validade do certificado e sincronize a configuração atual com o provedor.');
+        }
+        if (Product::where('type', 'product')->whereNotIn('id', FiscalItemRule::select('product_id'))->exists()) {
+            $add('tax.validation', 'Há produtos sem regra fiscal específica validada pelo contador.');
+        }
+        if (! $configuredIssuer?->enabled) {
+            $add('transport.disabled', 'A emissão depende da configuração de homologação em Minha empresa. Registrar conferência não emite nota.');
+        }
         if ($tenant->fiscal_demonstration ?? true) {
             $add('production.demonstration', 'Empresa classificada como demonstração: produção fiscal bloqueada.');
         }
@@ -77,7 +91,7 @@ final class FiscalReadiness
             $lines = [];
             $products = Product::whereIn('id', $sale->items->pluck('product_id')->filter())->get()->keyBy('id');
             foreach ($sale->items->sortBy('id') as $item) {
-                $kind = $item->product_id && ! $item->service_id ? 'goods' : ($item->service_id && ! $item->product_id ? 'services' : 'unclassified');
+                $kind = $item->fiscal_kind === 'service' || $item->service_id ? 'services' : ($item->fiscal_kind === 'product' ? 'goods' : 'unclassified');
                 $totals[$kind] = bcadd($totals[$kind], $item->total, 2);
                 $line = $item->only(['id', 'product_id', 'service_id', 'description', 'quantity', 'unit_price', 'total']);
                 $line['kind'] = $kind;

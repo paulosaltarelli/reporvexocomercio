@@ -29,6 +29,7 @@ return [
     */
 
     'disks' => [
+        'fiscal' => ['driver'=>'local','root'=>storage_path('app/fiscal-private'),'serve'=>false,'throw'=>true,'report'=>false],
 
         'local' => [
             'driver' => 'local',

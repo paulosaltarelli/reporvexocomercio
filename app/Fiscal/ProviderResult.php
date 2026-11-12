@@ -12,6 +12,8 @@ final readonly class ProviderResult
         public ?string $officialCode = null,
         public ?string $accessKey = null,
         public ?string $protocol = null,
+        public ?string $xml = null,
+        public ?string $authorizedAt = null,
     ) {
         // Signature, issuer/environment/reference and XML correspondence still
         // MUST be verified by the adapter before persisting authorization.

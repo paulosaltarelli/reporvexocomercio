@@ -1,23 +1,17 @@
 @extends('layout')
-@section('title','Preparação fiscal')
-@section('subtitle','Confira o cadastro da empresa e prepare a homologação. Emissão ainda desabilitada.')
+@section('title','Fiscal · homologação')
+@section('subtitle','Configuração, conferência e acompanhamento de NFC-e em homologação.')
 @section('content')
 <section class="panel"><h2>Situação da empresa</h2>
 <p>Os dados do emitente vêm de <a href="{{ route('business',['company'=>$tenant->slug]) }}">Minha empresa</a>. A conferência local não comprova cadastro ativo na Receita nem credenciamento na SEFAZ.</p>
 @include('fiscal.blockers')
 </section>
-<form class="panel" method="post" action="{{ route('fiscal.settings',['company'=>$tenant->slug]) }}">@csrf
-<h2>Configuração de homologação</h2><div class="form-grid">
-<div class="field"><label for="environment">Ambiente</label><select id="environment" name="environment"><option value="homologation">Homologação · sem valor fiscal</option></select></div>
-<div class="field"><label for="provider">Integração proposta</label><select id="provider" name="provider"><option value="focus">Focus NFe · ainda não conectada</option></select></div>
-<div class="field"><label for="operation">Operação pretendida</label><select id="operation" name="operation"><option value="">Não informada</option>@foreach(['presential'=>'Presencial','delivery'=>'Delivery','both'=>'Presencial e delivery'] as $value=>$label)<option value="{{ $value }}" @selected(old('operation',$settings?->operation)===$value)>{{ $label }}</option>@endforeach</select></div>
-<div class="field"><label for="nfce_accredited">Credenciamento NFC-e de homologação</label><select id="nfce_accredited" name="nfce_accredited"><option value="0">Não confirmado</option><option value="1" @selected((string)old('nfce_accredited',(int)($settings?->nfce_accredited??false))==='1')>Confirmado pelo responsável na SEFAZ</option></select></div>
-<div class="field"><label for="accountant_name">Contador responsável</label><input id="accountant_name" name="accountant_name" maxlength="180" value="{{ old('accountant_name',$settings?->accountant_name) }}"></div>
-<div class="field"><label for="accountant_email">E-mail do contador</label><input id="accountant_email" name="accountant_email" type="email" maxlength="180" value="{{ old('accountant_email',$settings?->accountant_email) }}"></div>
-</div><p class="hint">Informar o contador e o credenciamento não aprova regras tributárias nem libera produção. Não cadastre certificado, senha, CSC ou token neste formulário.</p>
-<button class="primary">Salvar configuração de homologação</button></form>
+
 <section class="panel"><h2>Conferências registradas</h2><p>Para criar uma conferência, abra uma venda e selecione “Conferir dados fiscais”.</p>
 <div class="scroll"><table><thead><tr><th>Conferência</th><th>Venda</th><th>Data</th><th>Situação</th></tr></thead><tbody>
 @forelse($preparations as $preparation)<tr><td><a href="{{ route('fiscal.preparation',['company'=>$tenant->slug,'id'=>$preparation->id]) }}">#{{ $preparation->id }}</a></td><td>#{{ $preparation->sale_id }}</td><td>{{ $preparation->created_at->format('d/m/Y H:i') }}</td><td>Conferência · sem emissão</td></tr>@empty<tr><td colspan="4">Nenhuma conferência registrada.</td></tr>@endforelse
 </tbody></table></div>{{ $preparations->links() }}</section>
+<section class="panel"><h2>Notas fiscais</h2><p>Configure certificado e credenciais em <a href="{{ route('business',['company'=>$tenant->slug]) }}#fiscal-company">Minha empresa</a>. A transmissão é processada pelo worker fiscal.</p><div class="scroll"><table><thead><tr><th>Número / série</th><th>Venda</th><th>Situação</th></tr></thead><tbody>@forelse($documents as $doc)<tr><td><a href="{{ route('fiscal.document',['company'=>$tenant->slug,'id'=>$doc->id]) }}">{{ $doc->number }} / {{ $doc->series }}</a></td><td>#{{ $doc->sale_id }}</td><td>{{ ['pending'=>'Na fila','sent'=>'Aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$doc->state]??$doc->state }}</td></tr>@empty<tr><td colspan="3">Nenhuma emissão solicitada.</td></tr>@endforelse</tbody></table></div></section>
+<section class="panel"><h2>Regras por produto</h2><p>Cadastre os parâmetros específicos validados pelo contador antes da emissão.</p><ul>@foreach($taxProducts as $product)<li><a href="{{ route('fiscal.product',['company'=>$tenant->slug,'id'=>$product->id]) }}">{{ $product->name }}</a></li>@endforeach</ul></section>
+<section class="panel"><h2>Inutilização de numeração</h2><p>Operação distinta do cancelamento. Somente a faixa ainda não usada, a partir do próximo número da série configurada, poderá ser reservada.</p><form method="post" action="{{ route('fiscal.invalidate',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}"><div class="form-grid"><div class="field"><label for="last_number">Último número da faixa</label><input id="last_number" name="last_number" type="number" min="1" max="999999999" required></div><div class="field"><label for="void_reason">Justificativa (15 a 255 caracteres)</label><input id="void_reason" name="reason" minlength="15" maxlength="255" required></div></div><label class="checkbox-line"><input type="checkbox" name="homologation_consent" value="1" required> Solicitar inutilização em homologação, sem valor fiscal.</label><button class="button secondary">Solicitar inutilização da faixa</button></form><ul>@foreach($voids as $void)<li>Série {{ $void->series }} · {{ $void->first_number }} a {{ $void->last_number }} · {{ $void->state }} @if($void->state==='voided')<a href="{{ route('fiscal.void.xml',['company'=>$tenant->slug,'id'=>$void->id]) }}">Baixar XML oficial</a>@endif</li>@endforeach</ul></section>
 @endsection

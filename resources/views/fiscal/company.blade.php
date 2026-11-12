@@ -1,0 +1,24 @@
+@include('fiscal.preferences',['settings'=>$fiscalSettings])
+<section class="panel" id="fiscal-company"><h2>Emissão fiscal da empresa</h2>
+<p>Ambiente inicial: <strong>homologação, sem valor fiscal</strong>. Emitente e endereço vêm do cadastro acima. Esta integração usa uma conta Focus NFe da empresa; não cria conta nem contrata plano automaticamente.</p>
+@if($fiscalCertificate)<p>Certificado privado cadastrado · válido até {{ \Carbon\Carbon::parse($fiscalCertificate['valid_until'])->format('d/m/Y') }}. {{ $fiscalCertificate['synced_hash']?'Última configuração sincronizada.':'Sincronização pendente.' }}</p>@endif
+<form method="post" enctype="multipart/form-data" action="{{ route('business.fiscal',['company'=>$tenant->slug]) }}">@csrf
+<input type="hidden" name="environment" value="homologation">
+@php($fc=$fiscalIssuer?->validated_configuration??[])
+<div class="form-grid">
+@foreach(['provider_company_id'=>'ID da empresa na Focus','series'=>'Série NFC-e','next_number'=>'Próximo número disponível','natureza_operacao'=>'Natureza da operação','identification_limit'=>'Limite de identificação do consumidor (R$)','cancellation_minutes'=>'Prazo de cancelamento (minutos, até 30)','uf_validation_reference'=>'Referência da regra da UF validada pelo contador'] as $field=>$label)
+<div class="field"><label for="fc_{{ $field }}">{{ $label }}</label><input id="fc_{{ $field }}" name="{{ $field }}" value="{{ old($field,$field==='next_number'?$fiscalNextNumber:($fc[$field]??'')) }}" required maxlength="180"></div>
+@endforeach
+<div class="field"><label for="fc_crt">CRT confirmado pelo contador</label><select id="fc_crt" name="crt" required><option value="">Selecione</option>@foreach(['1'=>'1 · Simples Nacional','2'=>'2 · Simples, excesso de sublimite','3'=>'3 · Regime normal','4'=>'4 · Simples Nacional MEI'] as $value=>$label)<option value="{{ $value }}" @selected((string)old('crt',$fc['crt']??'')===(string)$value)>{{ $label }}</option>@endforeach</select></div>
+<div class="field"><label for="fc_csc_required">CSC exigido para esta homologação?</label><select id="fc_csc_required" name="csc_required" required><option value="">Confirme com a SEFAZ/provedor</option><option value="1" @selected((string)old('csc_required',$fc['csc_required']??'')==='1')>Sim</option><option value="0" @selected((string)old('csc_required',$fc['csc_required']??'')==='0')>Não, conforme regra validada</option></select></div>
+<div class="field"><label for="fc_certificate">Certificado A1 (.pfx ou .p12, até 2 MB)</label><input id="fc_certificate" type="file" name="certificate" accept=".pfx,.p12" @required(!$fiscalCertificate)></div>
+<div class="field"><label for="fc_certificate_password">Senha do certificado enviado</label><input id="fc_certificate_password" type="password" name="certificate_password" autocomplete="new-password"></div>
+<div class="field"><label for="fc_emission_token">Token de emissão de homologação da empresa</label><input id="fc_emission_token" type="password" name="emission_token" autocomplete="new-password"></div>
+<div class="field"><label for="fc_management_token">Token de gestão da conta Focus da empresa</label><input id="fc_management_token" type="password" name="management_token" autocomplete="new-password"></div>
+<div class="field"><label for="fc_csc">CSC de homologação</label><input id="fc_csc" type="password" name="csc" autocomplete="new-password"></div>
+<div class="field"><label for="fc_csc_id">Identificador do CSC de homologação</label><input id="fc_csc_id" name="csc_id" autocomplete="off" maxlength="6"></div>
+</div><p class="hint">Segredos ficam cifrados e não são exibidos novamente. Para manter os já cadastrados, deixe os campos secretos vazios. Enviar outro certificado exige informar a senha correspondente. A série e o próximo número devem ser reconciliados com emissões anteriores.</p><button class="primary">Salvar configuração e certificado</button></form>
+@if($fiscalIssuer)<form method="post" action="{{ route('business.fiscal.sync',['company'=>$tenant->slug]) }}" style="margin-top:24px">@csrf
+<label class="checkbox-line"><input type="checkbox" name="share_certificate_consent" value="1" required> Autorizo enviar cadastro, certificado, senha e CSC à Focus NFe para configurar esta empresa. Nenhuma nota será emitida nesta ação.</label>
+<button class="button secondary">Sincronizar cadastro e certificado com a Focus</button></form>@endif
+</section>

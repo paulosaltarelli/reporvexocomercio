@@ -18,8 +18,11 @@ class BusinessController extends Controller
     public function form(Request $r)
     {
         $this->admin($r);
-
-        return view('business', ['profile' => BusinessProfile::find(1) ?? new BusinessProfile(['legal_name' => $r->attributes->get('tenant')->name])]);
+        $profile=BusinessProfile::find(1) ?? new BusinessProfile(['legal_name'=>$r->attributes->get('tenant')->name]);
+        $issuer=\App\Models\FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$profile->document))->where('environment','homologation')->first();
+        $credential=$issuer?\App\Models\FiscalCredential::where('issuer_id',$issuer->id)->first():null;
+        $sequence=$issuer?DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id',$issuer->id)->where('model',65)->where('series',$issuer->validated_configuration['series'])->first():null;
+        return view('business',['profile'=>$profile,'fiscalIssuer'=>$issuer,'fiscalCertificate'=>$credential?->only(['valid_from','valid_until','certificate_fingerprint','synced_hash']),'fiscalNextNumber'=>$sequence?->next_number,'fiscalSettings'=>\App\Models\FiscalSetting::find(1)]);
     }
 
     public function save(Request $r)

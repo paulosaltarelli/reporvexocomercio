@@ -11,6 +11,7 @@ enum DocumentState: string
     case Authorized = 'authorized';
     case Rejected = 'rejected';
     case Cancelled = 'cancelled';
+    case Voided = 'voided';
 
     public function canTransitionTo(self $next): bool
     {
@@ -24,7 +25,7 @@ enum DocumentState: string
             self::Sent => [self::Uncertain, self::Authorized, self::Rejected],
             self::Uncertain => [self::Authorized, self::Rejected],
             self::Authorized => [self::Cancelled],
-            self::Rejected, self::Cancelled => [],
+            self::Rejected, self::Cancelled, self::Voided => [],
         }, true);
     }
 }

@@ -25,6 +25,9 @@ class FiscalController extends Controller
             'settings' => FiscalSetting::find(1),
             'report' => $readiness->inspect($request->attributes->get('tenant')),
             'preparations' => FiscalPreparation::latest('id')->paginate(15),
+            'documents' => \App\Models\FiscalDocument::latest('id')->limit(20)->get(),
+            'taxProducts' => \App\Models\Product::where('type','product')->orderBy('name')->limit(100)->get(),
+            'voids' => \Illuminate\Support\Facades\DB::connection('tenant')->table('fiscal_voids')->latest('id')->limit(20)->get(),
         ]);
     }
 
@@ -44,7 +47,7 @@ class FiscalController extends Controller
         $settings->updated_by = $request->attributes->get('currentUser')->id;
         $settings->save();
 
-        return back()->with('success', 'Configuração de homologação salva. A transmissão permanece desabilitada.');
+        return back()->with('success', 'Preferências de homologação salvas. Certificado e credenciais são configurados em Minha empresa.');
     }
 
     public function sale(Request $request, string $company, int $id, FiscalReadiness $readiness)

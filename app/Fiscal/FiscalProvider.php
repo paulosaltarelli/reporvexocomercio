@@ -10,7 +10,7 @@ namespace App\Fiscal;
  */
 interface FiscalProvider
 {
-    public function issue(string $reference, array $frozenPayload): ProviderResult;
+    public function issue(string $reference, #[\SensitiveParameter] array $frozenPayload): ProviderResult;
 
     public function consult(string $reference): ProviderResult;
 
