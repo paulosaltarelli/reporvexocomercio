@@ -38,8 +38,12 @@ class PurchaseService
                 ]);
                 usort($lines, fn ($a, $b) => $a['product_id'] <=> $b['product_id']);
                 $total = '0.00';
+                $referenceProducts = [];
                 foreach ($lines as $line) {
                     $product = Product::where('active', true)->lockForUpdate()->findOrFail($line['product_id']);
+                    if ($product->type !== 'product') {
+                        throw ValidationException::withMessages(['items' => 'O recebimento de compras aceita somente produtos. Registre despesas de serviços pelo financeiro.']);
+                    }
                     $quantity = Decimal::input((string) $line['quantity'], 3, 'items', '0.001', '999999999');
                     // Effective unit cost already includes any freight/taxes allocated by the operator.
                     $cost = Decimal::input((string) $line['unit_cost'], 4, 'items', '0', '999999999.9999');
@@ -48,9 +52,17 @@ class PurchaseService
                         'purchase_id' => $purchase->id, 'product_id' => $product->id, 'description' => $product->name,
                         'quantity' => $quantity, 'unit_cost' => $cost, 'total' => $lineTotal,
                     ]);
-                    app(Inventory::class)->move($product->id, 'in', $quantity, $cost,
-                        'Compra #'.$purchase->id.' · item #'.$item->id, $userId, 'purchase-'.$purchase->id.'-'.$item->id);
+                    if ($product->controlsStock()) {
+                        app(Inventory::class)->move($product->id, 'in', $quantity, $cost,
+                            'Compra #'.$purchase->id.' · item #'.$item->id, $userId, 'purchase-'.$purchase->id.'-'.$item->id);
+                    } else {
+                        $product->update(['reference_cost' => $cost]);
+                        $referenceProducts[$product->id] = $product->id;
+                    }
                     $total = bcadd($total, $lineTotal, 2);
+                }
+                foreach ($referenceProducts as $productId) {
+                    app(PricingService::class)->syncProduct($productId, $userId, 'purchase:'.$purchase->id);
                 }
                 Decimal::input($total, 2, 'items');
                 $purchase->update(['total' => $total]);

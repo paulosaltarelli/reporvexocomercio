@@ -34,6 +34,9 @@ class Inventory
 
                 return $p;
             }
+            if (! $p->controlsStock()) {
+                throw ValidationException::withMessages(['product_id' => 'Este item não controla estoque e não permite movimentações.']);
+            }
             $incoming = in_array($type, ['in', 'return']);
             $balance = $incoming ? bcadd($p->quantity, $qty, 3) : bcsub($p->quantity, $qty, 3);
             if (bccomp($balance, '0', 3) < 0) {
@@ -47,9 +50,9 @@ class Inventory
                 $avg = Decimal::round(bcdiv($value, $balance, 8), 4);
             }
             $p->update(['quantity' => $balance, 'average_cost' => $avg]);
-            StockMovement::create(['request_key' => $key, 'product_id' => $p->id, 'user_id' => $userId, 'sale_id' => $saleId, 'type' => $type, 'quantity' => $qty, 'unit_cost' => $unitCost, 'balance' => $balance, 'average_cost' => $avg, 'reason' => $reason]);
+            $movement = StockMovement::create(['request_key' => $key, 'product_id' => $p->id, 'user_id' => $userId, 'sale_id' => $saleId, 'type' => $type, 'quantity' => $qty, 'unit_cost' => $unitCost, 'balance' => $balance, 'average_cost' => $avg, 'reason' => $reason]);
 
-            return $p;
+            return app(PricingService::class)->syncProduct($p->id, $userId, 'stock:'.$movement->id);
         }, 3);
     }
 }

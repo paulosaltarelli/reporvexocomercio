@@ -28,7 +28,7 @@ Primeiro inspecione o que já existe. Depois peça apenas informações ausentes
 4. Tipos de operação: consumidor final, venda a empresa, presencial/delivery, interestadual, descontos, frete, pagamentos e devoluções.
 5. Impressão desejada: inicialmente DANFE NFC-e em PDF/impressão térmica, identificando largura e equipamento disponíveis.
 
-Não deduza a UF pelo telefone. Não invente CNPJ, inscrições, CFOP, CST/CSOSN, alíquotas ou credenciais. A base Vexo contém **dados demonstrativos** e não pode ser usada para emissão em produção. Implemente uma trava de produção para empresas com demonstração ativa.
+Não deduza a UF pelo telefone. Não invente CNPJ, inscrições, CFOP, CST/CSOSN, alíquotas ou credenciais. A base Vexo contém **dados demonstrativos** e não pode ser usada para emissão em produção. Os rótulos visíveis “Demo” foram retirados a pedido do proprietário; isso não transforma os dados em operações reais. Consulte os marcadores internos em `demo_runs`, inclusive a carga anual, em vez de procurar palavras nos nomes. Implemente uma trava de produção para empresas com demonstração ativa.
 
 Enquanto aguarda dados, avance na inspeção, desenho, contratos, migrações e testes que não dependam deles.
 
@@ -66,6 +66,8 @@ Requisitos essenciais:
 Levante campos e validações exigidos para emitente, destinatário, itens e pagamentos: NCM, origem, CFOP, CST/CSOSN, CEST quando aplicável, unidades/GTIN, benefícios, bases e tributos, descontos, frete, troco e identificação do consumidor conforme UF e valor.
 
 Não aplique um perfil tributário genérico a todos os produtos/empresas. Parametrização precisa ser validada pelo contador. Campos ainda desconhecidos devem bloquear a emissão com orientação clara, sem defaults fictícios.
+
+Não use apenas o tipo atual do cadastro para classificar uma venda histórica: o tipo e o controle de estoque podem ter mudado após a venda. Inspecione os snapshots existentes, acrescente os fiscais necessários ao fluxo novo e exija conferência dos legados quando a classificação original não puder ser comprovada.
 
 Uma venda pode misturar mercadorias e serviços. **Não envie serviços municipais como mercadorias na NFC-e** nem use o total inteiro da venda como total fiscal se parte precisar de outro documento. Proponha a separação fiscal e a alocação coerente dos pagamentos. NFS-e é uma integração distinta e pode ficar para a próxima fase.
 

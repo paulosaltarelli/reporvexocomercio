@@ -3,6 +3,9 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusinessController;
+use App\Http\Controllers\CashController;
+use App\Http\Controllers\CashflowController;
+use App\Http\Controllers\PricingController;
 use App\Http\Controllers\CommerceController;
 use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PurchaseController;
@@ -22,6 +25,13 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('users/{id}', [AccountController::class, 'updateUser'])->whereNumber('id')->name('user.update');
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/', [CommerceController::class, 'dashboard'])->name('dashboard');
+        Route::get('prices',[PricingController::class,'index'])->name('prices');
+        Route::post('prices/refresh',[PricingController::class,'refresh'])->name('price.refresh');
+        Route::post('prices/{id}/apply',[PricingController::class,'apply'])->whereNumber('id')->name('price.apply');
+        Route::get('cash', [CashController::class, 'index'])->name('cash');
+        Route::post('cash/close', [CashController::class, 'close'])->name('cash.close');
+        Route::get('cashflow', [CashflowController::class, 'index'])->name('cashflow');
+        Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');

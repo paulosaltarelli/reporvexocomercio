@@ -38,3 +38,15 @@ Credenciais e material SSH ficam fora deste repositório e não devem ser versio
 - Backup/restauração automatizados, monitoramento e cadastro de novas empresas ainda precisam ser operacionalizados antes de comercialização.
 
 Runbook de implantação, permissões, certificado e recuperação: [docs/OPERACAO.md](docs/OPERACAO.md).
+
+## Marketing e demonstração
+
+A raiz `/` contém a landing do Vendra com links de WhatsApp e e-mail fornecidos pelo proprietário. O acesso permanece em `/app/vexo/login`.
+
+`php artisan vendra:demo vexo --confirm-demo` adiciona a demonstração de informática uma única vez. Não muda usuários/senhas nem apaga cadastros. A primeira carga recusa empresas que já possuem operação financeira, para evitar mistura de dados. Consulte docs/DEMONSTRACAO.md.
+
+`/app/vexo/cashflow` mostra fluxo registrado e previsão de saldos por vencimento; `/app/vexo/cash` permite conferência e fechamento diário. Datas consolidadas bloqueiam novas baixas e estornos retroativos. Consulte docs/CAIXA.md.
+
+O histórico de informática de 2026 pode ser ampliado com `php artisan vendra:historico-anual vexo 2026 --plan`. A execução exige backup e manutenção exclusiva do Vendra; o procedimento está em [docs/IMPORTACAO_ANUAL.md](docs/IMPORTACAO_ANUAL.md). A carga preserva as operações anteriores e os fechamentos existentes. Meses futuros recebem previsões, sem vendas ou pagamentos futuros realizados.
+
+Os rótulos visíveis da carga inicial podem ser normalizados sem alterar seus valores, datas ou vínculos; consulte [docs/COMPUTER_STORE_LABELS.md](docs/COMPUTER_STORE_LABELS.md). A identificação interna da origem sintética permanece para impedir que a integração fiscal trate esses dados como operações reais.

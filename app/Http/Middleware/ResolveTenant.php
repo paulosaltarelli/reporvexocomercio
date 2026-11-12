@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\DemoRun;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
 use Closure;
@@ -21,6 +22,8 @@ class ResolveTenant
                 $request->session()->regenerateToken();
             }
             view()->share('tenant', $tenant);
+            view()->share('companyProfile',\App\Models\BusinessProfile::find(1));
+            view()->share('demoMode', DemoRun::where('code', 'computer-store-v1')->whereNotNull('completed_at')->exists());
             view()->share('currentUser', null);
 
             return $next($request);

@@ -148,7 +148,7 @@ class FinancialService
                 $sale = $origin->sale_id ? Sale::lockForUpdate()->findOrFail($origin->sale_id) : null;
                 $purchase = $origin->purchase_id ? Purchase::lockForUpdate()->findOrFail($origin->purchase_id) : null;
                 $entry = FinancialEntry::lockForUpdate()->findOrFail($entryId);
-                $existing = Payment::where('request_key', $key)->lockForUpdate()->first();
+                $existing = app(CashService::class)->lockOpenDay($paidOn, $key);
                 if ($existing) {
                     return $this->validatePaymentReplay($existing, $entryId, $amount, $paidOn, $method, $userId);
                 }
@@ -176,12 +176,14 @@ class FinancialService
                 return $payment;
             }, 3);
         } catch (UniqueConstraintViolationException $exception) {
-            $existing = Payment::where('request_key', $key)->lockForUpdate()->first();
-            if ($existing) {
-                return $this->validatePaymentReplay($existing, $entryId, $amount, $paidOn, $method, $userId);
-            }
+            return DB::connection('tenant')->transaction(function () use ($exception, $key, $entryId, $amount, $paidOn, $method, $userId) {
+                $existing = app(CashService::class)->lockOpenDay($paidOn, $key);
+                if ($existing) {
+                    return $this->validatePaymentReplay($existing, $entryId, $amount, $paidOn, $method, $userId);
+                }
 
-            throw $exception;
+                throw $exception;
+            }, 3);
         }
     }
 
@@ -214,13 +216,27 @@ class FinancialService
         DB::connection('tenant')->transaction(function () use ($saleId, $userId, $refundConfirmed) {
             $sale = Sale::lockForUpdate()->findOrFail($saleId);
             $entries = FinancialEntry::where('sale_id', $sale->id)->orderBy('id')->lockForUpdate()->get();
-            $payments = Payment::whereIn('entry_id', $entries->modelKeys())->where('kind', 'payment')
-                ->whereDoesntHave('reversal')->orderBy('id')->lockForUpdate()->get();
             $received = '0.00';
             foreach ($entries as $entry) {
                 if (bccomp($entry->legacy_paid_amount, '0', 2) > 0) {
                     throw ValidationException::withMessages(['refund_confirmed' => 'Recebimento legado sem data e comprovante de baixa. Faça a reconciliação antes de cancelar.']);
                 }
+                $received = bcadd($received, $entry->paid_amount, 2);
+            }
+            if ($entries->isEmpty() && $sale->paid && bccomp($sale->total, '0', 2) > 0) {
+                throw ValidationException::withMessages(['refund_confirmed' => 'Venda legada sem histórico financeiro. Faça a reconciliação antes de cancelar.']);
+            }
+            if (bccomp($received, '0', 2) > 0) {
+                if (! $refundConfirmed) {
+                    throw ValidationException::withMessages(['refund_confirmed' => 'Confirme que o reembolso foi realizado antes de cancelar esta venda.']);
+                }
+                // The day gate must precede Payment row locks, including originals
+                // from an older day. Closing never waits on a writer holding its ledger.
+                app(CashService::class)->lockOpenDay(now()->toDateString());
+            }
+            $payments = Payment::whereIn('entry_id', $entries->modelKeys())->where('kind', 'payment')
+                ->whereDoesntHave('reversal')->orderBy('id')->lockForUpdate()->get();
+            foreach ($entries as $entry) {
                 $ledger = '0.00';
                 foreach ($payments->where('entry_id', $entry->id) as $payment) {
                     $ledger = bcadd($ledger, $payment->amount, 2);
@@ -228,13 +244,6 @@ class FinancialService
                 if (bccomp($ledger, $entry->paid_amount, 2) !== 0) {
                     throw ValidationException::withMessages(['refund_confirmed' => 'O histórico de recebimentos precisa ser reconciliado antes do cancelamento.']);
                 }
-                $received = bcadd($received, $ledger, 2);
-            }
-            if (($entries->isEmpty() && $sale->paid && bccomp($sale->total, '0', 2) > 0)) {
-                throw ValidationException::withMessages(['refund_confirmed' => 'Venda legada sem histórico financeiro. Faça a reconciliação antes de cancelar.']);
-            }
-            if (bccomp($received, '0', 2) > 0 && ! $refundConfirmed) {
-                throw ValidationException::withMessages(['refund_confirmed' => 'Confirme que o reembolso foi realizado antes de cancelar esta venda.']);
             }
             foreach ($payments as $payment) {
                 Payment::create([

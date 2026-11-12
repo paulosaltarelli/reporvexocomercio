@@ -8,10 +8,11 @@
 @selected(old('customer_id')==$c->id)>{{ $c->name }}</option>
 @endforeach</select></div><div class="field"><label>Validade / previsão de entrega</label><input type="date" name="valid_until" value="{{ old('valid_until') }}"></div><div class="field"><label>Equipamento / série / veículo / placa</label><input name="asset" maxlength="255" value="{{ old('asset') }}"></div><div class="field"><label>Responsável técnico</label><input name="technician" maxlength="255" value="{{ old('technician') }}"></div><div class="field full"><label>Descrição, diagnóstico e observações</label><textarea name="notes" maxlength="2000">{{ old('notes') }}</textarea></div></div></section><section class="panel"><h2>Produtos e serviços previstos</h2><div id="items"></div><button type="button" id="add" class="button secondary">+ Adicionar item</button><div class="actions"><strong id="total" role="status" aria-live="polite">Total: R$ 0,00</strong></div></section><div class="actions"><button class="primary">Salvar documento</button><a href="{{ route('documents',['company'=>$tenant->slug]) }}">Voltar</a></div></form>
 <template id="row"><div class="sale-row"><div class="selection"><label>Produto ou serviço</label><select class="choice" required><option value="">Selecione</option>
-@foreach($products as $p)<option value="product:{{ $p->id }}" data-price="{{ $p->sale_price }}">{{ $p->sku }} · {{ $p->name }} (saldo {{ $p->quantity }})</option>
-@endforeach 
-@foreach($services as $s)<option value="service:{{ $s->id }}" data-price="{{ $s->price }}">Serviço · {{ $s->name }}</option>
-@endforeach</select><input type="hidden" class="kind"><input type="hidden" class="item-id"></div><div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div><div><label>Preço unitário (R$)</label><input class="price" type="number" step="0.01" min="0" max="999999999.99" required></div><button type="button" class="text-button remove">Remover</button></div></template>
+@foreach($products as $p)
+@php($isService=($p->type??'product')==='service')
+@php($stockControlled=!$isService && ($p->controls_stock??true))
+<option value="product:{{ $p->id }}" data-price="{{ $p->sale_price }}" data-item-type="{{ $isService?'service':'product' }}">{{ $isService?'Serviço':'Produto' }} · {{ $p->sku }} · {{ $p->name }}@if($stockControlled) (saldo {{ number_format($p->quantity,3,',','.') }})@endif</option>
+@endforeach</select><input type="hidden" class="kind"><input type="hidden" class="item-id"></div><div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div><div><label>Preço unitário (R$)</label><input class="price" type="number" step="0.01" min="0" max="999999999999.99" required></div><button type="button" class="text-button remove">Remover</button></div></template>
 @endsection
 
 @push('scripts')<script>let count=0;const previous=Object.values(

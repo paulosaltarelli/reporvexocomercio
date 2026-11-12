@@ -94,7 +94,7 @@ class CommerceTest extends TestCase
         try {
             foreach ($connection->select('SHOW TABLES') as $tableRow) {
                 $table = array_values((array) $tableRow)[0];
-                if ($table === 'migrations') {
+                if (in_array($table, ['migrations', 'cash_closure_locks'], true)) {
                     continue;
                 }
                 if (! preg_match('/^[a-zA-Z0-9_]+$/D', $table)) {
@@ -200,9 +200,10 @@ class CommerceTest extends TestCase
     {
         $this->get('/app/a/login')->assertOk()->assertSee('Empresa a');
         $this->post('/app/a/login', ['email' => 'admin@example.test', 'password' => 'test-password-123'])->assertRedirect('/app/a');
-        foreach (['/app/a', '/app/a/products', '/app/a/products/new', '/app/a/catalog/groups', '/app/a/catalog/customers', '/app/a/catalog/services', '/app/a/stock', '/app/a/sales', '/app/a/sales/new', '/app/a/users', '/app/a/catalog/suppliers', '/app/a/documents', '/app/a/documents/new?type=quote', '/app/a/documents/new?type=work_order', '/app/a/finance', '/app/a/purchases', '/app/a/purchases/new', '/app/a/reports', '/app/a/account/password', '/app/a/business'] as $path) {
+        foreach (['/app/a', '/app/a/products', '/app/a/products/new', '/app/a/catalog/groups', '/app/a/catalog/customers', '/app/a/products?type=service', '/app/a/stock', '/app/a/sales', '/app/a/sales/new', '/app/a/users', '/app/a/catalog/suppliers', '/app/a/documents', '/app/a/documents/new?type=quote', '/app/a/documents/new?type=work_order', '/app/a/finance', '/app/a/purchases', '/app/a/purchases/new', '/app/a/reports', '/app/a/account/password', '/app/a/business', '/app/a/cash', '/app/a/cashflow', '/app/a/prices'] as $path) {
             $this->get($path)->assertOk();
         }
+        $this->get('/app/a/catalog/services')->assertRedirect('/app/a/products?type=service');
     }
 
     public function test_operator_cannot_mutate_catalog_or_stock(): void
@@ -221,7 +222,7 @@ class CommerceTest extends TestCase
 
     public function test_public_page_renders(): void
     {
-        $this->get('/')->assertOk()->assertSee('vendra');
+        $this->get('/')->assertOk()->assertSee('vendra')->assertSee('https://wa.me/5535999193304', false)->assertSee('99919-3304')->assertSee('mailto:ivancasvilela@gmail.com', false)->assertSee('/app/vexo/login', false)->assertSee('Exemplo ilustrativo');
     }
 
     public function test_http_catalog_stock_sale_and_receipt_workflow(): void
@@ -435,15 +436,18 @@ class CommerceTest extends TestCase
     {
         $this->move('in', '10', '60');
         $sale = app(Checkout::class)->complete($this->saleData(), $this->user->id);
-        Service::create(['name' => 'Serviço de balcão', 'price' => '50.00', 'cost' => '17.43']);
+        Product::create(['name' => 'Serviço de balcão', 'sku' => 'OP-SERVICE-QA', 'product_group_id' => $this->product->product_group_id, 'type' => 'service', 'controls_stock' => false, 'reference_cost' => '17.4300', 'sale_price' => '50.00', 'unit' => 'UN']);
         $this->user->update(['role' => 'operator']);
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
-        $this->get('/app/a')->assertOk()->assertDontSee('Resultado bruto das vendas');
+        $this->get('/app/a')->assertOk()->assertDontSee('Resultado bruto das vendas')->assertDontSee('sales-svg-title', false);
         $this->get('/app/a/products')->assertOk()->assertDontSee('Custo médio (R$)')->assertDontSee('60,0000');
         $this->get('/app/a/stock')->assertOk()->assertDontSee('<th class="num">Custo unitário</th>', false)->assertDontSee('60.0000');
-        $this->get('/app/a/catalog/services')->assertOk()->assertDontSee('Custo (R$)')->assertDontSee('17.43');
+        $this->get('/app/a/products?type=service')->assertOk()->assertSee('Serviço de balcão')->assertDontSee('Custo (R$)')->assertDontSee('17.43')->assertDontSee('17,4300');
         $this->get('/app/a/catalog/groups')->assertOk()->assertDontSee('Margem padrão (%)');
         $this->get('/app/a/finance')->assertForbidden();
+        $this->get('/app/a/cash')->assertForbidden();
+        $this->post('/app/a/cash/close', [])->assertForbidden();
+        $this->get('/app/a/cashflow')->assertForbidden();
         $this->post('/app/a/finance', [])->assertForbidden();
         $this->post('/app/a/sales/'.$sale->id.'/cancel')->assertForbidden();
         $this->post('/app/a/sales/'.$sale->id.'/receive')->assertForbidden();
@@ -551,14 +555,15 @@ class CommerceTest extends TestCase
         $this->assertStringContainsString("'=SUM(1+1)", $stockCsv);
         $this->assertStringContainsString(';', $stockCsv);
         $this->assertStringContainsString('SKU-1', $stockCsv);
+        $this->assertStringContainsString($this->a->name, $stockCsv);
 
         $sales = $this->get('/app/a/reports/export/sales?from=2026-11-01&to=2026-11-30')->assertOk();
-        $rows = $this->csvRows($sales->streamedContent());
+        $rows = $this->csvRows($sales->streamedContent(), 'Venda');
         $this->assertCount(2, $rows);
         $this->assertSame((string) $current->id, $rows[1][0]);
 
         $payments = $this->get('/app/a/reports/export/payments?from=2026-10-01&to=2026-10-31')->assertOk();
-        $rows = $this->csvRows($payments->streamedContent());
+        $rows = $this->csvRows($payments->streamedContent(), 'Baixa');
         $this->assertCount(2, $rows);
         $this->assertSame((string) $paymentId, $rows[1][0]);
         $this->assertSame((string) $entryId, $rows[1][2]);
@@ -571,10 +576,23 @@ class CommerceTest extends TestCase
         $this->get('/app/a/reports/export/stock')->assertForbidden();
     }
 
-    private function csvRows(string $csv): array
+    private function csvRows(string $csv, ?string $tableHeader = null): array
     {
         $lines = preg_split('/\r?\n/', rtrim(substr($csv, 3), "\r\n"));
-        return array_map(fn ($line) => str_getcsv($line, ';', '"', ''), $lines);
+        $rows = array_map(fn ($line) => str_getcsv($line, ';', '"', ''), $lines);
+        if ($tableHeader !== null) {
+            $position = null;
+            foreach ($rows as $rowIndex => $row) {
+                $column = array_search($tableHeader, $row, true);
+                if ($column !== false) {
+                    $position = [$rowIndex, $column];
+                    break;
+                }
+            }
+            $this->assertNotNull($position, 'Cabeçalho da tabela CSV não encontrado após identificação da empresa.');
+            $rows = array_map(fn ($row) => array_slice($row, $position[1]), array_slice($rows, $position[0]));
+        }
+        return $rows;
     }
 
 
@@ -630,6 +648,28 @@ class CommerceTest extends TestCase
         $this->assertSame('out', $payment->direction);
         $this->assertSame('20.00', $payment->amount);
         $this->assertSame('20.0000', $this->product->fresh()->average_cost);
+    }
+
+    public function test_http_outstanding_metrics_sum_partial_balances_and_exclude_cancelled_entries(): void
+    {
+        $finance = app(\App\Services\FinancialService::class);
+        foreach ([['in', '150.25', '40.10', false], ['out', '200.50', '50.20', false], ['in', '900.00', '0', true], ['out', '800.00', '0', true]] as [$direction, $amount, $paid, $cancelled]) {
+            $entry = $finance->schedule(['request_key' => (string) Str::uuid(), 'direction' => $direction,
+                'description' => 'Métrica de saldo', 'category' => 'Teste', 'amount' => $amount,
+                'due_date' => now()->toDateString(), 'installments' => 1], $this->user->id)->first();
+            if (bccomp($paid, '0', 2) > 0) {
+                $finance->pay($entry->id, $paid, now()->toDateString(), 'pix', $this->user->id, (string) Str::uuid());
+            }
+            if ($cancelled) {
+                $entry->update(['cancelled_at' => now()]);
+            }
+        }
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a')->assertOk()
+            ->assertViewHas('receivable', fn ($value) => bccomp((string) $value, '110.15', 2) === 0);
+        $this->get('/app/a/finance')->assertOk()
+            ->assertViewHas('receivable', fn ($value) => bccomp((string) $value, '110.15', 2) === 0)
+            ->assertViewHas('payable', fn ($value) => bccomp((string) $value, '150.30', 2) === 0);
     }
 
     public function test_installments_preserve_total_original_day_and_partial_payment_history(): void
@@ -729,8 +769,799 @@ class CommerceTest extends TestCase
         }
     }
 
-    /** Two separate MySQL connections reach the initial idempotency read together. */
-    private function race(string $table, \Closure $operation): array
+
+    public function test_cash_summary_separates_payment_methods_and_preserves_counted_opening(): void
+    {
+        $date = now()->subDay()->toDateString();
+        $finance = app(\App\Services\FinancialService::class);
+        $cash = app(\App\Services\CashService::class);
+        $income = $finance->schedule(['request_key' => (string) Str::uuid(), 'direction' => 'in', 'description' => 'Receita QA', 'category' => 'Teste', 'amount' => '150.00', 'due_date' => $date], $this->user->id)->first();
+        $expense = $finance->schedule(['request_key' => (string) Str::uuid(), 'direction' => 'out', 'description' => 'Despesa QA', 'category' => 'Teste', 'amount' => '40.00', 'due_date' => $date], $this->user->id)->first();
+        $finance->pay($income->id, '100.00', $date, 'cash', $this->user->id, (string) Str::uuid());
+        $finance->pay($income->id, '50.00', $date, 'pix', $this->user->id, (string) Str::uuid());
+        $finance->pay($expense->id, '25.00', $date, 'cash', $this->user->id, (string) Str::uuid());
+        $finance->pay($expense->id, '15.00', $date, 'debit', $this->user->id, (string) Str::uuid());
+        $summary = $cash->summary($date, '200.00');
+        $this->assertSame('100.00', $summary['cash_in']);
+        $this->assertSame('25.00', $summary['cash_out']);
+        $this->assertSame('275.00', $summary['expected_balance']);
+        $this->assertSame(['in' => '100.00', 'out' => '25.00', 'net' => '75.00'], $summary['totals_by_method']['cash']);
+        $this->assertSame('50.00', $summary['totals_by_method']['pix']['net']);
+        $this->assertSame('-15.00', $summary['totals_by_method']['debit']['net']);
+        $this->assertSame(4, $summary['payment_count']);
+        $data = ['request_key' => (string) Str::uuid(), 'date' => $date, 'opening_balance' => '200.00', 'counted_balance' => '270.00', 'notes' => 'Diferença identificada na contagem QA'];
+        $closure = $cash->close($data, $this->user->id);
+        $this->assertSame('-5.00', $closure->difference);
+        $this->assertSame($closure->id, $cash->close($data, $this->user->id)->id);
+        $closedSummary = $cash->summary($date, '999.00');
+        $this->assertTrue($closedSummary['is_closed']);
+        $this->assertSame('200.00', $closedSummary['opening_balance']);
+        $this->assertSame('275.00', $closedSummary['expected_balance']);
+        try {
+            $cash->close(array_merge($data, ['counted_balance' => '271.00']), $this->user->id);
+            $this->fail('Uma chave repetida não pode alterar a contagem.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('request_key', $e->errors());
+        }
+        $next = ['request_key' => (string) Str::uuid(), 'date' => now()->toDateString(), 'opening_balance' => '999.00', 'counted_balance' => '270.00'];
+        try {
+            $cash->close($next, $this->user->id);
+            $this->fail('A abertura deve continuar a contagem do dia anterior.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('opening_balance', $e->errors());
+        }
+        $next['opening_balance'] = '270.00';
+        $nextClosure = $cash->close($next, $this->user->id);
+        $this->assertSame('270.00', $nextClosure->expected_balance);
+        try {
+            $cash->close(array_merge($next, ['request_key' => (string) Str::uuid(), 'date' => now()->addDay()->toDateString()]), $this->user->id);
+            $this->fail('Fechamento futuro deve ser rejeitado.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('date', $e->errors());
+        }
+        try {
+            $closure->update(['notes' => 'Alteração indevida']);
+            $this->fail('Fechamento não deve permitir edição via modelo.');
+        } catch (\LogicException) {
+            $this->assertSame('Diferença identificada na contagem QA', $closure->fresh()->notes);
+        }
+        $this->assertSame(2, \App\Models\CashClosure::count());
+    }
+
+    public function test_closed_cash_days_reject_backdating_refunds_and_paid_sales_atomically(): void
+    {
+        $finance = app(\App\Services\FinancialService::class);
+        $cash = app(\App\Services\CashService::class);
+        $older = now()->subDays(2)->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $entry = $finance->schedule(['request_key' => (string) Str::uuid(), 'direction' => 'in', 'description' => 'Receita parcial QA', 'category' => 'Teste', 'amount' => '100.00', 'due_date' => $older], $this->user->id)->first();
+        $paymentKey = (string) Str::uuid();
+        $payment = $finance->pay($entry->id, '50.00', $older, 'cash', $this->user->id, $paymentKey);
+        try {
+            $cash->close(['request_key' => (string) Str::uuid(), 'date' => $yesterday, 'opening_balance' => '0.00', 'counted_balance' => '50.00'], $this->user->id);
+            $this->fail('Não deve pular um dia anterior com movimento ainda aberto.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('date', $e->errors());
+            $this->assertSame(0, \App\Models\CashClosure::count());
+        }
+        $cash->close(['request_key' => (string) Str::uuid(), 'date' => $older, 'opening_balance' => '0.00', 'counted_balance' => '50.00'], $this->user->id);
+        $this->assertSame($payment->id, $finance->pay($entry->id, '50.00', $older, 'cash', $this->user->id, $paymentKey)->id);
+        foreach ([$older, now()->subDays(3)->toDateString()] as $closedDate) {
+            try {
+                $finance->pay($entry->id, '10.00', $closedDate, 'pix', $this->user->id, (string) Str::uuid());
+                $this->fail('Baixa nova retroativa não pode modificar período consolidado.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('paid_on', $e->errors());
+                $this->assertSame(1, \App\Models\Payment::count());
+            }
+        }
+        $cash->close(['request_key' => (string) Str::uuid(), 'date' => $yesterday, 'opening_balance' => '50.00', 'counted_balance' => '50.00'], $this->user->id);
+        $this->move('in', '10', '60');
+        $paidSale = app(Checkout::class)->complete($this->saleData(), $this->user->id);
+        $cash->close(['request_key' => (string) Str::uuid(), 'date' => now()->toDateString(), 'opening_balance' => '50.00', 'counted_balance' => '50.00'], $this->user->id);
+        try {
+            app(Checkout::class)->cancel($paidSale->id, $this->user->id, true);
+            $this->fail('Estorno financeiro deve respeitar o fechamento de hoje.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('paid_on', $e->errors());
+            $this->assertSame('completed', $paidSale->fresh()->status);
+            $this->assertSame('9.000', $this->product->fresh()->quantity);
+        }
+        $before = [Sale::count(), \App\Models\SaleItem::count(), StockMovement::count(), FinancialEntry::count(), \App\Models\Payment::count()];
+        try {
+            app(Checkout::class)->complete($this->saleData('2'), $this->user->id);
+            $this->fail('Venda já recebida deve falhar se a baixa cair em dia fechado.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('paid_on', $e->errors());
+            $this->assertSame($before, [Sale::count(), \App\Models\SaleItem::count(), StockMovement::count(), FinancialEntry::count(), \App\Models\Payment::count()]);
+            $this->assertSame('9.000', $this->product->fresh()->quantity);
+        }
+        $unpaid = $this->saleData('2');
+        $unpaid['paid'] = false;
+        $unpaid['due_date'] = now()->addMonth()->toDateString();
+        $sale = app(Checkout::class)->complete($unpaid, $this->user->id);
+        $this->assertSame('7.000', $this->product->fresh()->quantity);
+        app(Checkout::class)->cancel($sale->id, $this->user->id);
+        $this->assertSame('cancelled', $sale->fresh()->status);
+        $this->assertSame('9.000', $this->product->fresh()->quantity);
+        try {
+            app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+            $this->fail('Não deve misturar dados de demonstração com uma operação existente.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('demo', $e->errors());
+            $this->assertSame(1, Product::count());
+            $this->assertSame(0, \App\Models\DemoRun::count());
+        }
+    }
+
+    public function test_concurrent_payment_and_cash_close_leave_a_consistent_snapshot(): void
+    {
+        $date = now()->subDay()->toDateString();
+        $entry = app(\App\Services\FinancialService::class)->schedule(['request_key' => (string) Str::uuid(), 'direction' => 'in', 'description' => 'Corrida caixa QA', 'category' => 'Teste', 'amount' => '50.00', 'due_date' => $date], $this->user->id)->first();
+        $paymentKey = (string) Str::uuid();
+        $closeKey = (string) Str::uuid();
+        $results = $this->race(null, function () use ($entry, $date, $paymentKey) {
+            try {
+                app(\App\Services\FinancialService::class)->pay($entry->id, '50.00', $date, 'cash', $this->user->id, $paymentKey);
+                return true;
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('paid_on', $e->errors());
+                return false;
+            }
+        }, fn () => app(\App\Services\CashService::class)->close(['request_key' => $closeKey, 'date' => $date, 'opening_balance' => '0.00', 'counted_balance' => '0.00'], $this->user->id)->id);
+        $closure = \App\Models\CashClosure::findOrFail($results[1]);
+        $this->assertSame(1, \App\Models\CashClosure::count());
+        $this->assertSame($results[0] ? 1 : 0, \App\Models\Payment::count());
+        $expected = $results[0] ? '50.00' : '0.00';
+        $this->assertSame($expected, $closure->cash_in);
+        $this->assertSame($expected, $closure->expected_balance);
+        $this->assertSame(\App\Models\Payment::count(), $closure->snapshot['payment_count']);
+    }
+
+
+    public function test_computer_store_demo_is_additive_idempotent_and_reconciles_stock_and_finance(): void
+    {
+        $this->product->update(['name' => 'Produto real preservado pelo QA']);
+        $original = $this->product->fresh()->getAttributes();
+        $service = app(\App\Services\DemoComputerStore::class);
+        $summary = $service->seed($this->user->id);
+        $this->assertSame(now()->toDateString(), $summary['anchor_date']);
+        $this->assertSame($original, $this->product->fresh()->getAttributes());
+        $this->assertSame(1, User::count());
+        $this->assertGreaterThan(0, Product::where('sku', 'like', 'DEMO-%')->count());
+        $this->assertGreaterThan(0, \App\Models\Purchase::count());
+        $this->assertGreaterThan(0, Sale::where('status', 'completed')->count());
+        $this->assertGreaterThan(0, Product::where('type', 'service')->count());
+        $this->assertGreaterThan(0, FinancialEntry::where('due_date', '>', now()->toDateString())->whereNull('cancelled_at')->count());
+        $this->assertGreaterThan(0, \App\Models\CashClosure::count());
+        $this->assertFalse(\App\Models\CashClosure::where('date', now()->toDateString())->exists());
+
+        foreach (Product::orderBy('id')->get() as $product) {
+            $balance = '0.000';
+            foreach (StockMovement::where('product_id', $product->id)->orderBy('id')->get() as $movement) {
+                $balance = in_array($movement->type, ['in', 'return'], true)
+                    ? bcadd($balance, $movement->quantity, 3)
+                    : bcsub($balance, $movement->quantity, 3);
+                $this->assertSame($balance, $movement->balance);
+            }
+            $this->assertSame($balance, $product->quantity);
+            $this->assertGreaterThanOrEqual(0, bccomp($product->quantity, '0', 3));
+            if (str_starts_with($product->sku, 'DEMO-') && bccomp($product->quantity, '0', 3) > 0) {
+                $this->assertSame(1, bccomp($product->average_cost, '0', 4));
+            }
+        }
+        foreach (Sale::with('items', 'entries')->get() as $sale) {
+            $itemsTotal = '0.00';
+            $scheduled = '0.00';
+            foreach ($sale->items as $item) {
+                $itemsTotal = bcadd($itemsTotal, $item->total, 2);
+            }
+            foreach ($sale->entries as $entry) {
+                $scheduled = bcadd($scheduled, $entry->amount, 2);
+            }
+            $this->assertSame($sale->total, $itemsTotal);
+            $this->assertSame($sale->total, $scheduled);
+        }
+        foreach (FinancialEntry::with('payments')->get() as $entry) {
+            $paid = (string) $entry->legacy_paid_amount;
+            foreach ($entry->payments as $payment) {
+                $paid = $payment->kind === 'refund' ? bcsub($paid, $payment->amount, 2) : bcadd($paid, $payment->amount, 2);
+            }
+            $this->assertSame($paid, $entry->paid_amount);
+            $this->assertGreaterThanOrEqual(0, bccomp($entry->amount, $entry->paid_amount, 2));
+        }
+        $lastCounted = null;
+        foreach (\App\Models\CashClosure::orderBy('date')->get() as $closure) {
+            $date = $closure->date->toDateString();
+            $query = \App\Models\Payment::where('paid_on', $date)->where('method', 'cash');
+            $in = bcadd((string) (clone $query)->where('direction', 'in')->sum('amount'), '0', 2);
+            $out = bcadd((string) (clone $query)->where('direction', 'out')->sum('amount'), '0', 2);
+            $this->assertSame($in, $closure->cash_in);
+            $this->assertSame($out, $closure->cash_out);
+            $this->assertSame(bcsub(bcadd($closure->opening_balance, $in, 2), $out, 2), $closure->expected_balance);
+            if ($lastCounted !== null) {
+                $this->assertSame($lastCounted, $closure->opening_balance);
+            }
+            $lastCounted = $closure->counted_balance;
+        }
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a')->assertOk()->assertSee('sales-svg-title', false)
+            ->assertViewHas('salesPeriodTotal', fn ($value) => bccomp((string) $value, '0', 2) > 0);
+        $this->get('/app/a/cashflow')->assertOk()->assertSee('cashflow-svg-title', false)->assertSee('forecast-daily-table', false)
+            ->assertViewHas('rows', fn ($rows) => collect($rows)->contains(fn ($row) => bccomp((string) $row['balance'], '0', 2) < 0));
+        app(TenantConnection::class)->connect($this->a);
+        $tables = ['products', 'product_groups', 'services', 'customers', 'suppliers', 'purchases', 'purchase_items', 'sales', 'sale_items', 'documents', 'stock_movements', 'financial_entries', 'payments', 'cash_closures', 'demo_runs', 'users'];
+        $counts = fn () => array_map(fn ($table) => DB::connection('tenant')->table($table)->count(), $tables);
+        $beforeReplay = $counts();
+        $stockBeforeReplay = Product::orderBy('id')->get(['id', 'quantity', 'average_cost'])->toArray();
+        $replayedSummary = $service->seed($this->user->id);
+        // MySQL JSON objects have no contractual key order. Keep strict values/types.
+        ksort($summary);
+        ksort($replayedSummary);
+        $this->assertSame($summary, $replayedSummary);
+        $this->assertSame($beforeReplay, $counts());
+        $this->assertSame($stockBeforeReplay, Product::orderBy('id')->get(['id', 'quantity', 'average_cost'])->toArray());
+    }
+
+
+    public function test_default_price_alert_preserves_price_when_average_cost_changes(): void
+    {
+        $group = ProductGroup::findOrFail($this->product->product_group_id);
+        $this->assertSame('alert', $group->price_policy);
+        $this->assertNull($this->product->fresh()->price_policy);
+        $this->move('in', '10', '60');
+        $review = $this->product->fresh()->priceReview;
+        $this->assertSame('alert', $review->mode);
+        $this->assertSame('100.00', $review->suggested_price);
+        $this->assertFalse($review->needs_attention);
+
+        $this->move('in', '10', '100');
+        $product = $this->product->fresh();
+        $this->assertSame('80.0000', $product->average_cost);
+        $this->assertSame('100.00', $product->sale_price);
+        $this->assertSame('133.33', $product->priceReview->suggested_price);
+        $this->assertSame('80.0000', $product->priceReview->cost_snapshot);
+        $this->assertSame('40.00', $product->priceReview->margin_snapshot);
+        $this->assertSame('ready', $product->priceReview->state);
+        $this->assertTrue($product->priceReview->needs_attention);
+        $this->assertSame(0, \App\Models\PriceChange::count());
+    }
+
+    public function test_automatic_pricing_uses_weighted_cost_without_zeroing_or_partial_overflow(): void
+    {
+        $group = ProductGroup::findOrFail($this->product->product_group_id);
+        $group->update(['price_policy' => 'automatic']);
+        $this->move('in', '10', '60');
+        $key = (string) Str::uuid();
+        $this->move('in', '20', '90', $key);
+        $this->assertSame('80.0000', $this->product->fresh()->average_cost);
+        $this->assertSame('133.33', $this->product->fresh()->sale_price);
+        $change = \App\Models\PriceChange::firstOrFail();
+        $this->assertSame('100.00', $change->before_price);
+        $this->assertSame('133.33', $change->after_price);
+        $this->assertSame('automatic', $change->mode);
+        $this->move('in', '20', '90', $key);
+        $this->move('out', '2');
+        $this->assertSame(1, \App\Models\PriceChange::count());
+        $this->assertSame('133.33', $this->product->fresh()->sale_price);
+        app(Inventory::class)->move($this->product->id, 'return', '2', '60', 'Devolução QA', $this->user->id, (string) Str::uuid());
+        $this->assertSame('78.6667', $this->product->fresh()->average_cost);
+        $this->assertSame('131.11', $this->product->fresh()->sale_price);
+        $this->assertSame(2, \App\Models\PriceChange::count());
+
+        $free = Product::create(['name' => 'Produto sem custo QA', 'sku' => 'NO-COST-QA', 'product_group_id' => $group->id, 'unit' => 'UN', 'sale_price' => '50.00']);
+        app(Inventory::class)->move($free->id, 'in', '1', '0', 'Entrada gratuita QA', $this->user->id, (string) Str::uuid());
+        $this->assertSame('50.00', $free->fresh()->sale_price);
+        $this->assertSame('no_cost', $free->fresh()->priceReview->state);
+        $this->assertNull($free->fresh()->priceReview->suggested_price);
+        $this->assertFalse($free->fresh()->priceReview->needs_attention);
+
+        $highMargin = ProductGroup::create(['name' => 'Margem limite QA', 'margin' => '99.99', 'price_policy' => 'automatic']);
+        $overflow = Product::create(['name' => 'Limite automático QA', 'sku' => 'OVERFLOW-AUTO-QA', 'product_group_id' => $highMargin->id, 'unit' => 'UN', 'sale_price' => '10.00']);
+        try {
+            app(Inventory::class)->move($overflow->id, 'in', '1', '999999999.9999', 'Limite QA', $this->user->id, (string) Str::uuid());
+            $this->fail('Preço automático fora do schema deve reverter a entrada toda.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('sale_price', $e->errors());
+            $this->assertSame('0.000', $overflow->fresh()->quantity);
+            $this->assertSame('0.0000', $overflow->fresh()->average_cost);
+            $this->assertSame('10.00', $overflow->fresh()->sale_price);
+            $this->assertSame(0, StockMovement::where('product_id', $overflow->id)->count());
+        }
+        $alertOverflow = Product::create(['name' => 'Limite alerta QA', 'sku' => 'OVERFLOW-ALERT-QA', 'product_group_id' => $highMargin->id, 'unit' => 'UN', 'sale_price' => '10.00', 'price_policy' => 'alert']);
+        app(Inventory::class)->move($alertOverflow->id, 'in', '1', '999999999.9999', 'Limite alerta QA', $this->user->id, (string) Str::uuid());
+        $this->assertSame('1.000', $alertOverflow->fresh()->quantity);
+        $this->assertSame('10.00', $alertOverflow->fresh()->sale_price);
+        $this->assertSame('overflow', $alertOverflow->fresh()->priceReview->state);
+        $this->assertNull($alertOverflow->fresh()->priceReview->suggested_price);
+        $this->assertTrue($alertOverflow->fresh()->priceReview->needs_attention);
+    }
+
+    public function test_group_and_product_price_overrides_are_independent_and_keep_sale_history(): void
+    {
+        $pricing = app(\App\Services\PricingService::class);
+        $group = ProductGroup::findOrFail($this->product->product_group_id);
+        $group->update(['price_policy' => 'automatic']);
+        $this->product->update(['margin' => '25.00']);
+        $this->move('in', '10', '60');
+        $this->assertSame('80.00', $this->product->fresh()->sale_price);
+        $data = $this->saleData();
+        $data['items'][0]['unit_price'] = '80.00';
+        $sale = app(Checkout::class)->complete($data, $this->user->id);
+        $group->update(['margin' => '50.00', 'price_policy' => 'alert']);
+        $pricing->syncGroup($group->id, $this->user->id);
+        $this->assertSame('25.00', $this->product->fresh()->priceReview->margin_snapshot);
+        $this->assertSame('alert', $this->product->fresh()->priceReview->mode);
+        $this->assertSame('80.00', $this->product->fresh()->sale_price);
+
+        $this->product->update(['margin' => null, 'price_policy' => 'automatic']);
+        $pricing->syncProduct($this->product->id, $this->user->id, 'qa:product-override');
+        $this->assertSame('120.00', $this->product->fresh()->sale_price);
+        $group->update(['margin' => '40.00', 'price_policy' => 'alert']);
+        $pricing->syncGroup($group->id, $this->user->id);
+        $this->assertSame('automatic', $this->product->fresh()->priceReview->mode);
+        $this->assertSame('40.00', $this->product->fresh()->priceReview->margin_snapshot);
+        $this->assertSame('100.00', $this->product->fresh()->sale_price);
+        $this->product->update(['margin' => '20.00', 'price_policy' => 'alert']);
+        $pricing->syncProduct($this->product->id, $this->user->id, 'qa:alert-override');
+        $this->assertSame('100.00', $this->product->fresh()->sale_price);
+        $this->assertSame('75.00', $this->product->fresh()->priceReview->suggested_price);
+        $this->assertTrue($this->product->fresh()->priceReview->needs_attention);
+        $this->assertSame('80.00', $sale->items()->firstOrFail()->unit_price);
+        $this->assertSame('80.00', $sale->fresh()->total);
+        $this->assertSame(3, \App\Models\PriceChange::count());
+    }
+
+    public function test_manual_price_apply_checks_fresh_suggestion_replay_and_operator_permissions(): void
+    {
+        $this->move('in', '10', '60');
+        $this->move('in', '10', '100');
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $url = '/app/a/prices/'.$this->product->id.'/apply';
+        $this->post($url, ['request_key' => (string) Str::uuid(), 'expected_price' => '100.00'])->assertSessionHasErrors('expected_price');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('100.00', $this->product->fresh()->sale_price);
+        $this->assertSame(0, \App\Models\PriceChange::count());
+        $request = ['request_key' => (string) Str::uuid(), 'expected_price' => '133.33'];
+        $this->post($url, $request)->assertRedirect();
+        $this->post($url, $request)->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('133.33', $this->product->fresh()->sale_price);
+        $this->assertFalse($this->product->fresh()->priceReview->needs_attention);
+        $this->assertSame(1, \App\Models\PriceChange::count());
+        $this->post($url, array_merge($request, ['expected_price' => '100.00']))->assertSessionHasErrors('request_key');
+        app(TenantConnection::class)->connect($this->a);
+        $this->move('in', '1', '110');
+        $this->assertTrue($this->product->fresh()->priceReview->needs_attention);
+        $this->post($url, $request)->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('133.33', $this->product->fresh()->sale_price);
+        $this->assertTrue($this->product->fresh()->priceReview->needs_attention);
+        $this->assertSame(1, \App\Models\PriceChange::count());
+        $this->user->update(['role' => 'operator']);
+        $this->get('/app/a/prices')->assertForbidden();
+        $this->post($url, [])->assertForbidden();
+        $this->post('/app/a/prices/refresh', [])->assertForbidden();
+    }
+
+
+    public function test_nonstock_products_and_services_use_reference_cost_without_inventory_movements(): void
+    {
+        $groupId = $this->product->product_group_id;
+        $goods = Product::create(['name' => 'Produto sem estoque QA', 'sku' => 'NONSTOCK-QA', 'product_group_id' => $groupId, 'type' => 'product', 'controls_stock' => false, 'reference_cost' => '12.3456', 'sale_price' => '30.00', 'unit' => 'UN']);
+        $service = Product::create(['name' => 'Serviço unificado QA', 'sku' => 'UNIFIED-SERVICE-QA', 'product_group_id' => $groupId, 'type' => 'service', 'controls_stock' => false, 'reference_cost' => '20.0000', 'sale_price' => '50.00', 'unit' => 'UN']);
+        $data = $this->saleData();
+        $data['items'] = [
+            ['kind' => 'product', 'id' => $goods->id, 'quantity' => '2', 'unit_price' => '30.00'],
+            ['kind' => 'product', 'id' => $service->id, 'quantity' => '1', 'unit_price' => '50.00'],
+        ];
+        $sale = app(Checkout::class)->complete($data, $this->user->id);
+        $this->assertSame('110.00', $sale->total);
+        $this->assertSame('44.6912', $sale->cost_total);
+        $this->assertSame(0, StockMovement::count());
+        foreach ([$goods, $service] as $item) {
+            $this->assertSame('0.000', $item->fresh()->quantity);
+            try {
+                app(Inventory::class)->move($item->id, 'in', '1', '10', 'Entrada indevida QA', $this->user->id, (string) Str::uuid());
+                $this->fail('Item sem controle não deve aceitar movimentação de estoque.');
+            } catch (ValidationException) {
+                $this->assertSame(0, StockMovement::count());
+            }
+        }
+        $supplier = \App\Models\Supplier::create(['name' => 'Fornecedor sem estoque QA']);
+        $purchaseData = ['request_key' => (string) Str::uuid(), 'supplier_id' => $supplier->id, 'purchased_on' => now()->toDateString(), 'payment_method' => 'invoice', 'paid' => false, 'installments' => 1, 'due_date' => now()->addMonth()->toDateString(), 'items' => [['product_id' => $goods->id, 'quantity' => '10', 'unit_cost' => '15.2500']]];
+        $purchase = app(\App\Services\PurchaseService::class)->receive($purchaseData, $this->user->id);
+        $this->assertSame('152.50', $purchase->total);
+        $this->assertSame('15.2500', $goods->fresh()->reference_cost);
+        $this->assertSame('0.0000', $goods->fresh()->average_cost);
+        $this->assertSame('0.000', $goods->fresh()->quantity);
+        $this->assertSame(0, StockMovement::count());
+        $this->assertSame('out', $purchase->entries()->firstOrFail()->direction);
+        $this->assertSame('152.50', $purchase->entries()->firstOrFail()->amount);
+        $this->assertSame('12.3456', $sale->items()->where('product_id', $goods->id)->firstOrFail()->unit_cost);
+        $invalid = $purchaseData;
+        $invalid['request_key'] = (string) Str::uuid();
+        $invalid['items'][] = ['product_id' => $service->id, 'quantity' => '1', 'unit_cost' => '20'];
+        try {
+            app(\App\Services\PurchaseService::class)->receive($invalid, $this->user->id);
+            $this->fail('Serviço não deve entrar por recebimento de produtos.');
+        } catch (ValidationException) {
+            $this->assertSame(1, \App\Models\Purchase::count());
+            $this->assertSame('15.2500', $goods->fresh()->reference_cost);
+        }
+        app(Checkout::class)->cancel($sale->id, $this->user->id, true);
+        $this->assertSame(0, StockMovement::count());
+        $this->assertSame('0.000', $goods->fresh()->quantity);
+        $this->assertSame('0.000', $service->fresh()->quantity);
+    }
+
+    public function test_stock_control_changes_obey_current_balance_and_original_sale_participation(): void
+    {
+        $this->move('in', '10', '60');
+        $sale = app(Checkout::class)->complete($this->saleData('2'), $this->user->id);
+        foreach ([['controls_stock' => false], ['controls_stock' => false, 'quantity' => '0'], ['type' => 'service', 'controls_stock' => false]] as $change) {
+            try {
+                $this->product->fresh()->update($change);
+                $this->fail('Saldo atual impede desligar o estoque ou converter em serviço.');
+            } catch (ValidationException) {
+                $this->assertTrue($this->product->fresh()->controlsStock());
+                $this->assertSame('8.000', $this->product->fresh()->quantity);
+            }
+        }
+        $this->move('out', '8');
+        $this->product->fresh()->update(['controls_stock' => false, 'reference_cost' => '60.0000']);
+        $this->assertSame('60.0000', $this->product->fresh()->average_cost);
+        try {
+            app(Checkout::class)->cancel($sale->id, $this->user->id, true);
+            $this->fail('Venda que baixou estoque exige reativá-lo antes do estorno.');
+        } catch (ValidationException) {
+            $this->assertSame('completed', $sale->fresh()->status);
+            $this->assertSame('0.000', $this->product->fresh()->quantity);
+            $this->assertSame(1, \App\Models\Payment::count());
+        }
+        $this->product->fresh()->update(['controls_stock' => true]);
+        app(Checkout::class)->cancel($sale->id, $this->user->id, true);
+        $this->assertSame('2.000', $this->product->fresh()->quantity);
+
+        $nonstock = Product::create(['name' => 'Controle ativado depois QA', 'sku' => 'LATER-STOCK-QA', 'product_group_id' => $this->product->product_group_id, 'type' => 'product', 'controls_stock' => false, 'reference_cost' => '10.0000', 'sale_price' => '20.00', 'unit' => 'UN']);
+        $data = $this->saleData();
+        $data['items'] = [['kind' => 'product', 'id' => $nonstock->id, 'quantity' => '3', 'unit_price' => '20.00']];
+        $nonstockSale = app(Checkout::class)->complete($data, $this->user->id);
+        $nonstock->fresh()->update(['controls_stock' => true]);
+        app(Checkout::class)->cancel($nonstockSale->id, $this->user->id, true);
+        $this->assertSame('0.000', $nonstock->fresh()->quantity);
+        $this->assertSame(0, StockMovement::where('product_id', $nonstock->id)->count());
+    }
+
+    public function test_company_logo_is_sanitized_private_and_scoped_to_its_tenant(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $this->get('/app/a/business/logo')->assertRedirect('/app/a/login');
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $svg = \Illuminate\Http\UploadedFile::fake()->createWithContent('unsafe.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+        $this->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'logo' => $svg])->assertSessionHasErrors('logo');
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles());
+        $image = \Illuminate\Http\UploadedFile::fake()->image('client-logo.png', 96, 96);
+        file_put_contents($image->getRealPath(), '<?php QA-PHP-MARKER', FILE_APPEND);
+        $this->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'logo' => $image, 'logo_path' => 'tenants/999999/branding/unsafe.png'])->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $profile = \App\Models\BusinessProfile::findOrFail(1);
+        $path = $profile->logo_path;
+        $this->assertStringStartsWith('tenants/'.$this->a->id.'/branding/', $path);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertExists($path);
+        $stored = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+        $this->assertStringNotContainsString('QA-PHP-MARKER', $stored);
+        $this->assertSame(IMAGETYPE_PNG, getimagesizefromstring($stored)[2]);
+        $response = $this->get('/app/a/business/logo')->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringStartsWith('image/png', $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->get('/app/a/reports')->assertOk()->assertSee('/app/a/business/logo', false)->assertSee('Cliente A QA');
+        $brandedCsv = $this->get('/app/a/reports/export/stock')->assertOk()->streamedContent();
+        $this->assertStringContainsString('Cliente A QA', $brandedCsv);
+        $this->get('/app/b/business/logo')->assertRedirect('/app/b/login');
+
+        app(TenantConnection::class)->connect($this->b);
+        $otherUser = User::forceCreate(['id' => $this->user->id, 'name' => 'Administrador B', 'email' => 'logo-b@example.test', 'password' => 'other-logo-admin-password', 'role' => 'admin']);
+        \App\Models\BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'Cliente B QA', 'logo_path' => $path]);
+        $otherResponse = $this->withSession(['tenant_id' => $this->b->id, 'user_id' => $otherUser->id])->get('/app/b/business/logo');
+        $this->assertContains($otherResponse->getStatusCode(), [200, 403, 404]);
+        if ($otherResponse->getStatusCode() === 200) {
+            $this->assertStringStartsWith('image/svg+xml', $otherResponse->headers->get('Content-Type'));
+        }
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'remove_logo' => '1'])->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertNull(\App\Models\BusinessProfile::findOrFail(1)->logo_path);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($path);
+    }
+
+
+    public function test_store_labels_normalize_new_documents_only_for_proven_cohort_and_exact_text(): void
+    {
+        app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+        $cohort = Product::where('sku', 'DEMO-MOUSE')->firstOrFail();
+        $oldDescription = $cohort->name;
+        $this->product->fresh()->update(['name' => $oldDescription, 'controls_stock' => false, 'reference_cost' => '10.0000']);
+        $items = [
+            ['kind' => 'product', 'id' => $cohort->id, 'quantity' => '1', 'unit_price' => '49.00'],
+            ['kind' => 'product', 'id' => $cohort->id, 'quantity' => '1', 'unit_price' => '49.00'],
+            ['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '100.00'],
+        ];
+        $data = $this->saleData();
+        $data['items'] = $items;
+        $data['paid'] = false;
+        $data['due_date'] = now()->addMonth()->toDateString();
+        $sale = app(Checkout::class)->complete($data, $this->user->id);
+        $cohortLines = $sale->items()->where('product_id', $cohort->id)->orderBy('id')->get();
+        $cohortLines[1]->update(['description' => 'Descrição personalizada preservada']);
+        $outsideLine = $sale->items()->where('product_id', $this->product->id)->firstOrFail();
+        $document = app(Documents::class)->create(['type' => 'quote', 'request_key' => (string) Str::uuid(), 'items' => $items, 'notes' => 'Nota personalizada preservada'], $this->user->id);
+        $documentItems = $document->items;
+        $documentItems[0]['custom_reference'] = 'Manter metadado do cliente';
+        $documentItems[1]['description'] = 'Descrição personalizada preservada';
+        $document->update(['items' => $documentItems]);
+        $documentBefore = $document->fresh()->items;
+        $factsBefore = $this->storeFinancialFacts();
+
+        $result = app(\App\Services\ComputerStoreLabels::class)->normalize();
+
+        $this->assertTrue($result['eligible']);
+        $cleanName = $cohort->fresh()->name;
+        $this->assertStringNotContainsString('demo', strtolower($cleanName));
+        $this->assertStringNotContainsString('demo', strtolower($cohort->fresh()->sku));
+        $this->assertSame($cleanName, $cohortLines[0]->fresh()->description);
+        $this->assertSame('Descrição personalizada preservada', $cohortLines[1]->fresh()->description);
+        $this->assertSame($oldDescription, $outsideLine->fresh()->description);
+        $this->assertSame($oldDescription, $this->product->fresh()->name);
+        $documentExpected = $documentBefore;
+        $documentExpected[0]['description'] = $cleanName;
+        $this->assertSame($this->canonicalJson($documentExpected), $this->canonicalJson($document->fresh()->items));
+        $this->assertSame('Nota personalizada preservada', $document->fresh()->notes);
+        $this->assertSame($factsBefore, $this->storeFinancialFacts());
+    }
+
+    public function test_store_labels_replay_preserves_cash_financial_values_and_unrelated_user_data(): void
+    {
+        app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+        $this->user->update(['name' => 'Usuário Demo da Empresa']);
+        $this->product->fresh()->update(['name' => 'Notebook Demonstração Design — registro externo']);
+        $userBefore = $this->user->fresh()->getAttributes();
+        $outsideBefore = $this->product->fresh()->getAttributes();
+        $factsBefore = $this->storeFinancialFacts();
+        $normalizer = app(\App\Services\ComputerStoreLabels::class);
+        $first = $normalizer->normalize();
+        $this->assertGreaterThan(0, $first['updated']);
+        $this->assertSame($factsBefore, $this->storeFinancialFacts());
+        $labelState = fn () => [
+            'products' => Product::orderBy('id')->get(['id', 'name', 'sku'])->toArray(),
+            'groups' => ProductGroup::orderBy('id')->get(['id', 'name'])->toArray(),
+            'customers' => \App\Models\Customer::orderBy('id')->get(['id', 'name', 'email', 'address'])->toArray(),
+            'suppliers' => \App\Models\Supplier::orderBy('id')->get(['id', 'name', 'email', 'address'])->toArray(),
+            'sale_items' => \App\Models\SaleItem::orderBy('id')->get(['id', 'description'])->toArray(),
+            'documents' => \App\Models\Document::orderBy('id')->get(['id', 'items', 'notes'])->toArray(),
+        ];
+        $afterFirst = $labelState();
+        $second = $normalizer->normalize();
+        $this->assertSame(0, $second['updated']);
+        $this->assertSame($afterFirst, $labelState());
+        $this->assertSame($factsBefore, $this->storeFinancialFacts());
+        $this->assertSame($userBefore, $this->user->fresh()->getAttributes());
+        $this->assertSame($outsideBefore, $this->product->fresh()->getAttributes());
+    }
+
+    private function storeFinancialFacts(): array
+    {
+        $columns = [
+            'sales' => ['id', 'request_key', 'customer_id', 'user_id', 'status', 'payment_method', 'paid', 'due_date', 'total', 'cost_total', 'created_at'],
+            'sale_items' => ['id', 'sale_id', 'product_id', 'service_id', 'quantity', 'unit_price', 'unit_cost', 'total'],
+            'purchases' => ['id', 'request_key', 'supplier_id', 'user_id', 'purchased_on', 'total', 'payment_method', 'paid'],
+            'purchase_items' => ['id', 'purchase_id', 'product_id', 'quantity', 'unit_cost', 'total'],
+            'financial_entries' => ['id', 'request_key', 'user_id', 'sale_id', 'purchase_id', 'direction', 'amount', 'due_date', 'paid_amount', 'legacy_paid_amount', 'paid_at', 'cancelled_at'],
+            'payments' => ['*'],
+            'cash_closures' => ['*'],
+            'stock_movements' => ['*'],
+        ];
+        $snapshot = [];
+        foreach ($columns as $table => $fields) {
+            $snapshot[$table] = DB::connection('tenant')->table($table)->orderBy('id')->get($fields)->map(fn ($row) => (array) $row)->all();
+        }
+        return $snapshot;
+    }
+
+    private function canonicalJson(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => $entry) {
+            $value[$key] = $this->canonicalJson($entry);
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+        return $value;
+    }
+
+
+    public function test_annual_history_preserves_existing_cohort_and_bridges_stock_cash_and_year_coverage(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));
+        try {
+            app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+            $current = Product::where('sku', 'DEMO-MOUSE')->firstOrFail();
+            $extra = $this->saleData();
+            $extra['items'] = [['kind' => 'product', 'id' => $current->id, 'quantity' => '1', 'unit_price' => '49.00']];
+            $extra['paid'] = false;
+            $extra['due_date'] = '2026-12-10';
+            app(Checkout::class)->complete($extra, $this->user->id);
+            $facts = $this->storeFinancialFacts();
+            $oldIds = Product::orderBy('id')->pluck('id')->all();
+            $stockFields = ['id', 'type', 'controls_stock', 'quantity', 'average_cost', 'reference_cost', 'sale_price', 'active'];
+            $stockBefore = Product::whereIn('id', $oldIds)->orderBy('id')->get($stockFields)->toArray();
+            $firstClosure = \App\Models\CashClosure::orderBy('date')->firstOrFail();
+            $firstDate = $firstClosure->date->toDateString();
+            $opening = $firstClosure->opening_balance;
+            $service = app(\App\Services\AnnualComputerStore::class);
+            $plan = $service->plan(2026);
+            $this->assertSame('2026-01-01', $plan['import_start']);
+            $this->assertLessThan($firstDate, $plan['import_end']);
+            $this->assertSame(0, $plan['overlapping_payments']);
+            $summary = $service->seed($this->user->id, 2026);
+            $this->assertSame($facts, $this->existingStoreFinancialFacts($facts));
+            $this->assertSame($stockBefore, Product::whereIn('id', $oldIds)->orderBy('id')->get($stockFields)->toArray());
+            $archive = Product::where('sku', 'like', 'VXH-2026-%')->get();
+            $this->assertNotEmpty($archive);
+            foreach ($archive as $item) {
+                $this->assertFalse($item->active);
+                $this->assertSame('0.000', $item->quantity);
+                $this->assertNotContains($item->id, $oldIds);
+            }
+            $months = Sale::where('status', 'completed')->whereYear('created_at', 2026)->selectRaw('MONTH(created_at) AS sale_month')->distinct()->orderBy('sale_month')->pluck('sale_month')->map(fn ($month) => (int) $month)->all();
+            $this->assertSame(range(1, 11), $months);
+            $this->assertSame(0, Sale::where('status', 'completed')->whereDate('created_at', '>', '2026-11-12')->count());
+            $this->assertSame(0, \App\Models\Payment::where('paid_on', '>', '2026-11-12')->count());
+            $this->assertSame(0, \App\Models\CashClosure::where('date', '>', '2026-11-12')->count());
+            $this->assertGreaterThan(0, FinancialEntry::whereYear('due_date', 2026)->whereMonth('due_date', 12)->whereNull('cancelled_at')->whereColumn('paid_amount', '<', 'amount')->count());
+            $oldPaymentIds = array_column($facts['payments'], 'id');
+            $newPayments = \App\Models\Payment::whereNotIn('id', $oldPaymentIds);
+            $this->assertGreaterThan(0, (clone $newPayments)->count());
+            $this->assertSame(0, (clone $newPayments)->where(fn ($query) => $query->where('paid_on', '<', $plan['import_start'])->orWhere('paid_on', '>', $plan['import_end']))->count());
+            $bridge = \App\Models\CashClosure::where('date', '<', $firstDate)->orderByDesc('date')->firstOrFail();
+            $this->assertSame($opening, $bridge->counted_balance);
+            foreach ($archive->where('type', 'product') as $item) {
+                $movements = StockMovement::where('product_id', $item->id)->get();
+                $this->assertGreaterThan(0, $movements->count());
+                $incoming = $movements->whereIn('type', ['in', 'return'])->reduce(fn ($sum, $move) => bcadd($sum, $move->quantity, 3), '0.000');
+                $outgoing = $movements->whereIn('type', ['out', 'sale'])->reduce(fn ($sum, $move) => bcadd($sum, $move->quantity, 3), '0.000');
+                $this->assertSame($incoming, $outgoing);
+            }
+            $differences = [];
+            $previousCounted = null;
+            foreach (\App\Models\CashClosure::orderBy('date')->get() as $closure) {
+                $date = $closure->date->toDateString();
+                $payments = \App\Models\Payment::where('paid_on', $date)->get();
+                $cash = $payments->where('method', 'cash');
+                $incoming = $cash->where('direction', 'in')->reduce(fn ($sum, $payment) => bcadd($sum, $payment->amount, 2), '0.00');
+                $outgoing = $cash->where('direction', 'out')->reduce(fn ($sum, $payment) => bcadd($sum, $payment->amount, 2), '0.00');
+                if ($closure->cash_in !== $incoming || $closure->cash_out !== $outgoing ||
+                    $closure->expected_balance !== bcsub(bcadd($closure->opening_balance, $incoming, 2), $outgoing, 2) ||
+                    ($closure->snapshot['payment_count'] ?? null) !== $payments->count() ||
+                    ($previousCounted !== null && $closure->opening_balance !== $previousCounted)) {
+                    $differences[] = 'cash:'.$date;
+                }
+                $previousCounted = $closure->counted_balance;
+            }
+            foreach (Sale::with('items', 'entries')->get() as $sale) {
+                $items = $sale->items->reduce(fn ($sum, $item) => bcadd($sum, $item->total, 2), '0.00');
+                $scheduled = $sale->entries->reduce(fn ($sum, $entry) => bcadd($sum, $entry->amount, 2), '0.00');
+                if ($items !== $sale->total || $scheduled !== $sale->total) {
+                    $differences[] = 'sale:'.$sale->id;
+                }
+            }
+            foreach (FinancialEntry::with('payments')->get() as $entry) {
+                $paid = $entry->payments->reduce(fn ($sum, $payment) => $payment->kind === 'refund'
+                    ? bcsub($sum, $payment->amount, 2) : bcadd($sum, $payment->amount, 2), (string) $entry->legacy_paid_amount);
+                if ($paid !== $entry->paid_amount || bccomp($paid, $entry->amount, 2) > 0) {
+                    $differences[] = 'entry:'.$entry->id;
+                }
+            }
+            $this->assertSame([], $differences, 'Daily cash continuity and sales/payment reconciliation');
+            $tables = ['products', 'sales', 'sale_items', 'purchases', 'purchase_items', 'financial_entries', 'payments', 'stock_movements', 'cash_closures', 'demo_runs'];
+            $counts = fn () => array_map(fn ($table) => DB::connection('tenant')->table($table)->count(), $tables);
+            $beforeReplay = $counts();
+            $this->assertSame($this->canonicalJson($summary), $this->canonicalJson($service->seed($this->user->id, 2026)));
+            $this->assertSame($beforeReplay, $counts());
+            $this->assertSame($facts, $this->existingStoreFinancialFacts($facts));
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_annual_history_complete_year_has_balanced_months_and_preserves_existing_data(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));
+        try {
+            app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+            $before = $this->storeFinancialFacts();
+            $service = app(\App\Services\AnnualComputerStore::class);
+            $plan = $service->plan(2025);
+            $this->assertSame('2025-12-31', $plan['import_end']);
+            $this->assertTrue($plan['balanced_monthly_volume']);
+            $this->assertSame(528, $plan['estimated_sales']);
+            $summary = $service->seed($this->user->id, 2025);
+            $this->assertSame($before, $this->existingStoreFinancialFacts($before));
+            $months = Sale::whereYear('created_at', 2025)->where('status', 'completed')
+                ->selectRaw('MONTH(created_at) as month, COUNT(*) as quantity, SUM(total) as revenue')
+                ->groupByRaw('MONTH(created_at)')->orderBy('month')->get();
+            $this->assertSame(range(1, 12), $months->pluck('month')->map(fn ($value) => (int) $value)->all());
+            $this->assertSame(array_fill(0, 12, 44), $months->pluck('quantity')->map(fn ($value) => (int) $value)->all());
+            $revenues = $months->pluck('revenue')->map(fn ($value) => (float) $value)->all();
+            $this->assertLessThan(1.15, max($revenues) / min($revenues));
+            $this->assertSame(365, \App\Models\CashClosure::whereYear('date', 2025)->count());
+            $bridge = \App\Models\CashClosure::whereDate('date', '2025-12-31')->firstOrFail();
+            $originalOpening = $before['cash_closures'][0]['opening_balance'];
+            $this->assertSame($originalOpening, $bridge->counted_balance);
+            $this->assertSame(0, \App\Models\Payment::where('paid_on', '>', '2026-11-12')->count());
+            $counts = [Sale::count(), \App\Models\Payment::count(), \App\Models\CashClosure::count()];
+            $this->assertSame($this->canonicalJson($summary), $this->canonicalJson($service->seed($this->user->id, 2025)));
+            $this->assertSame($counts, [Sale::count(), \App\Models\Payment::count(), \App\Models\CashClosure::count()]);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_annual_history_requires_prepared_base_and_refuses_overlapping_financial_records(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));
+        try {
+            $service = app(\App\Services\AnnualComputerStore::class);
+            try {
+                $service->seed($this->user->id, 2026);
+                $this->fail('Importação anual exige base de origem comprovada.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('history', $e->errors());
+                $this->assertSame(1, Product::count());
+                $this->assertSame(0, Sale::count());
+            }
+            app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+            $entry = app(\App\Services\FinancialService::class)->schedule(['request_key' => (string) Str::uuid(), 'direction' => 'in', 'description' => 'Recebimento histórico já existente', 'category' => 'Importação anterior', 'amount' => '10.00', 'due_date' => '2026-04-01'], $this->user->id)->first();
+            try {
+                app(\App\Services\FinancialService::class)->pay($entry->id, '10.00', '2026-04-01', 'pix', $this->user->id, (string) Str::uuid());
+                $this->fail('A API operacional não pode abrir uma exceção para retroagir a baixa.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('paid_on', $e->errors());
+            }
+            // Fixture representing an already-restored legacy record, not a bypass in operational APIs.
+            \App\Models\Payment::create(['request_key' => (string) Str::uuid(), 'entry_id' => $entry->id, 'user_id' => $this->user->id, 'amount' => '10.00', 'paid_on' => '2026-04-01', 'method' => 'pix', 'direction' => 'in', 'kind' => 'payment']);
+            $entry->update(['paid_amount' => '10.00', 'paid_at' => '2026-04-01 12:00:00']);
+            $facts = $this->storeFinancialFacts();
+            $products = Product::orderBy('id')->get(['id', 'sku', 'quantity', 'average_cost'])->toArray();
+            $this->assertSame(1, $service->plan(2026)['overlapping_payments']);
+            try {
+                $service->seed($this->user->id, 2026);
+                $this->fail('Importação deve recusar sobreposição financeira sem alterar dados.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('history', $e->errors());
+                $this->assertSame($facts, $this->storeFinancialFacts());
+                $this->assertSame($products, Product::orderBy('id')->get(['id', 'sku', 'quantity', 'average_cost'])->toArray());
+                $this->assertSame(0, \App\Models\DemoRun::where('code', 'annual-computer-history-v1-2026')->count());
+            }
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    private function existingStoreFinancialFacts(array $facts): array
+    {
+        $preserved = [];
+        foreach ($facts as $table => $rows) {
+            $preserved[$table] = $rows === [] ? [] : DB::connection('tenant')->table($table)->whereIn('id', array_column($rows, 'id'))->orderBy('id')->get(array_keys($rows[0]))->map(fn ($row) => (array) $row)->all();
+        }
+        return $preserved;
+    }
+
+    /** Fork separate connections; align initial reads, or start distinct operations together. */
+    private function race(?string $table, \Closure $operation, ?\Closure $otherOperation = null): array
     {
         if (! function_exists('pcntl_fork')) {
             $this->markTestSkipped('Concorrência exige pcntl; demais casos não são substitutos para esse teste.');
@@ -747,12 +1578,7 @@ class CommerceTest extends TestCase
                 if ($pid === 0) {
                     DB::purge('central');
                     DB::purge('tenant');
-                    $reachedBarrier = false;
-                    DB::listen(function ($query) use ($table, $directory, $worker, &$reachedBarrier) {
-                        if ($reachedBarrier || ! str_starts_with(strtolower(ltrim($query->sql)), 'select') || ! str_contains($query->sql, '`'.$table.'`') || ! str_contains($query->sql, 'request_key')) {
-                            return;
-                        }
-                        $reachedBarrier = true;
+                    $waitForPeer = function () use ($directory, $worker) {
                         file_put_contents($directory.'/ready-'.$worker, 'ready');
                         $deadline = microtime(true) + 15;
                         while (count(glob($directory.'/ready-*')) < 2) {
@@ -761,9 +1587,22 @@ class CommerceTest extends TestCase
                             }
                             usleep(10000);
                         }
-                    });
+                    };
                     try {
-                        $result = ['id' => $operation()];
+                        if ($table === null) {
+                            $waitForPeer();
+                        } else {
+                            $reachedBarrier = false;
+                            DB::listen(function ($query) use ($table, $waitForPeer, &$reachedBarrier) {
+                                if ($reachedBarrier || ! str_starts_with(strtolower(ltrim($query->sql)), 'select') || ! str_contains($query->sql, '`'.$table.'`') || ! str_contains($query->sql, 'request_key')) {
+                                    return;
+                                }
+                                $reachedBarrier = true;
+                                $waitForPeer();
+                            });
+                        }
+                        $workerOperation = $worker === 1 && $otherOperation !== null ? $otherOperation : $operation;
+                        $result = ['id' => $workerOperation()];
                     } catch (\Throwable $e) {
                         // Store type only: a failed SQL exception may contain private data.
                         $result = ['error' => $e::class];

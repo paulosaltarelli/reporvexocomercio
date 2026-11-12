@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'image' => 'Envie uma imagem PNG, JPEG ou WebP válida.',
+    'mimes' => 'A logo deve ser PNG, JPEG ou WebP.',
+    'dimensions' => 'A logo deve ter entre 48 e 4096 pixels em cada dimensão.',
     'required' => 'Informe :attribute.',
     'required_if' => 'Informe :attribute para esta opção.',
     'string' => 'O campo :attribute deve ser um texto.',
@@ -28,11 +31,12 @@ return [
     ],
     'max' => [
         'numeric' => 'O campo :attribute deve ser no máximo :max.',
+        'file' => 'O arquivo de :attribute deve ter no máximo :max KB.',
         'string' => 'O campo :attribute aceita no máximo :max caracteres.',
         'array' => 'Inclua no máximo :max itens em :attribute.',
     ],
     'attributes' => [
-        'current_password' => 'senha atual', 'from' => 'data inicial', 'to' => 'data final', 'purchased_on' => 'data da compra', 'paid_on' => 'data financeira', 'installments' => 'número de parcelas', 'reference' => 'documento da compra', 'name' => 'nome', 'email' => 'e-mail', 'password' => 'senha',
+        'logo'=>'logo da empresa','remove_logo'=>'remoção da logo','type'=>'tipo do item','controls_stock'=>'controle de estoque','reference_cost'=>'custo de referência','price_policy'=>'regra de preço','expected_price'=>'preço revisado','current_password' => 'senha atual', 'from' => 'data inicial', 'to' => 'data final', 'purchased_on' => 'data da compra', 'paid_on' => 'data financeira', 'installments' => 'número de parcelas', 'reference' => 'documento da compra', 'name' => 'nome', 'email' => 'e-mail', 'password' => 'senha',
         'role' => 'perfil', 'active' => 'situação', 'sku' => 'SKU',
         'barcode' => 'código de barras', 'product_group_id' => 'grupo do produto',
         'unit' => 'unidade', 'margin' => 'margem', 'sale_price' => 'preço de venda',

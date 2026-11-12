@@ -73,6 +73,6 @@ class AccountController extends Controller
             $u->update($changes);
         }, 3);
 
-        return back()->with('success','Usuário atualizado. Alterações de acesso encerram suas sessões anteriores.');
+        return back()->with('success', 'Usuário atualizado. Alterações de acesso encerram suas sessões anteriores.');
     }
 }

@@ -1,5 +1,7 @@
 # Testes
 
+Última execução consolidada em 12/11/2026: **54 testes passaram, 906 verificações, nenhum teste pulado ou falha, saída 0, duração de 67,42 segundos**.
+
 `php artisan test` executa cálculos decimais e, quando configurado, integração MySQL.
 A suíte de integração recria EXCLUSIVAMENTE `vendra_test_central`, `vendra_t_test_a`, `vendra_t_test_b`.
 Crie um usuário `vendra_test` com privilégios apenas nesses três bancos.
@@ -38,7 +40,7 @@ Compras, parcelas, pagamentos parciais, histórico de reembolso, primeira senha 
 
 ## Fixture MySQL e desempenho
 
-A suíte faz `migrate:fresh` uma vez por processo nos três bancos dedicados. Entre casos, remove os dados com `DELETE`, preservando a tabela de migrações e os contadores de IDs. Antes de limpar, confere o nome configurado, `SELECT DATABASE()` e usuário `vendra_test` contra a lista fixa de três bases. `FOREIGN_KEY_CHECKS` é desativado somente nessa conexão de teste e restaurado em `finally`.
+A suíte faz `migrate:fresh` uma vez por processo nos três bancos dedicados. Entre casos, remove os dados com `DELETE`, preservando a tabela de migrações, o singleton de infraestrutura `cash_closure_locks` e os contadores de IDs. Antes de limpar, confere o nome configurado, `SELECT DATABASE()` e usuário `vendra_test` contra a lista fixa de três bases. `FOREIGN_KEY_CHECKS` é desativado somente nessa conexão de teste e restaurado em `finally`.
 
 Não existe transação envolvendo o teste todo: os workers concorrentes precisam enxergar commits reais. Cada caso recria empresas, usuários e catálogo; IDs são obtidos dinamicamente. O caso de colisão de usuário atribui explicitamente o mesmo ID em bancos diferentes. As conexões de teste central/tenant são fechadas no encerramento do caso.
 
@@ -51,3 +53,82 @@ Execute apenas um runner por vez. `--parallel` e múltiplas suítes simultâneas
 ## Verificação complementar de operador
 
 Depois da execução consolidada, foram acrescentados ao caso de permissões existente asserts de ausência de colunas/valores de custo e margem no HTML de operador. Após envio das views finais, o filtro `test_operator_cannot_manage_finance_cancel_or_receive_sales` passou: **1 teste, 18 verificações, nenhum skip/falha, saída 0, duração de 20,51 segundos**. A evidência é complementar; não foi somada artificialmente às 271 verificações da suíte anterior.
+
+## Caixa diário e loja de demonstração — validado
+
+Quatro casos novos validaram: (1) resumo em dinheiro separado dos demais meios, continuidade pelo valor contado, imutabilidade, replay e futuro; (2) cronologia, baixa retroativa, estorno e venda recebida em dia fechado com rollback; (3) corrida entre pagamento e fechamento com snapshot coerente; (4) carga demonstrativa aditiva/idempotente com reconciliação entre movimentos, saldos, títulos, baixas e fechamentos. A carga foi exercitada somente no tenant de teste sem operações prévias.
+
+O runner preserva `cash_closure_locks`, singleton técnico criado pela migração. A limpeza dos dados de cada caso continua removendo `cash_days`, `cash_closures` e `demo_runs`, sem transação global. Asserções de permissões/renderização cobrem caixa, previsão e contatos da landing.
+
+Resultado final consolidado de 12/11/2026: **42 testes passaram, 660 verificações, nenhum skip ou falha, saída 0, duração de 30,32 segundos**. Os três cenários concorrentes com `pcntl` executaram.
+
+Diagnósticos resolvidos antes desse resultado:
+
+- O primeiro teste de replay do demo comparava ordem de chaves de um objeto JSON. MySQL pode reorganizar essas chaves; o teste agora normaliza somente a ordenação e continua comparando valores e tipos estritamente. O filtro do demo passou com 319 verificações.
+- Uma manutenção operacional concorrente (`artisan down`) causou HTTP 503 transitório em três casos. O responsável confirmou a causa; sem alterar regra de domínio, os três filtros passaram (45 verificações) após a manutenção. A suíte completa acima foi executada em seguida com estabilidade.
+
+Não execute manutenção global, backup que ative `artisan down`, deploy ou nova suíte paralela durante o runner: os bancos de teste são isolados, mas o marcador de manutenção do checkout é compartilhado.
+
+## Precificação, catálogo unificado e logo — revisão especializada
+
+Modos automático/alerta, tipos e controle de estoque e logo privada foram acrescentados após a evidência de 42 testes. A validação desses recursos está registrada abaixo, separada do baseline anterior.
+
+Foram acrescentados sete casos (49 testes totais na suíte):
+
+- Alerta padrão preserva o preço quando o custo médio muda.
+- Modo automático segue custo ponderado e margem, não zera preço sem custo e desfaz entrada que causaria overflow.
+- Margem e política podem herdar/ser sobrescritas independentemente sem reescrever vendas históricas.
+- Aplicação manual rejeita sugestão desatualizada, mantém idempotência e bloqueia operador.
+- Produto sem controle e serviço usam custo de referência; não geram movimento e compra aceita apenas produto.
+- Mudança de tipo/controle respeita o saldo persistido, e o estorno considera a participação histórica no estoque.
+- Logo rejeita SVG, reencoda PNG, ignora caminho fornecido pelo navegador, mantém armazenamento privado, não serve caminho de outra empresa e aparece no relatório da empresa correta. O teste usa `Storage::fake('local')`, sem arquivos de clientes reais.
+
+O parser auxiliar dos testes CSV localiza o cabeçalho da tabela após as colunas de identificação da empresa. Isso preserva a verificação de período/IDs e acrescenta a presença da identidade da empresa, em vez de assumir um índice fixo anterior ao branding.
+
+A landing também verifica os contatos comerciais finais informados: WhatsApp `5535999193304`, número visível `99919-3304` e e-mail `ivancasvilela@gmail.com`. Isso não altera usuários, credenciais ou remetentes de autenticação.
+
+## Resultado da ampliação para 49 casos
+
+Execução consolidada em 12/11/2026: **48 testes passaram e 1 falhou, 813 verificações, nenhum teste pulado, duração de 36,44 segundos**. Precificação, tipos/estoque, contatos e gráficos passaram. O teste da logo identificou uma falha real de privacidade de cabeçalho: `BinaryFileResponse` sobrescrevia o `private` fornecido ao construtor com `public`. O backend foi corrigido aplicando `setPrivate()` e `no-store` à resposta já construída, tanto para PNG quanto para a marca padrão.
+
+Após essa correção, o teste avançou e revelou uma chamada inadequada do próprio teste: `status()` não existe na resposta binária Symfony; foi substituída por `getStatusCode()`, sem remover ou flexibilizar assertions.
+
+Filtro final da logo: **1 teste passou, 28 verificações, nenhum skip/falha, saída 0, em 16,48 segundos**. Confirmou PNG normalizado sem payload anexado, autenticação, cache privado/no-store/nosniff, identificação HTML/CSV, isolamento entre tenants com mesmo ID de usuário e caminho estrangeiro, e remoção segura.
+
+Após o filtro da logo, foi executada uma única suíte completa na fonte corrigida: **49 testes passaram, 826 verificações, nenhum skip ou falha, saída 0, duração de 30,10 segundos**. Esse é o resultado final consolidado, sem somar artificialmente verificações de execuções anteriores. Os três cenários concorrentes com `pcntl`, a carga demo, os modos de preço, tipos/controle de estoque, logo privada, contatos e gráficos executaram.
+
+## Normalização de rótulos da loja
+
+Após o resultado consolidado de 49 casos, foram acrescentados dois casos focados. O filtro `test_store_labels_` passou em 12/11/2026: **2 testes, 17 verificações, nenhum skip/falha, saída 0, duração de 29,68 segundos**.
+
+A validação cria uma 17ª venda e um orçamento adicional com descrição original da coorte, descrição personalizada e produto externo com texto semelhante. Somente a descrição original de IDs comprovados é normalizada; customizações, metadados do documento e IDs externos são preservados. A segunda execução não muda os dados. Valores de vendas/itens/compras/títulos, pagamentos, movimentos e snapshots de caixa permanecem iguais; usuários e produtos externos não são alterados.
+
+Esses filtros foram executados exclusivamente nos bancos de teste. A validação anual posterior está registrada a seguir.
+
+
+## Histórico anual e consolidação final
+
+O filtro inicial `test_annual_history_` passou: **2 testes, 57 verificações, saída 0, duração de 52,38 segundos**. Após acrescentar reconciliação agregada, uma execução completa passou: **53 testes, 901 verificações, nenhum skip/falha, saída 0, duração de 62,86 segundos**. Não foram somadas verificações entre execuções.
+
+Os casos fixam a data em 12/11/2026, preparam a loja e uma 17ª venda antes da importação. Verificam que o histórico novo só ocupa o intervalo anterior ao primeiro caixa existente, preserva os registros financeiros e movimentos anteriores, mantém custo/saldo/preço dos produtos existentes e encerra os novos produtos históricos com saldo zero. Há vendas realizadas de janeiro a novembro, previsão pendente em dezembro e nenhuma venda realizada, baixa ou fechamento no futuro.
+
+A reconciliação compara todos os fechamentos com os pagamentos do respectivo dia (dinheiro recebido/pago e quantidade de pagamentos), saldo esperado e continuidade entre abertura e valor contado anterior. Também compara totais de vendas com itens e títulos, além do valor baixado de cada título com pagamentos menos reembolsos. A ponte com o primeiro caixa original conserva a abertura; os snapshots originais permanecem iguais.
+
+A repetição mantém o resumo e as contagens. Sem a carga base concluída, a importação é rejeitada. Um pagamento histórico preexistente, inserido apenas como fixture de teste para representar dados restaurados, impede sobreposição sem gravação parcial. A API financeira normal continua rejeitando baixa retroativa em período fechado; a importação não relaxa essa regra operacional.
+
+Todos esses cenários rodaram somente nos três bancos de teste autorizados, sem manutenção global ou alteração dos dados da empresa operacional. A aplicação posterior da carga na empresa real e sua verificação independente são responsabilidade da operação, não integram esta evidência automatizada.
+
+
+## Saldos pendentes exibidos no dashboard e financeiro
+
+A inspeção visual encontrou os indicadores zerados apesar de títulos com saldo. O accessor `balance` do modelo interceptava o alias SQL com o mesmo nome. Os controllers passaram a consultar um alias distinto, `outstanding_total`.
+
+Uma regressão HTTP cria recebível de 150,25 com baixa de 40,10 e conta a pagar de 200,50 com baixa de 50,20, além de títulos cancelados em ambas as direções. Exige recebível de **110,15** no dashboard e financeiro e pagável de **150,30** no financeiro, excluindo os cancelados. O teste verifica o resultado público da view sem depender do alias da implementação.
+
+Execução consolidada posterior à correção: **54 testes passaram, 906 verificações, nenhum skip/falha, saída 0, em 67,42 segundos**. Os testes permanecem restritos aos bancos de teste; nenhum título operacional foi criado ou alterado pelo QA.
+
+## Ano encerrado com volume mensal equilibrado
+
+A evolução do importador para anos históricos completos foi validada em 12/11/2026 pelo filtro `test_annual_history_`: **3 testes passaram, 70 verificações, nenhum skip/falha, saída 0, em 72,32 segundos**. É uma execução focada posterior à suíte de 54 casos, não uma nova execução consolidada de toda a suíte.
+
+O caso novo exige janeiro a dezembro com exatamente 44 vendas por mês (528 no ano), faturamento máximo/mínimo inferior a 1,15, 365 fechamentos, saldo de ligação com o histórico anterior, preservação das operações existentes e replay sem duplicação. Os dois casos anteriores continuam verificando o ano corrente parcial, sobreposição financeira, reconciliação e proteção da base preparada.
