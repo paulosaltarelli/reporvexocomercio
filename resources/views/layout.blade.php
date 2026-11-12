@@ -19,7 +19,7 @@
         @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*','stock','prices','price.*','purchases','purchase.*'))
         @php($financeNavigation=request()->routeIs('finance','finance.*','cashflow','cash','cash.*'))
         @php($reportNavigation=request()->routeIs('reports','report.*','commissions'))
-        @php($settingsNavigation=request()->routeIs('business','users','account.password'))
+        @php($settingsNavigation=request()->routeIs('business','users','account.password','fiscal','fiscal.*'))
         <nav aria-label="Menu da empresa" class="grouped-navigation">
             <a class="nav {{ request()->routeIs('dashboard')?'selected':'' }}" href="{{ route('dashboard',['company'=>$tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif>Visão geral</a>
             <details class="nav-group {{ $registrationNavigation?'current-group':'' }}" @if($registrationNavigation) open @endif>
@@ -62,11 +62,13 @@
                     <summary>Administração</summary>
                     <div class="nav-group-links">
                         <a class="nav {{ request()->routeIs('business')?'selected':'' }}" href="{{ route('business',['company'=>$tenant->slug]) }}" @if(request()->routeIs('business')) aria-current="page" @endif>Minha empresa</a>
+                        <a class="nav {{ request()->routeIs('fiscal','fiscal.*')?'selected':'' }}" href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Fiscal</a>
                         <a class="nav {{ request()->routeIs('users')?'selected':'' }}" href="{{ route('users',['company'=>$tenant->slug]) }}" @if(request()->routeIs('users')) aria-current="page" @endif>Usuários e acesso</a>
                     </div>
                 </details>
             @endif
         </nav>
+
     </div>
     <div class="aside-bottom">Gestão que acontece.<br><span>Vendra · primeira versão</span></div>
 </aside>

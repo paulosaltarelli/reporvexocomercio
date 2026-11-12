@@ -58,3 +58,7 @@ Em Cadastros → Grupos ou no produto, configure descontos permitidos, limite pe
 Relatórios → Comissões apresenta apuração por vendedor e a parcela proporcional aos recebimentos acumulados, sem gerar pagamento automático. Consulte [docs/COMISSOES_E_DESCONTOS.md](docs/COMISSOES_E_DESCONTOS.md).
 
 O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores mensais. O ano completo mais recente com dados é a seleção inicial; na base de informática, 2025 contém 528 vendas distribuídas pelos 12 meses.
+
+## Fiscal em homologação
+
+Certificado A1, credenciais, CSC e parâmetros do emitente são configurados em **Minha empresa**, com armazenamento privado e cifrado. NFC-e usa adaptador Focus, outbox e arquivos privados; dados comerciais e fiscais são separados. Produção, NF-e 55 e NFS-e não estão habilitadas. Consulte [operação fiscal](docs/FISCAL.md) e [evidência de validação](docs/VALIDACAO_FISCAL.md). Os testes simulados não substituem homologação oficial.

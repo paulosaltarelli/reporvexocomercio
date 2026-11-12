@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll Vendra fiscal outbox
+
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=30
+Unit=vendra-fiscal.service
+
+[Install]
+WantedBy=timers.target

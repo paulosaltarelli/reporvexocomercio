@@ -20,6 +20,7 @@
 @if($sale->status==='completed' && $currentUser->role==='admin')
 <div class="form-note no-print"><strong>Recebido:</strong> R$ {{ number_format($received,2,',','.') }} · <strong>Saldo:</strong> R$ {{ number_format(max(0,bcsub((string)$sale->total,(string)$received,2)),2,',','.') }}</div>
 <div class="actions no-print">
+    <a class="button secondary" href="{{ route('fiscal.sale',['company'=>$tenant->slug,'id'=>$sale->id]) }}">Conferir dados fiscais</a>
     @if(!$sale->paid)
         <a class="button" href="{{ route('finance',['company'=>$tenant->slug,'sale'=>$sale->id]) }}">Registrar recebimento</a>
     @endif
@@ -37,5 +38,5 @@
     </form>
 </details>
 @endif
-<p class="hint">Comprovante interno. Esta venda não emite nota fiscal nem realiza cobranças ou reembolsos automáticos.</p></section>
+<div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>NFC-e {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->role==='admin')<a href="{{ route('fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente a NFC-e. O cancelamento fiscal é solicitado separadamente.</p></div><p class="hint">Este comprovante interno não substitui nota fiscal. Não realiza cobranças ou reembolsos automáticos.</p></section>
 @endsection

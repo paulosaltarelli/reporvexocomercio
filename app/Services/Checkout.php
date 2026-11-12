@@ -78,7 +78,7 @@ class Checkout
                     $qty = $terms['quantity'];
                     $unitCost = $item instanceof Product ? $item->pricingCost() : $item->cost;
                     $amount = $terms['total'];
-                    SaleItem::create(array_merge(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
+                    SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
                         'description' => $document ? ($line['description'] ?? $item->name) : $item->name, 'unit_cost' => $unitCost], $terms));
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
