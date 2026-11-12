@@ -37,6 +37,6 @@ class MigrateTenants extends Command
             }
         }
 
-return self::SUCCESS;
+        return self::SUCCESS;
     }
 }

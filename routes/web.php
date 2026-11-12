@@ -1,8 +1,12 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CommerceController;
 use App\Http\Controllers\OperationsController;
+use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\ReportController;
 use App\Http\Middleware\ResolveTenant;
 use App\Http\Middleware\TenantAuthenticated;
 use Illuminate\Support\Facades\Route;
@@ -12,8 +16,19 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
     Route::middleware(TenantAuthenticated::class)->group(function () {
+        Route::get('account/password', [AccountController::class, 'password'])->name('account.password');
+        Route::post('account/password', [AccountController::class, 'changePassword'])->name('account.password.save');
+        Route::post('users/{id}', [AccountController::class, 'updateUser'])->whereNumber('id')->name('user.update');
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/', [CommerceController::class, 'dashboard'])->name('dashboard');
+        Route::get('business', [BusinessController::class, 'form'])->name('business');
+        Route::post('business', [BusinessController::class, 'save']);
+        Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases');
+        Route::get('purchases/new', [PurchaseController::class, 'form'])->name('purchase.new');
+        Route::post('purchases', [PurchaseController::class, 'create']);
+        Route::get('purchases/{id}', [PurchaseController::class, 'show'])->whereNumber('id')->name('purchase.show');
+        Route::get('reports', [ReportController::class, 'index'])->name('reports');
+        Route::get('reports/export/{kind}', [ReportController::class, 'csv'])->name('report.csv');
         Route::get('products', [CommerceController::class, 'products'])->name('products');
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
         Route::get('products/{id}/edit', [CommerceController::class, 'productForm'])->whereNumber('id')->name('product.edit');
@@ -39,6 +54,6 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('finance', [OperationsController::class, 'createEntry']);
         Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
         Route::get('users', [CommerceController::class, 'users'])->name('users');
-        Route::post('users',[CommerceController::class, 'saveUser']);
+        Route::post('users', [CommerceController::class, 'saveUser']);
     });
 });

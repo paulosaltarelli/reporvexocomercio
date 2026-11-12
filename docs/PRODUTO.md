@@ -39,7 +39,7 @@ As cores são uma interpretação visual das referências fornecidas, não amost
 
 ## Situação inicial
 
-Primeira versão de homologação implementada: autenticação por empresa, perfis administrador/operador, grupos e margens, produtos, clientes, fornecedores, serviços, custo médio, movimentações, vendas mistas, estorno, orçamentos, OS e contas manuais.
+Primeira versão de homologação implementada: autenticação por empresa, perfis administrador/operador, troca de senha e revogação de sessões, edição/desativação de usuários, grupos e margens, produtos, clientes, fornecedores, serviços, custo médio, movimentações, compras integradas, vendas mistas, estorno com histórico financeiro, orçamentos, OS, parcelas mensais, baixas parciais, relatórios por período e CSV. Cadastro da própria empresa e dados fiscais preparatórios disponíveis.
 Validação e maturação operacional ainda são necessárias antes de uso comercial.
-Ainda não há administração web da plataforma/assinaturas, cobrança recorrente automática, NFC-e/NF-e/NFS-e, integração bancária, conciliação, caixa com abertura/fechamento, parcelas/pagamentos parciais, importação de XML, depósitos, grades, séries/lotes e relatórios contábeis completos.
+Ainda não há administração web da plataforma/assinaturas, cobrança recorrente automática, NFC-e/NF-e/NFS-e, integração bancária, conciliação, caixa com abertura/fechamento, importação de XML, depósitos, grades, séries/lotes e relatórios contábeis completos.
 Os campos fiscais são preparatórios e não equivalem à integração de emissão. Dados cadastrais fiscais e regras tributárias precisarão ser completados na etapa fiscal.

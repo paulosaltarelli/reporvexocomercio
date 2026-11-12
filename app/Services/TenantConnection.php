@@ -10,10 +10,12 @@ class TenantConnection
 {
     public function connect(Tenant $tenant): void
     {
+        // A rejected switch must not leave the preceding company's connection available.
+        $this->disconnect();
+
         if (! $tenant->active || ! preg_match('/^vendra_t_[a-z0-9_]+$/D', $tenant->db_name)) {
             throw new RuntimeException('Empresa indisponível.');
         }
-        DB::purge('tenant');
         config(['database.connections.tenant' => [
             'driver' => 'mysql', 'host' => $tenant->db_host, 'port' => 3306, 'database' => $tenant->db_name,
             'username' => $tenant->db_username, 'password' => $tenant->db_password,

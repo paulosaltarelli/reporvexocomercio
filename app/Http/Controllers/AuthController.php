@@ -29,7 +29,7 @@ class AuthController extends Controller
         }
         RateLimiter::clear($key);
         $r->session()->regenerate();
-        $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id]);
+        $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
         return redirect()->route('dashboard', ['company' => $r->route('company')]);
     }

@@ -11,19 +11,35 @@ class Inventory
 {
     public function move(int $productId, string $type, string $qty, string $cost, string $reason, int $userId, string $key, ?int $saleId = null): Product
     {
+        $qty = Decimal::input($qty, 3, 'quantity', '0.001', '999999999');
+        $cost = Decimal::input($cost, 4, 'unit_cost', '0', '999999999.9999');
+        if (! in_array($type, ['in', 'out', 'sale', 'return'], true)) {
+            throw ValidationException::withMessages(['type' => 'Tipo de movimentação inválido.']);
+        }
+
         return DB::connection('tenant')->transaction(function () use ($productId, $type, $qty, $cost, $reason, $userId, $key, $saleId) {
             $p = Product::lockForUpdate()->findOrFail($productId);
-            if (StockMovement::where('request_key', $key)->exists()) {
+            $existing = StockMovement::where('request_key', $key)->first();
+            if ($existing) {
+                $same = (int) $existing->product_id === $productId && $existing->type === $type
+                    && bccomp($existing->quantity, $qty, 3) === 0
+                    && (int) $existing->user_id === $userId && ($existing->sale_id === null ? null : (int) $existing->sale_id) === $saleId
+                    && $existing->reason === $reason;
+                if (in_array($type, ['in', 'return'], true)) {
+                    $same = $same && bccomp($existing->unit_cost, $cost, 4) === 0;
+                }
+                if (! $same) {
+                    throw ValidationException::withMessages(['request_key' => 'Esta chave já pertence a outra movimentação. Atualize o formulário antes de continuar.']);
+                }
+
                 return $p;
-            }
-            if (! in_array($type, ['in', 'out', 'sale', 'return']) || bccomp($qty, '0', 3) <= 0 || bccomp($cost, '0', 4) < 0) {
-                throw ValidationException::withMessages(['quantity' => 'Movimentação inválida.']);
             }
             $incoming = in_array($type, ['in', 'return']);
             $balance = $incoming ? bcadd($p->quantity, $qty, 3) : bcsub($p->quantity, $qty, 3);
             if (bccomp($balance, '0', 3) < 0) {
                 throw ValidationException::withMessages(['quantity' => 'Estoque insuficiente para '.$p->name.'.']);
             }
+            Decimal::input($balance, 3, 'quantity', '0', '9999999999999.999');
             $unitCost = $incoming ? $cost : $p->average_cost;
             $avg = $p->average_cost;
             if ($incoming) {

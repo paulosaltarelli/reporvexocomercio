@@ -10,6 +10,16 @@ class Sale extends Model
 
     protected $guarded = ['id'];
 
+    protected function casts(): array
+    {
+        return ['paid' => 'boolean'];
+    }
+
+    public function entries()
+    {
+        return $this->hasMany(FinancialEntry::class);
+    }
+
     public function items()
     {
         return $this->hasMany(SaleItem::class);

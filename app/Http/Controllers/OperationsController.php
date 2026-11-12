@@ -5,13 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\Document;
 use App\Models\FinancialEntry;
+use App\Models\Payment;
 use App\Models\Product;
-use App\Models\Sale;
 use App\Models\Service;
 use App\Models\Supplier;
 use App\Services\Documents;
+use App\Services\FinancialService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
 {
@@ -55,7 +55,8 @@ class OperationsController extends Controller
 
     public function invoice(Request $r, string $company, int $id)
     {
-        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date']);
+        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24']);
+        $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 
         return redirect()->route('sale.show', ['company' => $company, 'id' => $s->id])->with('success', 'Venda gerada e estoque baixado. Não houve emissão fiscal.');
@@ -64,30 +65,29 @@ class OperationsController extends Controller
     public function finance(Request $r)
     {
         $this->admin($r);
+        $entries = FinancialEntry::with('payments', 'sale', 'purchase', 'supplier')->when($r->integer('sale'), fn ($q) => $q->where('sale_id', $r->integer('sale')))->orderByRaw('cancelled_at IS NOT NULL')->orderByRaw('paid_at IS NOT NULL')->orderBy('due_date')->paginate(20)->withQueryString();
+        $balance = fn (string $direction) => FinancialEntry::where('direction', $direction)->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as balance')->value('balance');
+        $month = Payment::whereBetween('paid_on', [now()->startOfMonth()->toDateString(), now()->toDateString()]);
 
-        return view('finance', ['entries' => FinancialEntry::latest()->paginate(20), 'suppliers' => Supplier::orderBy('name')->get(), 'pendingSales' => Sale::with('customer')->where('status', 'completed')->where('paid', false)->orderBy('due_date')->get(), 'payable' => FinancialEntry::where('direction', 'out')->whereNull('paid_at')->sum('amount'), 'otherReceivable' => FinancialEntry::where('direction', 'in')->whereNull('paid_at')->sum('amount')]);
+        return view('finance', ['entries' => $entries, 'suppliers' => Supplier::orderBy('name')->get(), 'payable' => $balance('out'), 'receivable' => $balance('in'), 'payments' => Payment::latest('paid_on')->latest('id')->limit(50)->get(), 'cashIn' => (clone $month)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $month)->where('direction', 'out')->sum('amount')]);
     }
 
     public function createEntry(Request $r)
     {
         $this->admin($r);
-        $d = $r->validate(['request_key' => 'required|uuid', 'direction' => 'required|in:in,out', 'description' => 'required|string|max:180', 'category' => 'required|string|max:100', 'amount' => 'required|numeric|min:0.01|max:999999999.99|decimal:0,2', 'due_date' => 'required|date', 'supplier_id' => 'nullable|exists:tenant.suppliers,id']);
-        $d['user_id'] = $r->attributes->get('currentUser')->id;
-        FinancialEntry::firstOrCreate(['request_key' => $d['request_key']], $d);
+        $d = $r->validate(['request_key' => 'required|uuid', 'direction' => 'required|in:in,out', 'description' => 'required|string|max:180', 'category' => 'required|string|max:100', 'amount' => 'required|numeric|min:0.01|max:999999999.99|decimal:0,2', 'due_date' => 'required|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'supplier_id' => 'nullable|exists:tenant.suppliers,id']);
+        $d['installments'] = $r->integer('installments', 1);
+        app(FinancialService::class)->schedule($d, $r->attributes->get('currentUser')->id);
 
-        return back()->with('success', 'Conta registrada.');
+        return back()->with('success', 'Conta registrada. As parcelas somam exatamente o valor total.');
     }
 
     public function payEntry(Request $r, string $company, int $id)
     {
         $this->admin($r);
-        DB::connection('tenant')->transaction(function () use ($id) {
-            $e = FinancialEntry::lockForUpdate()->findOrFail($id);
-            if (! $e->paid_at) {
-                $e->update(['paid_at' => now()]);
-            }
-        });
+        $d = $r->validate(['request_key' => 'required|uuid', 'amount' => 'required|numeric|min:0.01|max:999999999.99|decimal:0,2', 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice']);
+        app(FinancialService::class)->pay($id, (string) $d['amount'], $d['paid_on'], $d['payment_method'], $r->attributes->get('currentUser')->id, $d['request_key']);
 
-        return back()->with('success','Liquidação registrada.');
+        return back()->with('success','Baixa registrada no histórico financeiro.');
     }
 }

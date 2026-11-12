@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\FinancialEntry;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Sale;
@@ -11,10 +12,12 @@ use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Checkout;
+use App\Services\FinancialService;
 use App\Services\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Ramsey\Uuid\Uuid;
 
 class CommerceController extends Controller
 {
@@ -29,7 +32,7 @@ class CommerceController extends Controller
 
         return view('dashboard', [
             'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'),
-            'receivable' => (clone $sales)->where('paid', false)->sum('total'),
+            'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as balance')->value('balance'),
             'stockValue' => Product::selectRaw('COALESCE(SUM(quantity * average_cost),0) as value')->value('value'),
             'lowStock' => Product::where('active', true)->whereColumn('quantity', '<=', 'minimum_stock')->orderBy('name')->limit(8)->get(),
             'recent' => Sale::with('customer')->latest()->limit(8)->get(),
@@ -118,7 +121,8 @@ class CommerceController extends Controller
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999.99|decimal:0,2']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999.99|decimal:0,2']);
+        $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 
         return redirect()->route('sale.show', ['company' => $company, 'id' => $sale->id])->with('success', 'Venda registrada e estoque atualizado.');
@@ -126,27 +130,32 @@ class CommerceController extends Controller
 
     public function sale(Request $r, string $company, int $id)
     {
-        return view('sales.show', ['sale' => Sale::with('items', 'customer')->findOrFail($id)]);
+        return view('sales.show', ['sale' => Sale::with('items', 'customer')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
     }
 
     public function cancel(Request $r, string $company, int $id)
     {
         $this->admin($r);
-        app(Checkout::class)->cancel($id, $r->attributes->get('currentUser')->id);
+        app(Checkout::class)->cancel($id, $r->attributes->get('currentUser')->id, $r->boolean('refund_confirmed'));
 
-        return back()->with('success', 'Venda cancelada e estoque estornado.');
+        return back()->with('success', 'Venda cancelada, estoque estornado e histórico financeiro preservado.');
     }
 
     public function receive(Request $r, string $company, int $id)
     {
         $this->admin($r);
-        DB::connection('tenant')->transaction(function () use ($id) {
-            $s = Sale::lockForUpdate()->findOrFail($id);
-            abort_unless($s->status === 'completed', 422);
-            $s->update(['paid' => true]);
-        });
+        DB::connection('tenant')->transaction(function () use ($r, $id) {
+            $sale = Sale::lockForUpdate()->findOrFail($id);
+            abort_unless($sale->status === 'completed', 422);
+            foreach (FinancialEntry::where('sale_id', $id)->whereNull('cancelled_at')->orderBy('id')->get() as $entry) {
+                $balance = bcsub($entry->amount, $entry->paid_amount, 2);
+                if (bccomp($balance, '0', 2) > 0) {
+                    app(FinancialService::class)->pay($entry->id, $balance, now()->toDateString(), $sale->payment_method, $r->attributes->get('currentUser')->id, (string) Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:full-receipt:'.$id.':'.$entry->id));
+                }
+            }
+        }, 3);
 
-        return back()->with('success', 'Recebimento confirmado.');
+        return back()->with('success', 'Saldo da venda recebido e baixas registradas.');
     }
 
     public function users(Request $r)
@@ -161,6 +170,7 @@ class CommerceController extends Controller
         $this->admin($r);
         $d = $r->validate(['name' => 'required|string|max:180', 'email' => 'required|email|max:180|unique:tenant.users,email', 'password' => 'required|string|min:12|max:128|confirmed', 'role' => 'required|in:admin,operator']);
         unset($d['password_confirmation']);
+        $d['must_change_password'] = true;
         User::create($d);
 
         return back()->with('success','Usuário criado.');

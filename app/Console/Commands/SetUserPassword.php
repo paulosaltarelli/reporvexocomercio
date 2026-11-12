@@ -30,7 +30,7 @@ class SetUserPassword extends Command
 
                 return self::FAILURE;
             }
-            $user->update(['password' => $password]);
+            $user->update(['password' => $password, 'must_change_password' => false, 'auth_version' => $user->auth_version + 1, 'password_changed_at' => now()]);
             $this->info('Senha alterada.');
 
             return self::SUCCESS;
