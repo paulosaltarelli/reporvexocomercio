@@ -19,7 +19,22 @@ class Product extends Model
 
     protected function casts(): array
     {
-        return ['controls_stock' => 'boolean', 'active' => 'boolean'];
+        return ['controls_stock' => 'boolean', 'active' => 'boolean', 'discount_enabled' => 'boolean'];
+    }
+
+    public function discountEnabled(): bool
+    {
+        return (bool) ($this->discount_enabled ?? $this->group->discount_enabled ?? false);
+    }
+
+    public function maxDiscountPercent(): string
+    {
+        return (string) ($this->max_discount_percent ?? $this->group->max_discount_percent ?? '0.00');
+    }
+
+    public function commissionPercent(): string
+    {
+        return (string) ($this->commission_percent ?? $this->group->commission_percent ?? '0.00');
     }
 
     public function controlsStock(): bool

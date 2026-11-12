@@ -8,7 +8,6 @@ use App\Models\Sale;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Ramsey\Uuid\Uuid;
 
 class Documents
 {
@@ -24,22 +23,27 @@ class Documents
                 }
                 $items = [];
                 $total = '0';
+                $subtotal = '0';
+                $discountTotal = '0';
+                $rules = app(CommercialRules::class);
                 foreach ($data['items'] as $line) {
                     if (! in_array($line['kind'], ['product', 'service'], true)) {
                         throw ValidationException::withMessages(['items' => 'Tipo de item inválido.']);
                     }
-                    $model = $line['kind'] === 'product' ? Product::where('active', true)->findOrFail($line['id'])
-                        : Product::resolveLegacyService((int) $line['id']);
-                    $quantity = Decimal::input((string) $line['quantity'], 3, 'items', '0.001', '999999');
-                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999999.99');
-                    $amount = Decimal::input(Decimal::round(bcmul($quantity, $price, 8)), 2, 'items');
-                    $total = bcadd($total, $amount, 2);
-                    $items[] = ['kind' => $line['kind'], 'id' => $line['kind'] === 'product' ? $model->id : (int) $line['id'], 'description' => $model->name, 'quantity' => $quantity, 'unit_price' => $price, 'total' => $amount];
+                    $model = $line['kind'] === 'product' ? Product::where('active', true)->sharedLock()->findOrFail($line['id'])
+                        : Product::resolveLegacyService((int) $line['id'], true);
+                    $terms = $rules->quote($model, $line);
+                    $total = bcadd($total, $terms['total'], 2);
+                    $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
+                    $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
+                    $items[] = array_merge(['kind' => $line['kind'], 'id' => $line['kind'] === 'product' ? $model->id : (int) $line['id'], 'description' => $model->name], $terms);
                 }
 
                 Decimal::input($total, 2, 'items');
+                Decimal::input($subtotal, 2, 'items');
+                Decimal::input($discountTotal, 2, 'items');
 
-                return Document::create(['type' => $data['type'], 'request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'items' => $items, 'total' => $total, 'valid_until' => $data['valid_until'] ?? null, 'asset' => $data['asset'] ?? null, 'technician' => $data['technician'] ?? null, 'notes' => $data['notes'] ?? null]);
+                return Document::create(['commercial_version' => 1, 'subtotal' => $subtotal, 'discount_total' => $discountTotal, 'type' => $data['type'], 'request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'items' => $items, 'total' => $total, 'valid_until' => $data['valid_until'] ?? null, 'asset' => $data['asset'] ?? null, 'technician' => $data['technician'] ?? null, 'notes' => $data['notes'] ?? null]);
             }, 3);
         } catch (UniqueConstraintViolationException $exception) {
             $existing = Document::where('request_key', $data['request_key'])->lockForUpdate()->first();
@@ -75,8 +79,7 @@ class Documents
             if (($d->type === 'quote' && $d->status !== 'approved') || ($d->type === 'work_order' && $d->status !== 'completed')) {
                 throw ValidationException::withMessages(['status' => 'Aprove o orçamento ou conclua a ordem de serviço antes de gerar a venda.']);
             }
-            $sale = app(Checkout::class)->complete(array_merge($payment, ['request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:document-sale:'.$d->request_key)->toString(), 'customer_id' => $d->customer_id, 'items' => $d->items, 'notes' => 'Origem: documento #'.$d->id]), $userId);
-            $d->update(['sale_id' => $sale->id, 'status' => 'invoiced']);
+            $sale = app(Checkout::class)->completeFromDocument($d->id, $payment, $userId);
 
             return $sale;
         }, 3);

@@ -11,4 +11,9 @@ class SaleItem extends Model
     protected $table = 'sale_items';
 
     protected $guarded = ['id'];
+
+    protected function casts(): array
+    {
+        return ['discount_allowed' => 'boolean'];
+    }
 }

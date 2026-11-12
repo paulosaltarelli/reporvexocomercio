@@ -30,3 +30,11 @@ As contas temporárias de QA foram removidas, sem alterar credenciais do proprie
 Em 12/11/2026 foi acrescentado o ano de 2025 inteiro, mantendo o ano corrente e suas previsões: 528 vendas (44 em cada mês), 12 compras, 873 baixas e 365 fechamentos novos. O faturamento mensal varia de R$31.881 a R$34.147, com o mesmo mix mensal de produtos/serviços e alterações graduais de preço/custo. O total da base passou a 981 vendas, 26 compras, 1.618 baixas, 1.695 títulos e 680 fechamentos.
 
 O filtro dos três cenários anuais passou com 70 verificações. Após aplicar, a assinatura dos dados anteriores confirmou a preservação das 453 vendas e dos 315 fechamentos, assim como estoque, preços, custos, compras e pagamentos. A repetição não duplicou a carga. Backup com checksums conferidos e login HTTPS 200; Vendra e Apache dos outros sistemas permaneceram ativos após a janela de manutenção.
+
+## Descontos, comissões e gráfico anual
+
+Publicados em 12/11/2026 após testes em cópia isolada: baseline comercial de 60 testes/956 verificações, seguido de três filtros do gráfico anual/66 verificações. A fonte tem 61 casos; não foi alegada execução consolidada de 61. A compilação PHP de todos os templates foi validada após corrigir uma diretiva Blade adjacente ao texto no componente anual.
+
+Migração 000012 aplicada à empresa Vexo. Snapshot independente confirmou a preservação das 981 vendas, 26 compras, 1.618 baixas, 1.695 títulos e 680 fechamentos anteriores, assim como quantidades, preços e custos. Novas colunas históricas foram preenchidas de forma neutra; comissões permanecem zero enquanto não configuradas para novas operações. Backup anterior com checksums conferidos.
+
+Chromium no endereço HTTPS real conferiu 12 barras/meses de 2025, total R$396.168,00 e 528 vendas, seletor para 2026 com mês futuro zerado, mobile390 sem overflow, campos de herança no grupo/produto, manutenção do checkbox de estoque com saldo, bloqueio de desconto implícito, prévia de orçamento, relatório com logo e comissão interna oculta na impressão. Nenhuma venda de teste foi gravada na empresa operacional; credenciais do proprietário não foram alteradas.

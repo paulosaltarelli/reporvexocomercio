@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CashController;
 use App\Http\Controllers\CashflowController;
+use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\PricingController;
 use App\Http\Controllers\CommerceController;
 use App\Http\Controllers\OperationsController;
@@ -37,6 +38,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('purchases/new', [PurchaseController::class, 'form'])->name('purchase.new');
         Route::post('purchases', [PurchaseController::class, 'create']);
         Route::get('purchases/{id}', [PurchaseController::class, 'show'])->whereNumber('id')->name('purchase.show');
+        Route::get('commissions', [CommissionController::class, 'index'])->name('commissions');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export/{kind}', [ReportController::class, 'csv'])->name('report.csv');
         Route::get('products', [CommerceController::class, 'products'])->name('products');

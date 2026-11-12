@@ -71,6 +71,8 @@ Não use apenas o tipo atual do cadastro para classificar uma venda histórica: 
 
 Uma venda pode misturar mercadorias e serviços. **Não envie serviços municipais como mercadorias na NFC-e** nem use o total inteiro da venda como total fiscal se parte precisar de outro documento. Proponha a separação fiscal e a alocação coerente dos pagamentos. NFS-e é uma integração distinta e pode ficar para a próxima fase.
 
+O módulo comercial também registra descontos e comissões. Em vendas novas, `SaleItem.unit_price` é a referência bruta; `gross_total`, `discount_amount` e `total` preservam bruto, desconto efetivo e líquido. Não trate quantidade × preço bruto como líquido nem desconte duas vezes. Use os snapshots efetivos para o XML; comissão do vendedor não é desconto ao consumidor nem tributo. Vendas antigas receberam apenas novos campos neutros, sem retrocomissões.
+
 O custo médio é gerencial, não a base automática dos tributos da venda. Use snapshots dos valores efetivamente vendidos e regras oficiais de cálculo/arredondamento.
 
 ## 6. Cancelamento, devolução, caixa e contingência

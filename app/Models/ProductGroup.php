@@ -12,6 +12,11 @@ class ProductGroup extends Model
 
     protected $guarded = ['id'];
 
+    protected function casts(): array
+    {
+        return ['discount_enabled' => 'boolean'];
+    }
+
     public function products()
     {
         return $this->hasMany(Product::class);

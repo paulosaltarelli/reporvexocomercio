@@ -33,3 +33,7 @@ Não foram espalhados gráficos por estoque, preços, compras ou caixa diário. 
 Smoke local em Chromium: 1440, 768, 390 e 320 px sem rolagem horizontal do documento; cinco grupos de menu, alternância móvel, layout dos gráficos, moeda negativa e restauração segura do estado de impressão passaram. As séries usadas no produto vêm do backend; fixtures foram usadas apenas no teste local de layout.
 
 A validação Blade/Laravel e a conferência no ambiente real cabem ao QA da integração. Recomenda-se validar com uma pessoa que opere o balcão e outra que faça o fechamento, com teclado e leitor de tela, antes de adicionar mais indicadores. Os gráficos usam floats somente para coordenadas; totais financeiros e valores originais permanecem fornecidos pelo servidor.
+
+## Revisão posterior: visão anual e regras comerciais
+
+O gráfico anterior de 14 dias foi substituído por 12 meses e seletor de ano. Barras azuis em gradiente, destaque ciano do maior mês, total anual, quantidade de vendas e tabela acessível representam os dados reais do período. O teste de navegador confirmou a visão completa de 2025 e a alternância para 2026. As regras de desconto/comissão ficam em disclosures separados da formação de preço, com herança explícita e comissão interna excluída do comprovante do cliente.

@@ -12,7 +12,7 @@ class Document extends Model
 
     protected function casts(): array
     {
-        return ['items' => 'array'];
+        return ['items' => 'array', 'commercial_version' => 'integer'];
     }
 
     public function customer()

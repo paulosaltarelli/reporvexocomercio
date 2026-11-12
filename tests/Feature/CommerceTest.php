@@ -439,7 +439,7 @@ class CommerceTest extends TestCase
         Product::create(['name' => 'Serviço de balcão', 'sku' => 'OP-SERVICE-QA', 'product_group_id' => $this->product->product_group_id, 'type' => 'service', 'controls_stock' => false, 'reference_cost' => '17.4300', 'sale_price' => '50.00', 'unit' => 'UN']);
         $this->user->update(['role' => 'operator']);
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
-        $this->get('/app/a')->assertOk()->assertDontSee('Resultado bruto das vendas')->assertDontSee('sales-svg-title', false);
+        $this->get('/app/a')->assertOk()->assertDontSee('Resultado bruto das vendas')->assertDontSee('Vendas concluídas · todo o período')->assertDontSee('sales-svg-title', false);
         $this->get('/app/a/products')->assertOk()->assertDontSee('Custo médio (R$)')->assertDontSee('60,0000');
         $this->get('/app/a/stock')->assertOk()->assertDontSee('<th class="num">Custo unitário</th>', false)->assertDontSee('60.0000');
         $this->get('/app/a/products?type=service')->assertOk()->assertSee('Serviço de balcão')->assertDontSee('Custo (R$)')->assertDontSee('17.43')->assertDontSee('17,4300');
@@ -648,6 +648,211 @@ class CommerceTest extends TestCase
         $this->assertSame('out', $payment->direction);
         $this->assertSame('20.00', $payment->amount);
         $this->assertSame('20.0000', $this->product->fresh()->average_cost);
+    }
+
+    public function test_discount_defaults_inheritance_overrides_and_combined_limit_are_enforced_atomically(): void
+    {
+        $this->move('in', '10', '40');
+        $checkout = app(Checkout::class);
+        $group = \App\Models\ProductGroup::findOrFail($this->product->product_group_id);
+        $reject = function (string $price, string $percent) use ($checkout): void {
+            $before = [Sale::count(), StockMovement::count(), $this->product->fresh()->quantity];
+            $data = $this->saleData();
+            $data['items'][0]['unit_price'] = $price;
+            $data['items'][0]['discount_percent'] = $percent;
+            try {
+                $checkout->complete($data, $this->user->id);
+                $this->fail('Desconto não autorizado deve ser rejeitado sem efeitos.');
+            } catch (ValidationException) {
+                $this->assertSame($before, [Sale::count(), StockMovement::count(), $this->product->fresh()->quantity]);
+            }
+        };
+        $reject('99.99', '0');
+        $reject('100', '0.01');
+        $group->update(['discount_enabled' => true, 'max_discount_percent' => '10.00']);
+        $data = $this->saleData();
+        $data['items'][0]['discount_percent'] = '10.00';
+        $this->assertSame('90.00', $checkout->complete($data, $this->user->id)->total);
+        $reject('90', '1');
+        $reject('89.99', '0');
+        $this->product->update(['discount_enabled' => false]);
+        $reject('100', '1');
+        $this->product->update(['discount_enabled' => true, 'max_discount_percent' => '20.00']);
+        $data = $this->saleData();
+        $data['items'][0]['unit_price'] = '90.00';
+        $data['items'][0]['discount_percent'] = '10.00';
+        $this->assertSame('81.00', $checkout->complete($data, $this->user->id)->total);
+        $this->product->update(['discount_enabled' => null, 'max_discount_percent' => null]);
+        $reject('90', '1');
+    }
+
+    public function test_commission_snapshots_use_discounted_cents_and_authorized_seller(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '1.0000', 'sale_price' => '10.00']);
+        ProductGroup::findOrFail($this->product->product_group_id)->update(['discount_enabled' => true,
+            'max_discount_percent' => '10.00', 'commission_percent' => '7.50']);
+        $seller = User::create(['name' => 'Vendedor comissionado', 'email' => 'seller@example.test',
+            'password' => 'seller-password-test', 'role' => 'operator', 'active' => true]);
+        $data = $this->saleData('0.333');
+        $data['seller_id'] = $seller->id;
+        $data['items'][0]['unit_price'] = '10.00';
+        $data['items'][0]['discount_percent'] = '10.00';
+        $checkout = app(Checkout::class);
+        $sale = $checkout->complete($data, $this->user->id);
+        $line = $sale->items()->firstOrFail();
+        $this->assertSame('3.00', $sale->total);
+        $this->assertSame($seller->id, $sale->seller_id);
+        $this->assertSame('Vendedor comissionado', $sale->seller_name);
+        $this->assertSame('7.50', $line->commission_rate);
+        $this->assertSame('0.23', $line->commission_amount);
+        $this->assertSame('0.33', $line->discount_amount);
+        $snapshot = $line->getAttributes();
+        ProductGroup::findOrFail($this->product->product_group_id)->update(['commission_percent' => '50.00']);
+        $seller->update(['name' => 'Nome alterado']);
+        $this->assertSame($snapshot, $line->fresh()->getAttributes());
+        $this->assertSame('Vendedor comissionado', $sale->fresh()->seller_name);
+        $this->assertSame($sale->id, $checkout->complete($data, $this->user->id)->id);
+        $this->assertSame(1, Sale::count());
+        foreach ([$this->user->id, $seller->id] as $requested) {
+            if ($requested === $seller->id) {
+                $seller->update(['active' => false]);
+                $actor = $this->user->id;
+            } else {
+                $actor = $seller->id;
+            }
+            $attempt = $data;
+            $attempt['request_key'] = (string) Str::uuid();
+            $attempt['seller_id'] = $requested;
+            try {
+                $checkout->complete($attempt, $actor);
+                $this->fail('Vendedor forjado ou inativo deve ser rejeitado.');
+            } catch (ValidationException) {
+                $this->assertSame(1, Sale::count());
+            }
+        }
+    }
+
+    public function test_stale_catalog_price_and_untrusted_historical_flags_cannot_authorize_discount(): void
+    {
+        $this->move('in', '5', '40');
+        $data = $this->saleData();
+        $data['items'][0]['catalog_price_seen'] = '99.00';
+        foreach ([$data, array_replace_recursive($this->saleData(), ['trusted' => true, 'historical' => true,
+            'items' => [['unit_price' => '1.00', 'trusted' => true, 'historical' => true, 'approved_snapshot' => true]]])] as $attempt) {
+            try {
+                app(Checkout::class)->complete($attempt, $this->user->id);
+                $this->fail('Preço desatualizado ou desconto forjado deve ser rejeitado.');
+            } catch (ValidationException) {
+                $this->assertSame(0, Sale::count());
+                $this->assertSame('5.000', $this->product->fresh()->quantity);
+                $this->assertSame(1, StockMovement::count());
+            }
+        }
+    }
+
+    public function test_commission_report_uses_sale_date_cumulative_receipts_and_excludes_cancellations(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '20.0000']);
+        ProductGroup::findOrFail($this->product->product_group_id)->update(['commission_percent' => '10.00']);
+        $data = $this->saleData();
+        $data['paid'] = false;
+        $data['due_date'] = now()->toDateString();
+        $checkout = app(Checkout::class);
+        $sale = $checkout->complete($data, $this->user->id);
+        $saleDate = now()->subDays(2)->toDateString();
+        $sale->update(['created_at' => $saleDate.' 10:00:00']);
+        $paymentKey = (string) Str::uuid();
+        $entry = $sale->entries()->firstOrFail();
+        $finance = app(\App\Services\FinancialService::class);
+        $finance->pay($entry->id, '25.00', now()->toDateString(), 'pix', $this->user->id, $paymentKey);
+        $finance->pay($entry->id, '25.00', now()->toDateString(), 'pix', $this->user->id, $paymentKey);
+        $data['request_key'] = (string) Str::uuid();
+        $cancelled = $checkout->complete($data, $this->user->id);
+        $cancelled->update(['created_at' => $saleDate.' 11:00:00']);
+        $checkout->cancel($cancelled->id, $this->user->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a/commissions?from='.$saleDate.'&to='.$saleDate)->assertOk()
+            ->assertViewHas('totals', fn ($totals) => $totals === ['net_sales' => '100.00', 'discounts' => '0.00',
+                'commission' => '10.00', 'eligible' => '2.50', 'awaiting' => '7.50']);
+        app(TenantConnection::class)->connect($this->a);
+        $this->user->update(['role' => 'operator']);
+        $this->get('/app/a/commissions')->assertForbidden();
+    }
+
+    public function test_document_conversion_honors_server_snapshots_and_legacy_prices_with_current_commission(): void
+    {
+        $this->product->update(['controls_stock' => false, 'reference_cost' => '10.0000']);
+        $group = ProductGroup::findOrFail($this->product->product_group_id);
+        $group->update(['discount_enabled' => true, 'max_discount_percent' => '10.00', 'commission_percent' => '5.00']);
+        $data = $this->saleData();
+        $data['type'] = 'quote';
+        $data['items'][0]['discount_percent'] = '10.00';
+        $documents = app(Documents::class);
+        $document = $documents->create($data, $this->user->id);
+        $this->assertSame('90.00', $document->total);
+        $documents->transition($document->id, 'approved');
+        $legacy = \App\Models\Document::create(['request_key' => (string) Str::uuid(), 'type' => 'quote',
+            'status' => 'approved', 'user_id' => $this->user->id, 'commercial_version' => 0, 'total' => '60.00',
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'description' => 'Preço histórico aprovado',
+                'quantity' => '1.000', 'unit_price' => '60.00', 'total' => '60.00']]]);
+        $this->product->update(['sale_price' => '200.00']);
+        $group->update(['discount_enabled' => false, 'max_discount_percent' => '0.00', 'commission_percent' => '20.00']);
+        $payment = ['payment_method' => 'pix', 'paid' => false, 'due_date' => now()->toDateString()];
+        $sale = $documents->invoice($document->id, $payment, $this->user->id);
+        $oldSale = $documents->invoice($legacy->id, $payment, $this->user->id);
+        $this->assertSame('90.00', $sale->total);
+        $this->assertSame('18.00', $sale->commission_total);
+        $this->assertSame('60.00', $oldSale->total);
+        $this->assertSame('12.00', $oldSale->commission_total);
+        $this->assertSame('0.00', $oldSale->discount_total);
+        $this->assertSame($sale->id, $documents->invoice($document->id, $payment, $this->user->id)->id);
+        $this->assertSame(2, Sale::count());
+        $forged = $this->saleData();
+        $forged['items'][0]['unit_price'] = '60.00';
+        $forged['commercial_version'] = 0;
+        $forged['document_id'] = $legacy->id;
+        try {
+            app(Checkout::class)->complete($forged, $this->user->id);
+            $this->fail('Payload público não pode reivindicar preço histórico de documento.');
+        } catch (ValidationException) {
+            $this->assertSame(2, Sale::count());
+        }
+    }
+
+    public function test_dashboard_monthly_year_selection_excludes_cancelled_sales_and_fills_empty_months(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));
+        try {
+            $this->product->update(['controls_stock' => false, 'reference_cost' => '10.0000']);
+            foreach ([['2025-01-10', '100.00', false], ['2025-12-20', '200.00', false],
+                ['2025-01-15', '999.00', true], ['2026-02-10', '500.00', false]] as [$date, $price, $cancelled]) {
+                $data = $this->saleData();
+                $data['paid'] = false;
+                $data['due_date'] = '2026-12-10';
+                $data['items'][0]['unit_price'] = $price;
+                $sale = app(Checkout::class)->complete($data, $this->user->id);
+                $sale->update(['created_at' => $date.' 12:00:00']);
+                if ($cancelled) {
+                    app(Checkout::class)->cancel($sale->id, $this->user->id);
+                }
+            }
+            $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+            $this->get('/app/a')->assertOk()->assertViewHas('salesYear', 2025)
+                ->assertViewHas('salesPeriodCount', 2)
+                ->assertViewHas('salesPeriodTotal', fn ($value) => bccomp((string) $value, '300.00', 2) === 0)
+                ->assertViewHas('salesTrend', function ($rows) {
+                    return count($rows) === 12 && array_column($rows, 'label') === ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+                        && array_column($rows, 'total') === array_merge(['100.00'], array_fill(0, 10, '0.00'), ['200.00'])
+                        && array_column($rows, 'count') === array_merge([1], array_fill(0, 10, 0), [1]);
+                });
+            $this->get('/app/a?year=2026')->assertOk()->assertViewHas('salesYear', 2026)
+                ->assertViewHas('salesPeriodCount', 1)
+                ->assertViewHas('salesPeriodTotal', fn ($value) => bccomp((string) $value, '500.00', 2) === 0)
+                ->assertViewHas('salesTrend', fn ($rows) => $rows[1]['total'] === '500.00' && $rows[1]['count'] === 1);
+            $this->get('/app/a?year=2027')->assertSessionHasErrors('year');
+        } finally {
+            $this->travelBack();
+        }
     }
 
     public function test_http_outstanding_metrics_sum_partial_balances_and_exclude_cancelled_entries(): void

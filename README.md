@@ -50,3 +50,11 @@ A raiz `/` contém a landing do Vendra com links de WhatsApp e e-mail fornecidos
 O histórico de informática de 2026 pode ser ampliado com `php artisan vendra:historico-anual vexo 2026 --plan`. A execução exige backup e manutenção exclusiva do Vendra; o procedimento está em [docs/IMPORTACAO_ANUAL.md](docs/IMPORTACAO_ANUAL.md). A carga preserva as operações anteriores e os fechamentos existentes. Meses futuros recebem previsões, sem vendas ou pagamentos futuros realizados.
 
 Os rótulos visíveis da carga inicial podem ser normalizados sem alterar seus valores, datas ou vínculos; consulte [docs/COMPUTER_STORE_LABELS.md](docs/COMPUTER_STORE_LABELS.md). A identificação interna da origem sintética permanece para impedir que a integração fiscal trate esses dados como operações reais.
+
+## Regras comerciais e comissões
+
+Em Cadastros → Grupos ou no produto, configure descontos permitidos, limite percentual e comissão sobre a venda líquida. O produto pode herdar cada regra do grupo ou sobrescrevê-la. Reduzir o preço unitário também consome o limite de desconto. As regras novas não recalculam vendas antigas.
+
+Relatórios → Comissões apresenta apuração por vendedor e a parcela proporcional aos recebimentos acumulados, sem gerar pagamento automático. Consulte [docs/COMISSOES_E_DESCONTOS.md](docs/COMISSOES_E_DESCONTOS.md).
+
+O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores mensais. O ano completo mais recente com dados é a seleção inicial; na base de informática, 2025 contém 528 vendas distribuídas pelos 12 meses.

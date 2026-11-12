@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Document;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -15,20 +16,56 @@ class Checkout
 {
     public function complete(array $data, int $userId): Sale
     {
+        return $this->completeInternal($data, $userId);
+    }
+
+    /** No request-supplied flag can select this path: the agreement is reloaded from the database. */
+    public function completeFromDocument(int $documentId, array $payment, int $userId): Sale
+    {
+        return DB::connection('tenant')->transaction(function () use ($documentId, $payment, $userId) {
+            $document = Document::lockForUpdate()->findOrFail($documentId);
+            if ($document->sale_id) return Sale::findOrFail($document->sale_id);
+            $approved = ($document->type === 'quote' && $document->status === 'approved')
+                || ($document->type === 'work_order' && $document->status === 'completed');
+            if (! $approved) throw ValidationException::withMessages(['status' => 'O documento precisa estar aprovado ou concluído antes de gerar a venda.']);
+            $sale = $this->completeInternal(array_merge($payment, [
+                'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:document-sale:'.$document->request_key)->toString(),
+                'customer_id' => $document->customer_id, 'items' => $document->items,
+                'notes' => 'Origem: documento #'.$document->id,
+            ]), $userId, $document);
+            if (bccomp($sale->total, $document->total, 2) !== 0) {
+                throw ValidationException::withMessages(['items' => 'O valor da venda não corresponde ao documento aprovado.']);
+            }
+            $document->update(['sale_id' => $sale->id, 'status' => 'invoiced']);
+
+            return $sale;
+        }, 3);
+    }
+
+    private function completeInternal(array $data, int $userId, ?Document $document = null): Sale
+    {
         try {
-            return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document) {
                 $existing = Sale::where('request_key', $data['request_key'])->first();
                 if ($existing) {
+                    if ($document && (int) $existing->document_id !== $document->id) {
+                        throw ValidationException::withMessages(['request_key' => 'A chave já pertence a outra venda e não pode faturar este documento.']);
+                    }
                     return $existing;
                 }
+                $rules = app(CommercialRules::class);
+                $seller = $rules->seller($userId, isset($data['seller_id']) ? (int) $data['seller_id'] : null);
                 $method = FinancialService::paymentMethod((string) $data['payment_method']);
-                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
+                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->id, 'seller_name' => $seller->name, 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);
                 }
                 usort($lines, fn ($a, $b) => strcmp($a['kind'], $b['kind']) ?: ($a['id'] <=> $b['id']));
                 $total = '0';
+                $subtotal = '0';
+                $discountTotal = '0';
+                $commissionTotal = '0';
                 $cost = '0';
                 foreach ($lines as $i => $line) {
                     if (! in_array($line['kind'], ['product', 'service'], true)) {
@@ -37,11 +74,16 @@ class Checkout
                     $product = $line['kind'] === 'product';
                     $item = $product ? Product::where('active', true)->lockForUpdate()->findOrFail($line['id'])
                         : Product::resolveLegacyService((int) $line['id'], true);
-                    $qty = Decimal::input((string) $line['quantity'], 3, 'items', '0.001', '999999');
-                    $price = Decimal::input((string) $line['unit_price'], 2, 'items', '0', '999999999999.99');
+                    $terms = $document ? $rules->fromDocument($item, $line, (int) $document->commercial_version) : $rules->quote($item, $line);
+                    $qty = $terms['quantity'];
                     $unitCost = $item instanceof Product ? $item->pricingCost() : $item->cost;
-                    $amount = Decimal::input(Decimal::round(bcmul($qty, $price, 8)), 2, 'items');
-                    SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null, 'service_id' => $product ? null : (int) $line['id'], 'description' => $item->name, 'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => $unitCost, 'total' => $amount]);
+                    $amount = $terms['total'];
+                    SaleItem::create(array_merge(['sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
+                        'service_id' => $product ? null : (int) $line['id'],
+                        'description' => $document ? ($line['description'] ?? $item->name) : $item->name, 'unit_cost' => $unitCost], $terms));
+                    $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
+                    $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
+                    $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);
                     if ($product && $item->controlsStock()) {
                         app(Inventory::class)->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, 'sale-'.$sale->id.'-'.$i, $sale->id);
                     }
@@ -51,7 +93,11 @@ class Checkout
                 $cost = Decimal::round($cost, 4);
                 Decimal::input($total, 2, 'items');
                 Decimal::input($cost, 4, 'items', '0', '999999999999.9999');
-                $sale->update(['total' => $total, 'cost_total' => $cost]);
+                Decimal::input($subtotal, 2, 'items');
+                Decimal::input($discountTotal, 2, 'items');
+                Decimal::input($commissionTotal, 2, 'items');
+                $sale->update(['total' => $total, 'cost_total' => $cost, 'subtotal' => $subtotal,
+                    'discount_total' => $discountTotal, 'commission_total' => $commissionTotal]);
                 if (bccomp($total, '0', 2) === 0) {
                     $sale->update(['paid' => true]);
 
@@ -79,6 +125,9 @@ class Checkout
             // transaction has rolled back; use a current read, including in a parent transaction.
             $existing = Sale::where('request_key', $data['request_key'])->lockForUpdate()->first();
             if ($existing) {
+                if ($document && (int) $existing->document_id !== $document->id) {
+                    throw ValidationException::withMessages(['request_key' => 'A chave já pertence a outra venda e não pode faturar este documento.']);
+                }
                 return $existing;
             }
 

@@ -20,6 +20,14 @@ window.Vendra = (() => {
         const divisor = 10n ** BigInt(3 + priceScale - 2);
         return qty === null || units === null ? null : (qty * units * 2n + divisor) / (divisor * 2n);
     }
+    function commercialLine(quantity,catalogPrice,offeredPrice,discountPercent='0') {
+        const qty=decimalUnits(quantity,3),catalog=decimalUnits(catalogPrice,2),offered=decimalUnits(offeredPrice,2),percent=decimalUnits(discountPercent,2);
+        if(qty===null||catalog===null||offered===null||percent===null||percent>10000n)return null;
+        const reference=catalog>offered?catalog:offered;
+        const gross=(qty*reference*2n+1000n)/2000n;
+        const net=(qty*offered*(10000n-percent)*2n+10000000n)/20000000n;
+        return {gross,net,discount:gross-net,reference,unitReduction:reference*10000n-offered*(10000n-percent),explicit:percent};
+    }
     function suggestedCents(cost, margin) {
         const costUnits = decimalUnits(cost, 4);
         const basisPoints = decimalUnits(margin, 2);
@@ -121,5 +129,5 @@ window.Vendra = (() => {
         window.addEventListener('afterprint',()=>{printDetails.splice(0).forEach(details=>details.open=false);});
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-    return {decimalUnits, centsText, lineCents, suggestedCents, associateLabels};
+    return {decimalUnits, centsText, lineCents, commercialLine, suggestedCents, associateLabels};
 })();

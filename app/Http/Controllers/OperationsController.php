@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Service;
 use App\Models\Supplier;
+use App\Models\User;
 use App\Services\Documents;
 use App\Services\FinancialService;
 use Illuminate\Http\Request;
@@ -29,12 +30,12 @@ class OperationsController extends Controller
     {
         abort_unless(in_array($r->query('type', 'quote'), ['quote', 'work_order']), 404);
 
-        return view('documents.form', ['type' => $r->query('type', 'quote'), 'customers' => Customer::orderBy('name')->get(), 'products' => Product::where('active', true)->orderBy('name')->get(), 'services' => collect()]);
+        return view('documents.form', ['type' => $r->query('type', 'quote'), 'customers' => Customer::orderBy('name')->get(), 'products' => Product::with('group')->where('active', true)->orderBy('name')->get(), 'services' => collect()]);
     }
 
     public function create(Request $r, string $company)
     {
-        $d = $r->validate(['type' => 'required|in:quote,work_order', 'request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'valid_until' => 'nullable|date', 'asset' => 'nullable|string|max:255', 'technician' => 'nullable|string|max:255', 'notes' => 'nullable|string|max:2000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(['type' => 'required|in:quote,work_order', 'request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'valid_until' => 'nullable|date', 'asset' => 'nullable|string|max:255', 'technician' => 'nullable|string|max:255', 'notes' => 'nullable|string|max:2000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $doc = app(Documents::class)->create($d, $r->attributes->get('currentUser')->id);
 
         return redirect()->route('document.show', ['company' => $company, 'id' => $doc->id])->with('success', 'Documento criado. Nenhum estoque foi movimentado.');
@@ -42,7 +43,7 @@ class OperationsController extends Controller
 
     public function show(Request $r, string $company, int $id)
     {
-        return view('documents.show', ['document' => Document::with('customer')->findOrFail($id)]);
+        return view('documents.show', ['document' => Document::with('customer')->findOrFail($id),'sellers'=>User::where('active',true)->orderBy('name')->get()]);
     }
 
     public function transition(Request $r, string $company, int $id)
@@ -55,7 +56,7 @@ class OperationsController extends Controller
 
     public function invoice(Request $r, string $company, int $id)
     {
-        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24']);
+        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24','seller_id'=>'nullable|integer|exists:tenant.users,id']);
         $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 
