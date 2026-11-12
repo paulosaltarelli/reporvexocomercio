@@ -1,0 +1,44 @@
+<?php
+
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CommerceController;
+use App\Http\Controllers\OperationsController;
+use App\Http\Middleware\ResolveTenant;
+use App\Http\Middleware\TenantAuthenticated;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', fn () => view('welcome'));
+Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(ResolveTenant::class)->group(function () {
+    Route::get('login', [AuthController::class, 'form'])->name('login');
+    Route::post('login', [AuthController::class, 'login']);
+    Route::middleware(TenantAuthenticated::class)->group(function () {
+        Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+        Route::get('/', [CommerceController::class, 'dashboard'])->name('dashboard');
+        Route::get('products', [CommerceController::class, 'products'])->name('products');
+        Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
+        Route::get('products/{id}/edit', [CommerceController::class, 'productForm'])->whereNumber('id')->name('product.edit');
+        Route::post('products/save/{id?}', [CommerceController::class, 'saveProduct'])->whereNumber('id')->name('product.save');
+        Route::get('catalog/{kind}', [CommerceController::class, 'catalog'])->name('catalog');
+        Route::post('catalog/{kind}', [CommerceController::class, 'saveCatalog']);
+        Route::get('stock', [CommerceController::class, 'stock'])->name('stock');
+        Route::post('stock', [CommerceController::class, 'moveStock']);
+        Route::get('sales', [CommerceController::class, 'sales'])->name('sales');
+        Route::get('sales/new', [CommerceController::class, 'saleForm'])->name('sale.new');
+        Route::post('sales', [CommerceController::class, 'checkout']);
+        Route::get('sales/{id}', [CommerceController::class, 'sale'])->whereNumber('id')->name('sale.show');
+        Route::post('sales/{id}/cancel', [CommerceController::class, 'cancel'])->whereNumber('id')->name('sale.cancel');
+        Route::post('sales/{id}/receive', [CommerceController::class, 'receive'])->whereNumber('id')->name('sale.receive');
+
+        Route::get('documents', [OperationsController::class, 'documents'])->name('documents');
+        Route::get('documents/new', [OperationsController::class, 'form'])->name('document.new');
+        Route::post('documents', [OperationsController::class, 'create']);
+        Route::get('documents/{id}', [OperationsController::class, 'show'])->whereNumber('id')->name('document.show');
+        Route::post('documents/{id}/status', [OperationsController::class, 'transition'])->whereNumber('id')->name('document.status');
+        Route::post('documents/{id}/invoice', [OperationsController::class, 'invoice'])->whereNumber('id')->name('document.invoice');
+        Route::get('finance', [OperationsController::class, 'finance'])->name('finance');
+        Route::post('finance', [OperationsController::class, 'createEntry']);
+        Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
+        Route::get('users', [CommerceController::class, 'users'])->name('users');
+        Route::post('users',[CommerceController::class, 'saveUser']);
+    });
+});

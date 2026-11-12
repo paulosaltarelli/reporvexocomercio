@@ -1,0 +1,7 @@
+[Unit]
+Description=Recarrega somente Vendra quando o certificado publico muda
+After=vendra.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /srv/reporvexo/ops/reload-certificate.sh

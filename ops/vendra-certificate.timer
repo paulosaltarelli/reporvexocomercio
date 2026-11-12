@@ -1,0 +1,10 @@
+[Unit]
+Description=Verificacao horaria do certificado Vendra
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

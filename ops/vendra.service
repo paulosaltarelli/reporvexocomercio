@@ -1,0 +1,20 @@
+[Unit]
+Description=Vendra homologacao PHP Apache isolado
+After=network.target mysql.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/apache2 -t -f /srv/reporvexo/ops/apache.conf
+ExecStart=/usr/sbin/apache2 -f /srv/reporvexo/ops/apache.conf -DFOREGROUND
+ExecReload=/bin/kill -USR1 $MAINPID
+KillSignal=SIGWINCH
+TimeoutStopSec=30
+Restart=on-failure
+RuntimeDirectory=vendra
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/reporvexo/storage /srv/reporvexo/bootstrap/cache /var/log/vendra /run/vendra
+
+[Install]
+WantedBy=multi-user.target
