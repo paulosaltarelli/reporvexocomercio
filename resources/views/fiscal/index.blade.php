@@ -2,6 +2,10 @@
 @section('title','Fiscal · homologação')
 @section('subtitle','Configuração, conferência e acompanhamento de NFC-e em homologação.')
 @section('content')
+<div class="actions no-print"><a class="button" href="{{ route('sales',['company'=>$tenant->slug]) }}">Escolher venda para simular</a></div>
+
+<section class="panel"><h2>Comece sem certificado</h2><p>Teste aceite, rejeição, timeout, consulta e cancelamento em uma simulação interna. Nenhuma informação é enviada à SEFAZ; o resultado não tem valor fiscal.</p><a class="button secondary" href="{{ route('fiscal.simulations.index',['company'=>$tenant->slug]) }}">Abrir simulações internas</a><p class="hint">Para iniciar um teste, abra a conferência fiscal de uma venda. O fluxo de homologação SEFAZ abaixo permanece separado e exige as configurações correspondentes.</p></section>
+
 <section class="panel"><h2>Situação da empresa</h2>
 <p>Os dados do emitente vêm de <a href="{{ route('business',['company'=>$tenant->slug]) }}">Minha empresa</a>. A conferência local não comprova cadastro ativo na Receita nem credenciamento na SEFAZ.</p>
 @include('fiscal.blockers')

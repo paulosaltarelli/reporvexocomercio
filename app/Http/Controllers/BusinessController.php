@@ -27,7 +27,10 @@ class BusinessController extends Controller
         $credential = $issuer ? FiscalCredential::where('issuer_id', $issuer->id)->first() : null;
         $sequence = $issuer ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 65)->where('series', $issuer->validated_configuration['series'])->first() : null;
 
-        return view('business', ['profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => FiscalSetting::find(1)]);
+        $settings = FiscalSetting::find(1);
+        $draft = $settings?->configuration_draft;
+        $draftMatches = is_array($draft) && ($draft['document'] ?? null) === TaxpayerDocument::normalize((string) $profile->document);
+        return view('business', ['profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches]);
     }
 
     public function save(Request $r)

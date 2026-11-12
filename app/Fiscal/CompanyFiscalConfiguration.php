@@ -27,6 +27,9 @@ final class CompanyFiscalConfiguration
                 throw ValidationException::withMessages(['timezone' => 'Informe o fuso horário fiscal do emitente.']);
             }
             $allowed = ['mei' => ['4'], 'simples' => ['1', '2'], 'presumido' => ['3'], 'real' => ['3']];
+            if (! isset($allowed[$profile->tax_regime])) {
+                throw ValidationException::withMessages(['tax_regime' => 'Preencha e salve o regime tributário em Identificação da empresa antes de ativar a emissão. O rascunho e o simulador podem ser usados sem essa confirmação.']);
+            }
             if (! in_array((string) $configuration['crt'], $allowed[$profile->tax_regime] ?? [], true)) {
                 throw ValidationException::withMessages(['crt' => 'CRT incompatível com o regime tributário cadastrado. Confirme os dois campos com o contador.']);
             }

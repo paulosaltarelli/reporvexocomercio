@@ -12,6 +12,6 @@ class FiscalSetting extends Model
 
     protected function casts(): array
     {
-        return ['nfce_accredited' => 'boolean'];
+        return ['nfce_accredited' => 'boolean', 'configuration_draft' => 'array'];
     }
 }

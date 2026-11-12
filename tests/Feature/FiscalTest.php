@@ -345,6 +345,26 @@ class FiscalTest extends TestCase
         return [$issuer, $certificate];
     }
 
+    private function forbidSimulationTransport(): void
+    {
+        Http::preventStrayRequests();
+        foreach ([SefazTransport::class, CertificateInspector::class, \App\Fiscal\NfceXmlBuilder::class] as $service) {
+            $this->app->bind($service, function () use ($service) {
+                throw new \LogicException('Simulação interna tentou acessar certificado/transporte: '.$service);
+            });
+        }
+    }
+
+    private function simulationProtectedFacts(): array
+    {
+        $facts = [];
+        foreach (['sales', 'sale_items', 'products', 'stock_movements', 'financial_entries', 'payments',
+            'fiscal_issuers', 'fiscal_credentials', 'fiscal_documents', 'fiscal_sequences', 'fiscal_outbox', 'fiscal_files'] as $table) {
+            $facts[$table] = DB::connection('tenant')->table($table)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        }
+        return $facts;
+    }
+
     private function operation(): array
     {
         return ['consumer_final' => true, 'not_taxpayer' => true, 'destination_state' => 'SP', 'presence' => '1', 'pix_mode' => 'dynamic'];
@@ -728,6 +748,154 @@ class FiscalTest extends TestCase
         $this->assertSame('authorized', $doc->fresh()->state);
         $this->assertNull(DB::connection('tenant')->table('fiscal_outbox')->where('id', $nextId)->value('completed_at'));
         $this->assertSame(1, FiscalDocument::count());
+    }
+
+    public function test_internal_simulation_scenarios_consult_and_cancel_have_no_real_fiscal_or_commercial_effects(): void
+    {
+        $this->forbidSimulationTransport();
+        $before = $this->simulationProtectedFacts();
+        $service = app(\App\Fiscal\SimulationFiscal::class);
+        $records = [];
+        foreach (['accepted', 'rejected', 'uncertain'] as $scenario) {
+            $records[$scenario] = $service->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid(), $scenario);
+            $this->assertSame($scenario, $records[$scenario]->state);
+            $this->assertSame('VendraSimulation', $records[$scenario]->snapshot['schema']);
+            $this->assertSame('internal', $records[$scenario]->snapshot['environment']);
+            $this->assertFalse($records[$scenario]->snapshot['readiness']['ready_to_transmit']);
+        }
+        foreach (['rejected', 'uncertain'] as $state) {
+            try {
+                $service->cancel($this->tenant, $records[$state]->id, $this->user->id, 'Cancelamento inválido antes de aceite', (string) Str::uuid());
+                $this->fail('Somente simulação aceita pode ser cancelada.');
+            } catch (ValidationException $exception) { $this->assertArrayHasKey('simulation', $exception->errors()); }
+        }
+        $uncertainSnapshot = $records['uncertain']->snapshot;
+        $consultKey = (string) Str::uuid();
+        $accepted = $service->consult($this->tenant, $records['uncertain']->id, $this->user->id, $consultKey);
+        $this->assertSame('accepted', $accepted->state);
+        $this->assertSame(Snapshot::hash($uncertainSnapshot), Snapshot::hash($accepted->snapshot));
+        $this->assertSame($accepted->id, $service->consult($this->tenant, $accepted->id, $this->user->id, $consultKey)->id);
+        $this->assertSame('rejected', $service->consult($this->tenant, $records['rejected']->id, $this->user->id, (string) Str::uuid())->state);
+        $cancelled = $service->cancel($this->tenant, $records['accepted']->id, $this->user->id, 'Cancelamento exclusivamente de treinamento', (string) Str::uuid());
+        $this->assertSame('cancelled', $cancelled->state);
+        $this->assertSame($before, $this->simulationProtectedFacts());
+        $this->assertSame(3, \App\Models\FiscalSimulation::count());
+        Http::assertNothingSent();
+    }
+
+    public function test_internal_simulation_idempotency_distinguishes_new_exercises_and_rejects_reused_payloads(): void
+    {
+        $this->forbidSimulationTransport();
+        $service = app(\App\Fiscal\SimulationFiscal::class);
+        $key = (string) Str::uuid();
+        $first = $service->create($this->tenant, $this->sale->id, $this->user->id, $key);
+        $this->assertSame($first->id, $service->create($this->tenant, $this->sale->id, $this->user->id, $key)->id);
+        $second = $service->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid());
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame(2, \App\Models\FiscalSimulationEvent::count());
+        foreach ([fn () => $service->create($this->tenant, $this->sale->id, $this->user->id, $key, 'rejected'),
+            fn () => $service->consult($this->tenant, $second->id, $this->user->id, $key)] as $attempt) {
+            try { $attempt(); $this->fail('UUID usado para outro payload/operação deve ser rejeitado.'); }
+            catch (ValidationException $exception) { $this->assertArrayHasKey('request_key', $exception->errors()); }
+        }
+        $reason = 'Motivo original do treinamento interno';
+        $cancelKey = (string) Str::uuid();
+        $service->cancel($this->tenant, $first->id, $this->user->id, $reason, $cancelKey);
+        $eventCount = \App\Models\FiscalSimulationEvent::count();
+        $this->assertSame('cancelled', $service->cancel($this->tenant, $first->id, $this->user->id, $reason, $cancelKey)->state);
+        $this->assertSame('cancelled', $service->cancel($this->tenant, $first->id, $this->user->id, $reason, (string) Str::uuid())->state);
+        $this->assertSame($eventCount, \App\Models\FiscalSimulationEvent::count());
+        try {
+            $service->cancel($this->tenant, $first->id, $this->user->id, 'Outro motivo incompatível com o anterior', (string) Str::uuid());
+            $this->fail('Cancelamento repetido não pode trocar o motivo histórico.');
+        } catch (ValidationException $exception) { $this->assertArrayHasKey('reason', $exception->errors()); }
+        $this->sale->update(['status' => 'cancelled']);
+        try {
+            $service->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid());
+            $this->fail('Venda cancelada não pode originar novo exercício.');
+        } catch (ValidationException $exception) { $this->assertArrayHasKey('sale', $exception->errors()); }
+        $this->assertSame(2, \App\Models\FiscalSimulation::count());
+        $this->assertSame($eventCount, \App\Models\FiscalSimulationEvent::count());
+        Http::assertNothingSent();
+    }
+
+    public function test_internal_simulation_exports_are_non_fiscal_and_enforce_admin_tenant_and_integrity(): void
+    {
+        $this->forbidSimulationTransport();
+        $service = app(\App\Fiscal\SimulationFiscal::class);
+        $simulation = $service->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid());
+        $this->login();
+        $base = '/app/a/fiscal/simulations/'.$simulation->id;
+        $this->get($base)->assertOk()->assertSee('SIMULAÇÃO INTERNA');
+        $receipt = $this->get($base.'/receipt')->assertOk()->assertSee('SEM VALOR FISCAL')->assertSee('NÃO É DANFE')->assertSee('15,03');
+        $this->assertStringContainsString('text/html', $receipt->headers->get('Content-Type'));
+        $this->assertStringContainsString('private', $receipt->headers->get('Cache-Control'));
+        $download = $this->get($base.'/download')->assertOk()->assertHeader('Content-Type', 'application/json')->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertJsonPath('schema', 'VendraSimulation')->assertJsonPath('snapshot.environment', 'internal');
+        $this->assertStringContainsString('.json', $download->headers->get('Content-Disposition'));
+        $this->assertStringNotContainsString('<NFe', $download->getContent());
+        foreach (['access_key', 'protocol', 'number'] as $field) { $this->assertArrayNotHasKey($field, $download->json()); }
+        $this->post('/app/a/sales/'.$this->sale->id.'/fiscal/simulate', ['request_key' => (string) Str::uuid(), 'scenario' => 'accepted',
+            'tenant_id' => 999, 'state' => 'authorized', 'access_key' => str_repeat('1', 44), 'protocol' => '135260000000001'])
+            ->assertSessionHasErrors(['tenant_id', 'state', 'access_key', 'protocol']);
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->user->update(['role' => 'operator']);
+        foreach (['/app/a/fiscal/simulations', $base, $base.'/download', $base.'/receipt'] as $url) { $this->get($url)->assertForbidden(); }
+        foreach (['/app/a/sales/'.$this->sale->id.'/fiscal/simulate', $base.'/consult', $base.'/cancel'] as $url) {
+            $this->post($url, ['request_key' => (string) Str::uuid(), 'scenario' => 'accepted', 'reason' => 'Motivo de treinamento interno'])->assertForbidden();
+        }
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->user->update(['role' => 'admin']);
+        $other = Tenant::where('slug', 'b')->firstOrFail();
+        app(TenantConnection::class)->connect($other);
+        $userB = User::forceCreate(['id' => $this->user->id, 'name' => 'Admin outra empresa', 'email' => 'simulation-b@example.test', 'password' => 'simulation-password-test', 'role' => 'admin']);
+        $this->withSession(['tenant_id' => $other->id, 'user_id' => $userB->id, 'auth_version' => 0]);
+        $this->get('/app/b/fiscal/simulations/'.$simulation->id)->assertNotFound();
+        $this->post('/app/b/fiscal/simulations/'.$simulation->id.'/consult', ['request_key' => (string) Str::uuid()])->assertNotFound();
+        app(TenantConnection::class)->connect($other);
+        try {
+            $service->create($this->tenant, $this->sale->id, $userB->id, (string) Str::uuid());
+            $this->fail('Tenant recebido não pode divergir da conexão ativa.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(403, $exception->getStatusCode()); }
+        $this->assertSame(0, \App\Models\FiscalSimulation::count());
+        app(TenantConnection::class)->connect($this->tenant);
+        DB::connection('tenant')->table('fiscal_simulations')->where('id', $simulation->id)->update(['snapshot_sha256' => str_repeat('0', 64)]);
+        $this->login();
+        $this->get($base.'/download')->assertSessionHasErrors('simulation');
+        Http::assertNothingSent();
+    }
+
+    public function test_internal_simulation_draft_is_partial_private_and_preserves_active_configuration(): void
+    {
+        $this->forbidSimulationTransport();
+        BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'Empresa de treinamento', 'document' => '11.222.333/0001-81']);
+        $this->login();
+        $payload = ['intent' => 'draft', 'environment' => 'homologation', 'series' => '2', 'natureza_operacao' => 'VENDA RASCUNHO'];
+        $before = $this->simulationProtectedFacts();
+        $this->post('/app/a/business/fiscal', $payload)->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $draft = FiscalSetting::findOrFail(1)->configuration_draft;
+        $this->assertSame('11222333000181', $draft['document']);
+        $this->assertSame('VENDA RASCUNHO', $draft['values']['natureza_operacao']);
+        $this->assertSame($before, $this->simulationProtectedFacts());
+        $this->get('/app/a/business')->assertOk()->assertViewHas('fiscalDraftPresent', true)
+            ->assertViewHas('fiscalDraft', fn ($values) => $values['natureza_operacao'] === 'VENDA RASCUNHO');
+        app(TenantConnection::class)->connect($this->tenant);
+        $issuer = \App\Models\FiscalIssuer::create(['document' => '11222333000181', 'environment' => 'homologation', 'provider' => 'sefaz_direct', 'enabled' => true, 'validated_configuration' => ['series' => 1]]);
+        FiscalCredential::create(['issuer_id' => $issuer->id, 'secrets' => ['csc' => 'SYNTHETIC-EXISTING'], 'validated_hash' => str_repeat('a', 64),
+            'certificate_fingerprint' => str_repeat('b', 64), 'certificate_document' => '11222333000181',
+            'valid_from' => now()->subDay(), 'valid_until' => now()->addMonth()]);
+        DB::connection('tenant')->table('fiscal_sequences')->insert(['issuer_id' => $issuer->id, 'model' => 65, 'series' => 1, 'next_number' => 42]);
+        $active = $this->simulationProtectedFacts();
+        $this->post('/app/a/business/fiscal', array_replace($payload, ['series' => '9']))->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertSame($active, $this->simulationProtectedFacts());
+        BusinessProfile::findOrFail(1)->update(['document' => '04.252.011/0001-10']);
+        $this->get('/app/a/business')->assertOk()->assertViewHas('fiscalDraftPresent', false)->assertViewHas('fiscalDraft', []);
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->user->update(['role' => 'operator']);
+        $this->post('/app/a/business/fiscal', $payload)->assertForbidden();
+        Http::assertNothingSent();
     }
 
     public function test_http_emission_accepts_browser_checkbox_strings_and_queues_without_transmission(): void

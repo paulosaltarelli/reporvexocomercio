@@ -13,6 +13,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\FiscalController;
 use App\Http\Controllers\FiscalEmissionController;
+use App\Http\Controllers\SimulationFiscalController;
 
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\DeskController;
@@ -40,6 +41,14 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
+        Route::get('fiscal/simulations', [SimulationFiscalController::class, 'index'])->name('fiscal.simulations.index');
+        Route::post('sales/{id}/fiscal/simulate', [SimulationFiscalController::class, 'create'])->whereNumber('id')->name('fiscal.simulations.create');
+        Route::get('fiscal/simulations/{id}', [SimulationFiscalController::class, 'show'])->whereNumber('id')->name('fiscal.simulations.show');
+        Route::post('fiscal/simulations/{id}/consult', [SimulationFiscalController::class, 'consult'])->whereNumber('id')->name('fiscal.simulations.consult');
+        Route::post('fiscal/simulations/{id}/cancel', [SimulationFiscalController::class, 'cancel'])->whereNumber('id')->name('fiscal.simulations.cancel');
+        Route::get('fiscal/simulations/{id}/download', [SimulationFiscalController::class, 'download'])->whereNumber('id')->name('fiscal.simulations.download');
+        Route::get('fiscal/simulations/{id}/receipt', [SimulationFiscalController::class, 'receipt'])->whereNumber('id')->name('fiscal.simulations.receipt');
+
         Route::post('business/fiscal', [FiscalEmissionController::class,'configure'])->name('business.fiscal');
         Route::post('business/fiscal/validate', [FiscalEmissionController::class,'validateLocal'])->name('business.fiscal.validate');
         Route::post('fiscal/voids', [FiscalEmissionController::class,'invalidate'])->name('fiscal.invalidate');
