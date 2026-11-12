@@ -18,7 +18,7 @@
         @php($registrationNavigation=request()->routeIs('products','product.*','catalog'))
         @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*','stock','prices','price.*','purchases','purchase.*'))
         @php($financeNavigation=request()->routeIs('finance','finance.*','cashflow','cash','cash.*'))
-        @php($reportNavigation=request()->routeIs('reports','report.*'))
+        @php($reportNavigation=request()->routeIs('reports','report.*','commissions'))
         @php($settingsNavigation=request()->routeIs('business','users','account.password','fiscal','fiscal.*'))
         <nav aria-label="Menu da empresa" class="grouped-navigation">
             <a class="nav {{ request()->routeIs('dashboard')?'selected':'' }}" href="{{ route('dashboard',['company'=>$tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif>Visão geral</a>
@@ -56,7 +56,7 @@
                 </details>
                 <details class="nav-group {{ $reportNavigation?'current-group':'' }}" @if($reportNavigation) open @endif>
                     <summary>Relatórios</summary>
-                    <div class="nav-group-links"><a class="nav {{ $reportNavigation?'selected':'' }}" href="{{ route('reports',['company'=>$tenant->slug]) }}" @if($reportNavigation) aria-current="page" @endif>Visão gerencial e exportações</a></div>
+                    <div class="nav-group-links"><a class="nav {{ request()->routeIs('reports','report.*')?'selected':'' }}" href="{{ route('reports',['company'=>$tenant->slug]) }}" @if(request()->routeIs('reports','report.*')) aria-current="page" @endif>Visão gerencial e exportações</a><a class="nav {{ request()->routeIs('commissions')?'selected':'' }}" href="{{ route('commissions',['company'=>$tenant->slug]) }}" @if(request()->routeIs('commissions')) aria-current="page" @endif>Comissões por vendedor</a></div>
                 </details>
                 <details class="nav-group {{ $settingsNavigation?'current-group':'' }}" @if($settingsNavigation) open @endif>
                     <summary>Administração</summary>
@@ -78,7 +78,7 @@
         <div><span class="current-user">{{ $currentUser?->name }}</span><a class="account-link" href="{{ route('account.password',['company'=>$tenant->slug]) }}">Minha senha</a><form method="post" action="{{ route('logout',['company'=>$tenant->slug]) }}">@csrf<button class="text-button">Sair</button></form></div>
     </header>
     <main id="main-content" tabindex="-1">
-        @include('components.company-report-header',['reportPrintOnly'=>!request()->routeIs('reports','sale.show','document.show','purchase.show','cash','cashflow','finance')])
+        @include('components.company-report-header',['reportPrintOnly'=>!request()->routeIs('reports','commissions','sale.show','document.show','purchase.show','cash','cashflow','finance')])
         <div class="page-top"><div><div class="eyebrow">VENDRA / GESTÃO COMERCIAL</div><h1>@yield('title','Visão geral')</h1><p class="muted">@yield('subtitle')</p></div>@yield('actions')</div>
         @if(session('success'))
             <div class="notice success" role="status">{{ session('success') }}</div>

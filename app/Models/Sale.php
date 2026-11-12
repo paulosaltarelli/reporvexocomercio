@@ -15,6 +15,16 @@ class Sale extends Model
         return ['paid' => 'boolean'];
     }
 
+    public function document()
+    {
+        return $this->belongsTo(Document::class);
+    }
+
+    public function seller()
+    {
+        return $this->belongsTo(User::class, 'seller_id');
+    }
+
     public function entries()
     {
         return $this->hasMany(FinancialEntry::class);

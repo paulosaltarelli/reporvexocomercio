@@ -20,7 +20,7 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
 @required($field!=='barcode') maxlength="{{ $field==='name'?180:80 }}"></div>
 @endforeach
 <div class="field"><label>Grupo</label><select name="product_group_id" id="group" required><option value="">Selecione</option>
-@foreach($groups as $g)<option value="{{ $g->id }}" data-margin="{{ $g->margin }}" data-price-policy="{{ $g->price_policy??'alert' }}"
+@foreach($groups as $g)<option value="{{ $g->id }}" data-margin="{{ $g->margin }}" data-price-policy="{{ $g->price_policy??'alert' }}" data-discount-enabled="{{ $g->discount_enabled?'1':'0' }}" data-discount-limit="{{ $g->max_discount_percent??'0' }}" data-commission="{{ $g->commission_percent??'0' }}"
 @selected(old('product_group_id',$product->product_group_id)==$g->id)>{{ $g->name }} · {{ $g->margin }}%</option>
 @endforeach</select></div>
 <div class="field"><label>Unidade</label><select name="unit">
@@ -30,6 +30,18 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
 <div class="field"><label>Margem própria (%)</label><input id="margin" type="number" step="0.01" min="0" max="99.99" name="margin" value="{{ old('margin',$product->margin) }}"><small class="hint">Em branco: herda a margem do grupo. A margem própria e a regra de atualização são escolhas independentes.</small></div><div class="field"><label for="price_policy">Atualização do preço</label><select id="price_policy" name="price_policy"><option value="" @selected(old('price_policy',$product->price_policy)===null||old('price_policy',$product->price_policy)==='')>Herdar regra do grupo</option><option value="alert" @selected(old('price_policy',$product->price_policy)==='alert')>Somente alertas · manter preço atual</option><option value="automatic" @selected(old('price_policy',$product->price_policy)==='automatic')>Automático · atualizar pelo custo médio</option></select><small class="hint" id="effective-policy" aria-live="polite"></small></div><div class="field"><label>Preço de venda (R$)</label><input id="sale_price" type="number" step="0.01" min="0" max="999999999999.99" name="sale_price" value="{{ old('sale_price',$product->sale_price) }}" required aria-describedby="price-policy-note"><small class="hint" id="price-policy-note"></small></div><div class="field"><label>Preço sugerido</label><strong id="suggested" role="status" aria-live="polite">—</strong><br><button type="button" class="text-button" id="apply-price">Usar sugestão</button><small class="hint" id="pricing-cost-base">A base de custo depende do controle de estoque. Sem impostos e despesas.</small></div>
 <div class="field"><input type="hidden" name="active" value="0"><label><input type="checkbox" name="active" value="1"
 @checked(old('active',$product->active))> Cadastro ativo</label></div></div>
+@php($discountOverride=old('discount_enabled',$product->discount_enabled))
+@php($discountChoice=$discountOverride===null||$discountOverride===''?'':((bool)$discountOverride?'1':'0'))
+<details class="disclosure compact" style="margin-top:24px" @if($errors->hasAny(['discount_enabled','max_discount_percent','commission_percent'])) open @endif>
+    <summary>Descontos e comissões</summary>
+    <div class="form-grid disclosure-content">
+        <div class="field"><label for="product-discount-enabled">Permissão de desconto</label><select id="product-discount-enabled" name="discount_enabled"><option value="" @selected($discountChoice==='')>Herdar do grupo</option><option value="1" @selected($discountChoice==='1')>Permitir</option><option value="0" @selected($discountChoice==='0')>Bloquear</option></select></div>
+        <div class="field"><label for="product-discount-limit">Desconto máximo próprio (%)</label><input id="product-discount-limit" name="max_discount_percent" type="number" min="0" max="100" step="0.01" value="{{ old('max_discount_percent',$product->max_discount_percent) }}"><small class="hint">Em branco herda o limite do grupo. Zero sobrescreve e não permite abatimento.</small></div>
+        <div class="field"><label for="product-commission">Comissão própria (%)</label><input id="product-commission" name="commission_percent" type="number" min="0" max="100" step="0.01" value="{{ old('commission_percent',$product->commission_percent) }}"><small class="hint">Em branco herda do grupo. Zero desativa a comissão neste item.</small></div>
+    </div>
+    <div class="form-note" id="effective-commercial-rules" role="status" aria-live="polite"></div>
+    <p class="hint">Cada campo herda de forma independente. A comissão usa o valor líquido após descontos; sua apuração não registra pagamento ao vendedor.</p>
+</details>
 <details class="disclosure compact" style="margin-top:24px" @if($errors->hasAny(['ncm','origin','municipal_service_code','iss_rate'])) open @endif>
     <summary>Dados fiscais preparatórios (opcional)</summary>
     <div class="disclosure-content">
@@ -122,6 +134,25 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     [groupField,policyField].forEach(field=>field.addEventListener('change',updatePricing));
     applyPrice.addEventListener('click',()=>{const cents=updatePricing();if(cents!==null&&!applyPrice.disabled){manualPrice=asValue(cents);priceField.value=manualPrice;}});
     syncItemType();updatePricing();
+})();
+</script>
+@endpush
+
+@push('scripts')
+<script>
+(() => {
+    const group=document.querySelector('#group');
+    const enabled=document.querySelector('#product-discount-enabled');
+    const limit=document.querySelector('#product-discount-limit');
+    const commission=document.querySelector('#product-commission');
+    function explain(){
+        const option=group.selectedOptions[0];
+        const allowed=(enabled.value===''?option?.dataset.discountEnabled:enabled.value)==='1';
+        const rate=limit.value===''?(option?.dataset.discountLimit||'0'):limit.value;
+        const commissionRate=commission.value===''?(option?.dataset.commission||'0'):commission.value;
+        document.querySelector('#effective-commercial-rules').textContent=(allowed?'Desconto permitido até '+rate.replace('.',',')+'% de redução total.':'Desconto bloqueado neste item.')+' Comissão efetiva: '+commissionRate.replace('.',',')+'% sobre a venda líquida.';
+    }
+    [group,enabled,limit,commission].forEach(field=>{field.addEventListener('input',explain);field.addEventListener('change',explain);});explain();
 })();
 </script>
 @endpush

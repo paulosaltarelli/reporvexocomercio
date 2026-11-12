@@ -28,16 +28,33 @@ class CommerceController extends Controller
         abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
     }
 
-    public function dashboard()
+    public function dashboard(Request $request)
     {
         $sales = Sale::where('status', 'completed');
-
-        $from=now()->startOfDay()->subDays(13);$until=now()->endOfDay();
-        $period=(clone $sales)->whereBetween('created_at',[$from,$until]);
-        $daily=(clone $period)->selectRaw('DATE(created_at) as day, SUM(total) as total')->groupByRaw('DATE(created_at)')->get()->keyBy('day');
-        $salesTrend=[];for($i=0;$i<14;$i++){$date=$from->copy()->addDays($i)->toDateString();$salesTrend[]=['date'=>$date,'total'=>(string)($daily->get($date)?->total??'0.00')];}
+        $currentYear = (int) now()->year;
+        $data = $request->validate(['year'=>'nullable|integer|min:2000|max:'.$currentYear]);
+        $years = (clone $sales)->whereYear('created_at', '<=', $currentYear)
+            ->selectRaw('YEAR(created_at) as sales_year')->distinct()->orderBy('sales_year')
+            ->pluck('sales_year')->map(fn ($value) => (int) $value)->all();
+        $pastYears = array_values(array_filter($years, fn ($year) => $year < $currentYear));
+        $defaultYear = $pastYears === [] ? $currentYear : max($pastYears);
+        $salesYear = (int) ($data['year'] ?? $defaultYear);
+        $salesYears = array_values(array_unique(array_merge($years, [$currentYear, $salesYear])));
+        sort($salesYears);
+        $from = now()->setDate($salesYear, 1, 1)->startOfDay();
+        $until = $from->copy()->endOfYear();
+        $period = (clone $sales)->whereBetween('created_at', [$from, $until]);
+        $monthly = (clone $period)->selectRaw('MONTH(created_at) as month, SUM(total) as total, COUNT(*) as sales_count')
+            ->groupByRaw('MONTH(created_at)')->get()->keyBy('month');
+        $labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+        $salesTrend = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $salesTrend[] = ['date'=>sprintf('%04d-%02d-01', $salesYear, $month), 'label'=>$labels[$month-1],
+                'total'=>(string) ($monthly->get($month)?->total ?? '0.00'),
+                'count'=>(int) ($monthly->get($month)?->sales_count ?? 0)];
+        }
         return view('dashboard', [
-            'salesTrend'=>$salesTrend,'salesPeriodTotal'=>(string)(clone $period)->sum('total'),'salesPeriodCount'=>(clone $period)->count(),
+            'salesYear'=>$salesYear,'salesYears'=>$salesYears,'salesTrend'=>$salesTrend,'salesPeriodTotal'=>(string)(clone $period)->sum('total'),'salesPeriodCount'=>(clone $period)->count(),
             'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'),
             'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total'),
             'stockValue' => Product::selectRaw('COALESCE(SUM(quantity * average_cost),0) as value')->value('value'),
@@ -63,7 +80,7 @@ class CommerceController extends Controller
     {
         $this->admin($r);
         $p = $id ? Product::findOrFail($id) : new Product;
-        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => 'required|in:UN,KG,M,L,CX,PC,PAR', 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'discount_enabled'=>'nullable|boolean','max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => 'required|in:UN,KG,M,L,CX,PC,PAR', 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
         $d['active'] = $r->boolean('active');
         $d['type']=$d['type']??$p->type??'product';
         $d['controls_stock']=$d['type']==='product' ? ($r->has('controls_stock')?$r->boolean('controls_stock'):($p->exists?(bool)$p->controls_stock:true)) : false;
@@ -90,7 +107,7 @@ class CommerceController extends Controller
     private function catalogSpec(string $kind): array
     {
         return match ($kind) {
-            'groups' => [ProductGroup::class, 'Grupos de produtos', ['name' => 'Nome', 'margin' => 'Margem padrão (%)','price_policy'=>'Atualização do preço de venda']],
+            'groups' => [ProductGroup::class, 'Grupos de produtos', ['name' => 'Nome', 'margin' => 'Margem padrão (%)','price_policy'=>'Atualização do preço de venda','discount_enabled'=>'Descontos permitidos','max_discount_percent'=>'Desconto máximo (%)','commission_percent'=>'Comissão (%)']],
             'suppliers' => [Supplier::class, 'Fornecedores', ['name' => 'Nome / razão social', 'document' => 'CPF / CNPJ', 'email' => 'E-mail', 'phone' => 'Telefone', 'address' => 'Endereço']],
             'customers' => [Customer::class, 'Clientes', ['name' => 'Nome / razão social', 'document' => 'CPF / CNPJ', 'email' => 'E-mail', 'phone' => 'Telefone', 'address' => 'Endereço']],
             'services' => [Service::class, 'Serviços', ['name' => 'Descrição do serviço', 'price' => 'Preço (R$)', 'cost' => 'Custo (R$)', 'municipal_service_code' => 'Código municipal (futuro fiscal)', 'iss_rate' => 'Alíquota ISS (%)']],
@@ -105,7 +122,7 @@ class CommerceController extends Controller
         [$model] = $this->catalogSpec($kind);
         $row = $r->integer('id') ? $model::findOrFail($r->integer('id')) : new $model;
         $rules = match ($kind) {
-            'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2','price_policy'=>'sometimes|required|in:alert,automatic'],
+            'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2','price_policy'=>'sometimes|required|in:alert,automatic','discount_enabled'=>'sometimes|required|boolean','max_discount_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2'],
             'customers','suppliers' => ['name' => 'required|string|max:180', 'document' => 'nullable|string|max:20', 'email' => 'nullable|email|max:180', 'phone' => 'nullable|string|max:30', 'address' => 'nullable|string|max:1000'],
             'services' => ['name' => 'required|string|max:180', 'price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'cost' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'municipal_service_code' => 'nullable|string|max:30', 'iss_rate' => 'nullable|numeric|min:0|max:100|decimal:0,2'],
         };
@@ -138,14 +155,14 @@ class CommerceController extends Controller
         return view('sales.index', ['sales' => Sale::with('customer')->latest()->paginate(20)]);
     }
 
-    public function saleForm()
+    public function saleForm(Request $r)
     {
-        return view('sales.form', ['customers' => Customer::orderBy('name')->get(), 'products' => Product::where('active', true)->orderBy('name')->get(), 'services' => collect()]);
+        return view('sales.form', ['customers' => Customer::orderBy('name')->get(), 'products' => Product::with('group')->where('active', true)->orderBy('name')->get(), 'services' => collect(), 'sellers'=>User::where('active',true)->orderBy('name')->get()]);
     }
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 

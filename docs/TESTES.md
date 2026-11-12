@@ -1,6 +1,6 @@
 # Testes
 
-Última execução consolidada em 12/11/2026: **54 testes passaram, 906 verificações, nenhum teste pulado ou falha, saída 0, duração de 67,42 segundos**.
+Última execução consolidada em 12/11/2026: **60 testes passaram, 956 verificações, nenhum teste pulado ou falha, saída 0, duração de 138,42 segundos**, em checkout QA isolado.
 
 `php artisan test` executa cálculos decimais e, quando configurado, integração MySQL.
 A suíte de integração recria EXCLUSIVAMENTE `vendra_test_central`, `vendra_t_test_a`, `vendra_t_test_b`.
@@ -132,3 +132,30 @@ Execução consolidada posterior à correção: **54 testes passaram, 906 verifi
 A evolução do importador para anos históricos completos foi validada em 12/11/2026 pelo filtro `test_annual_history_`: **3 testes passaram, 70 verificações, nenhum skip/falha, saída 0, em 72,32 segundos**. É uma execução focada posterior à suíte de 54 casos, não uma nova execução consolidada de toda a suíte.
 
 O caso novo exige janeiro a dezembro com exatamente 44 vendas por mês (528 no ano), faturamento máximo/mínimo inferior a 1,15, 365 fechamentos, saldo de ligação com o histórico anterior, preservação das operações existentes e replay sem duplicação. Os dois casos anteriores continuam verificando o ano corrente parcial, sobreposição financeira, reconciliação e proteção da base preparada.
+
+
+## Comissões e políticas de desconto
+
+A validação foi executada ANTES do deploy comercial, no checkout isolado `/srv/vendra-commercial-qa.uGFdQ8`, com vendor copiado, configuração privada de teste e storage/cache próprios. Não executou migração nem testes no checkout operacional. A suíte completa passou: **60 testes, 956 verificações, nenhum skip/falha, saída 0, duração de 138,42 segundos**. O teste do ano completo de 2025 permaneceu na suíte.
+
+Cinco novos casos cobrem:
+
+- Desconto negado por padrão; herança e sobrescrita independente por produto; soma da redução implícita do preço com o percentual explícito. O limite de 10% aceita 100→90 e rejeita 90 com 1% adicional. Tentativas inválidas não criam venda nem movimentam estoque.
+- Arredondamento em centavos e comissão sobre líquido: quantidade 0,333, preço 10,00 e desconto de 10% geram líquido 3,00 e comissão de 7,50% igual a 0,23. Snapshot e nome do vendedor permanecem após alteração cadastral; repetição não duplica. Operador não pode atribuir outro vendedor, e vendedor inativo é rejeitado.
+- Preço de catálogo visto desatualizado é rejeitado; flags públicas que alegam dados históricos ou autorização não liberam desconto.
+- Relatório considera data da venda e recebimento acumulado: venda de 100,00, comissão de 10,00 e baixa parcial de 25,00 apresentam comissão proporcional de 2,50 e restante 7,50. Replay não duplica a baixa, canceladas são excluídas e operador recebe 403.
+- Orçamento novo aprovado de 90,00 e documento legado de 60,00 mantêm preços após catálogo mudar para 200,00 e desconto ser desabilitado. A conversão usa comissão atual de 20% (18,00 e 12,00), conserva legado sem desconto artificial e não aceita reivindicar a exceção histórica por payload público.
+
+Esta evidência valida a fonte consolidada em ambiente QA; não afirma que a migração ou o deploy operacional já ocorreram.
+
+
+## Ampliação do gráfico para os 12 meses
+
+O baseline comercial de 60 casos continua separado desta alteração posterior. O primeiro filtro de três casos encontrou uma falha real no componente Blade mensal: **2 falharam e 1 passou, 31 verificações, duração de 51,03 segundos**. O dashboard de administrador retornou 500 por `ParseError` no PHP compilado de `components/charts/sales-trend.blade.php`; operador passou porque não renderiza o gráfico. A falha foi comunicada antes de qualquer deploy operacional. `view:cache` sozinho não confirma a sintaxe PHP compilada; é necessário também executar o lint dos arquivos resultantes.
+
+
+Após corrigir as diretivas Blade coladas ao texto e agrupar o PHP local, o lint de todos os PHP compilados passou. A repetição dos mesmos três filtros no checkout isolado passou: **3 testes, 66 verificações, nenhum skip/falha, saída 0, em 40,18 segundos**.
+
+O novo caso fixa novembro de 2026 e verifica janeiro/dezembro de 2025 com vendas de 100,00/200,00 e uma venda cancelada de 999,00, além de fevereiro de 2026 com 500,00. O ano padrão é 2025, com total 300,00 e duas vendas, 12 rótulos e dez meses intermediários zerados. Selecionar 2026 produz 500,00 e uma venda; selecionar 2027 gera erro de validação. Os outros filtros confirmam renderização das telas e ausência de gráfico/indicador agregado para operador.
+
+A evidência final é **baseline completo de 60 testes / 956 verificações mais estes três filtros de 66 verificações após o patch mensal**. Existem 61 casos na fonte, mas não foi executada uma suíte completa de 61 nesta etapa; as contagens de execuções distintas não são somadas.
