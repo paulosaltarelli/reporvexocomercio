@@ -202,7 +202,7 @@ systemctl disable vendra-fiscal.timer
 apache2 -t -f /srv/reporvexo/ops/apache.conf
 (cd "$live" && sha256sum --check "$pdv")
 systemctl start vendra.service
-curl --resolve 2.25.146.67:8445:127.0.0.1 --fail --silent --show-error --output /dev/null --write-out 'Login HTTPS %{http_code}\n' https://2.25.146.67:8445/app/vexo/login
+curl --retry 10 --retry-connrefused --retry-delay 1 --retry-max-time 30 --connect-timeout 3 --max-time 5 --resolve 2.25.146.67:8445:127.0.0.1 --fail --silent --show-error --output /dev/null --write-out 'Login HTTPS %{http_code}\n' https://2.25.146.67:8445/app/vexo/login
 printf '%s\n' 'complete-worker-disabled' > "$journal/status"
 paused=0
 printf 'Overlay fiscal aplicado. Timer fiscal continua desabilitado. Journal privado: %s\n' "$journal"
