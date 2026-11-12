@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Document;
 use App\Models\Sale;
 use App\Models\Seller;
+use App\Models\Product;
 use App\Services\CommercialRules;
 use Illuminate\Http\Request;
 
@@ -34,6 +35,10 @@ class DeskController extends Controller
             'recentSales'=>(clone $sales)->latest()->limit(8)->get(),
             'metrics'=>['sales_count'=>(clone $completed)->count(),'sales_total'=>(string)(clone $completed)->sum('total'),'quotes_count'=>(clone $quotes)->count()],
             'canOperate'=>(bool)$salesperson->active,
+            'products'=>Product::with('group')->where('active',true)->orderBy('name')->get(),
+            'customers'=>Customer::orderBy('name')->get(),
+            'currentSalesperson'=>$own,'selectedSalespersonId'=>$selectedId,
+            'selectedCustomerId'=>$data['customer_id']??null,
             'unassignedQuotesCount'=>$actor->role==='admin'?Document::where('type','quote')->whereIn('status',['draft','approved'])->whereNull('salesperson_id')->count():0,
         ]);
     }

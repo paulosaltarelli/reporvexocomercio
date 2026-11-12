@@ -1,6 +1,6 @@
 @extends('layout')
-@section('title','Painel de operação')
-@section('subtitle','Seu ponto de atendimento para orçamentos, vendas e acompanhamento do dia.')
+@section('title','PDV — Frente de caixa')
+@section('subtitle','Produtos, serviços, cliente e pagamento no mesmo atendimento.')
 @section('content')
 @php($deskContext=['company'=>$tenant->slug,'salesperson_id'=>$salesperson?->id,'customer_id'=>$selectedCustomer?->id])
 <section class="panel desk-owner-panel">
@@ -28,10 +28,12 @@ Peça ao administrador para conferir o perfil vinculado ao seu acesso.@endif</di
         </div>
     @endif
 </section>
-<div class="desk-primary-grid">
-    <section class="panel desk-action-card"><div class="desk-action-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18l-4-2-3 2-3-2-4 2V3Zm4 5h6m-6 4h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><h2>Novo orçamento</h2><p>Prepare os itens e valores para aprovação. O estoque só é baixado quando o orçamento gera a venda.</p></div>@if($canOperate)<a class="button secondary" href="{{ route('document.new',array_merge($deskContext,['type'=>'quote'])) }}">Criar orçamento</a>@else<span class="button secondary desk-disabled" role="link" aria-disabled="true">Criar orçamento</span>@endif</section>
-    <section class="panel desk-action-card desk-sale-action"><div class="desk-action-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v15H4V6Zm4-3v6m8-6v6m-8 5h8m-8 4h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><h2>Nova venda</h2><p>Registre produtos e serviços, confira descontos e informe o pagamento para concluir o atendimento.</p></div>@if($canOperate)<a class="button" href="{{ route('sale.new',$deskContext) }}">Registrar venda</a>@else<span class="button desk-disabled" role="link" aria-disabled="true">Registrar venda</span>@endif</section>
-</div>
+@if($canOperate)
+<section aria-label="Venda no PDV" id="pdv-checkout">
+    @include('components.sales.checkout-form')
+</section>
+@endif
+<div class="actions"><a class="button secondary" href="{{ route('document.new',array_merge($deskContext,['type'=>'quote'])) }}">Preparar orçamento</a></div>
 <div class="desk-metrics" aria-label="Resumo do vendedor selecionado"><div><span>Vendas de hoje</span><strong>{{ $metrics['sales_count'] }}</strong></div><div><span>Valor vendido hoje</span><strong>R$ {{ number_format($metrics['sales_total'],2,',','.') }}</strong></div><div><span>Orçamentos em andamento</span><strong>{{ $metrics['quotes_count'] }}</strong></div></div>
 <p class="hint desk-metrics-note">Resumo exclusivo do vendedor selecionado. Valores vendidos não representam dinheiro já recebido.</p>
 <section class="panel">
