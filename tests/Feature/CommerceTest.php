@@ -1477,6 +1477,39 @@ class CommerceTest extends TestCase
         }
     }
 
+    public function test_annual_history_complete_year_has_balanced_months_and_preserves_existing_data(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));
+        try {
+            app(\App\Services\DemoComputerStore::class)->seed($this->user->id);
+            $before = $this->storeFinancialFacts();
+            $service = app(\App\Services\AnnualComputerStore::class);
+            $plan = $service->plan(2025);
+            $this->assertSame('2025-12-31', $plan['import_end']);
+            $this->assertTrue($plan['balanced_monthly_volume']);
+            $this->assertSame(528, $plan['estimated_sales']);
+            $summary = $service->seed($this->user->id, 2025);
+            $this->assertSame($before, $this->existingStoreFinancialFacts($before));
+            $months = Sale::whereYear('created_at', 2025)->where('status', 'completed')
+                ->selectRaw('MONTH(created_at) as month, COUNT(*) as quantity, SUM(total) as revenue')
+                ->groupByRaw('MONTH(created_at)')->orderBy('month')->get();
+            $this->assertSame(range(1, 12), $months->pluck('month')->map(fn ($value) => (int) $value)->all());
+            $this->assertSame(array_fill(0, 12, 44), $months->pluck('quantity')->map(fn ($value) => (int) $value)->all());
+            $revenues = $months->pluck('revenue')->map(fn ($value) => (float) $value)->all();
+            $this->assertLessThan(1.15, max($revenues) / min($revenues));
+            $this->assertSame(365, \App\Models\CashClosure::whereYear('date', 2025)->count());
+            $bridge = \App\Models\CashClosure::whereDate('date', '2025-12-31')->firstOrFail();
+            $originalOpening = $before['cash_closures'][0]['opening_balance'];
+            $this->assertSame($originalOpening, $bridge->counted_balance);
+            $this->assertSame(0, \App\Models\Payment::where('paid_on', '>', '2026-11-12')->count());
+            $counts = [Sale::count(), \App\Models\Payment::count(), \App\Models\CashClosure::count()];
+            $this->assertSame($this->canonicalJson($summary), $this->canonicalJson($service->seed($this->user->id, 2025)));
+            $this->assertSame($counts, [Sale::count(), \App\Models\Payment::count(), \App\Models\CashClosure::count()]);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     public function test_annual_history_requires_prepared_base_and_refuses_overlapping_financial_records(): void
     {
         $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 12:00:00'));

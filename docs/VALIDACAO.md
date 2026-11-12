@@ -24,3 +24,9 @@ Snapshot independente confirmou a preservação dos valores, custos, quantidades
 Chromium conferiu 11 rotas após a carga, gráficos reais, ausência dos rótulos, mobile sem overflow, PDF com identificação da empresa e logo privada. A inspeção visual encontrou um problema anterior no agregado de recebíveis/pagáveis: o alias SQL `balance` colidia com o accessor do modelo. A correção usa alias próprio e foi validada em HTTP com parcelas parcialmente pagas e títulos cancelados. Os cartões publicados foram comparados com uma soma independente dos títulos.
 
 As contas temporárias de QA foram removidas, sem alterar credenciais do proprietário. O backup anterior à carga teve os checksums verificados; os demais sistemas da VPS permaneceram ativos.
+
+## Doze meses completos com volumes semelhantes
+
+Em 12/11/2026 foi acrescentado o ano de 2025 inteiro, mantendo o ano corrente e suas previsões: 528 vendas (44 em cada mês), 12 compras, 873 baixas e 365 fechamentos novos. O faturamento mensal varia de R$31.881 a R$34.147, com o mesmo mix mensal de produtos/serviços e alterações graduais de preço/custo. O total da base passou a 981 vendas, 26 compras, 1.618 baixas, 1.695 títulos e 680 fechamentos.
+
+O filtro dos três cenários anuais passou com 70 verificações. Após aplicar, a assinatura dos dados anteriores confirmou a preservação das 453 vendas e dos 315 fechamentos, assim como estoque, preços, custos, compras e pagamentos. A repetição não duplicou a carga. Backup com checksums conferidos e login HTTPS 200; Vendra e Apache dos outros sistemas permaneceram ativos após a janela de manutenção.

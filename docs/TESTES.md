@@ -126,3 +126,9 @@ A inspeção visual encontrou os indicadores zerados apesar de títulos com sald
 Uma regressão HTTP cria recebível de 150,25 com baixa de 40,10 e conta a pagar de 200,50 com baixa de 50,20, além de títulos cancelados em ambas as direções. Exige recebível de **110,15** no dashboard e financeiro e pagável de **150,30** no financeiro, excluindo os cancelados. O teste verifica o resultado público da view sem depender do alias da implementação.
 
 Execução consolidada posterior à correção: **54 testes passaram, 906 verificações, nenhum skip/falha, saída 0, em 67,42 segundos**. Os testes permanecem restritos aos bancos de teste; nenhum título operacional foi criado ou alterado pelo QA.
+
+## Ano encerrado com volume mensal equilibrado
+
+A evolução do importador para anos históricos completos foi validada em 12/11/2026 pelo filtro `test_annual_history_`: **3 testes passaram, 70 verificações, nenhum skip/falha, saída 0, em 72,32 segundos**. É uma execução focada posterior à suíte de 54 casos, não uma nova execução consolidada de toda a suíte.
+
+O caso novo exige janeiro a dezembro com exatamente 44 vendas por mês (528 no ano), faturamento máximo/mínimo inferior a 1,15, 365 fechamentos, saldo de ligação com o histórico anterior, preservação das operações existentes e replay sem duplicação. Os dois casos anteriores continuam verificando o ano corrente parcial, sobreposição financeira, reconciliação e proteção da base preparada.

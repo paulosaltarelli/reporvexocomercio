@@ -41,3 +41,9 @@ Do restante do ano são criadas apenas contas explicitamente descritas como prev
 ## Após a carga
 
 Conferir totais das vendas/itens/custos, parcelas versus ledger, todas as aberturas/contagens, caixa por meio e datas, saldo/custo do último movimento de cada SKU e ausência de pagamentos futuros. O normalizador de rótulos da carga inicial pode ser executado separadamente; não deve alterar valores nem fechamentos.
+
+## Ano completo com volume mensal estável
+
+Quando o intervalo cobre janeiro a dezembro de um ano encerrado, a carga distribui 22 dias de venda por mês, de segunda a sábado, cobrindo o início e o fim do mês. São duas vendas por dia selecionado: **44 vendas por mês, 528 por ano**. O mix de itens e serviços se repete mensalmente, com pequenas variações graduais de preço/custo. O planejamento usa o mesmo calendário da execução.
+
+Exemplo: `php artisan vendra:historico-anual vexo 2025 --plan`. A inclusão de 2025 preserva todo o histórico de 2026. Os marcadores de cargas concluídas continuam sendo respeitados; atualizar o importador não repete nem substitui cargas anteriores.

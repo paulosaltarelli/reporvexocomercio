@@ -49,14 +49,16 @@ class AnnualComputerStore
         }
         $start = CarbonImmutable::create($year, 1, 1)->startOfDay();
         $end = $first->date->toImmutable()->subDay()->min($start->endOfYear())->min($today);
-        $businessDays = 0;
-        for ($day = $start; $day->lte($end); $day = $day->addDay()) {
-            if ($day->isWeekday()) $businessDays++;
+        $balanced = $end->toDateString() === $start->endOfYear()->toDateString();
+        $sellingDays = 0;
+        for ($month = $start; $month->lte($end); $month = $month->addMonth()) {
+            $sellingDays += count($this->sellingDays($month, $end, $balanced));
         }
 
         return ['year' => $year, 'as_of' => $today->toDateString(), 'import_start' => $start->toDateString(),
             'import_end' => $end->toDateString(), 'first_existing_closure' => $first->date->toDateString(),
-            'bridge_balance' => (string) $first->opening_balance, 'estimated_sales' => $businessDays * 2,
+            'bridge_balance' => (string) $first->opening_balance, 'estimated_sales' => $sellingDays * 2,
+            'balanced_monthly_volume' => $balanced,
             'estimated_cash_closures' => max(0, (int) $start->diffInDays($end, false) + 1),
             'existing_closures' => CashClosure::count(),
             'overlapping_payments' => Payment::whereBetween('paid_on', [$start->toDateString(), $end->toDateString()])->count()];
@@ -108,8 +110,8 @@ class AnnualComputerStore
             $cashHeld = '0.00';
             $globalDay = 0;
             for ($month = $this->start->startOfMonth(); $month->lte($this->end); $month = $month->addMonth()) {
-                $days = [];
-                for ($d = $month; $d->lte($month->endOfMonth()->min($this->end)); $d = $d->addDay()) if ($d->isWeekday()) $days[] = $d;
+                $days = $this->sellingDays($month, $this->end, $plan['balanced_monthly_volume']);
+                if ($plan['balanced_monthly_volume']) $globalDay = 0;
                 if ($days === []) continue;
                 $quantities = array_fill_keys(array_keys($this->products), 0);
                 $daily = [];
@@ -169,6 +171,22 @@ class AnnualComputerStore
 
             return $summary;
         }, 3);
+    }
+
+    /** Complete historical years use 22 evenly spaced selling days per month. */
+    private function sellingDays(CarbonImmutable $month, CarbonImmutable $end, bool $balanced): array
+    {
+        $candidates = [];
+        $until = $month->endOfMonth()->min($end);
+        for ($day = $month->startOfMonth(); $day->lte($until); $day = $day->addDay()) {
+            if ($balanced ? ! $day->isSunday() : $day->isWeekday()) $candidates[] = $day;
+        }
+        if (! $balanced) return $candidates;
+        if (count($candidates) < 22) throw new \LogicException('O mês completo não tem dias suficientes para a carga equilibrada.');
+        $days = [];
+        for ($i = 0; $i < 22; $i++) $days[] = $candidates[(int) floor($i * (count($candidates) - 1) / 21)];
+
+        return $days;
     }
 
     private function catalog(): void
