@@ -120,6 +120,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('documents', [OperationsController::class, 'documents'])->name('documents');
         Route::get('documents/new', [OperationsController::class, 'form'])->name('document.new');
         Route::post('documents', [OperationsController::class, 'create']);
+        Route::get('documents/{id}/edit', [OperationsController::class, 'edit'])->whereNumber('id')->name('document.edit');
+        Route::post('documents/{id}/update', [OperationsController::class, 'update'])->whereNumber('id')->name('document.update');
         Route::get('documents/{id}', [OperationsController::class, 'show'])->whereNumber('id')->name('document.show');
         Route::post('documents/{id}/status', [OperationsController::class, 'transition'])->whereNumber('id')->name('document.status');
         Route::post('documents/{id}/invoice', [OperationsController::class, 'invoice'])->whereNumber('id')->name('document.invoice');

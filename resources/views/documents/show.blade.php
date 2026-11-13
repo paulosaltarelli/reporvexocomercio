@@ -8,7 +8,13 @@
 @php($documentSalesperson=$document->salesperson)
 @php($hasActiveSalesperson=$document->salesperson_id && $documentSalesperson && $documentSalesperson->active)
 @php($canAssignSeller=$currentUser->role==='admin' && !in_array($document->status,['invoiced','cancelled'],true))
-<section class="panel"><h2>{{ $tenant->name }}</h2><p><strong>Cliente:</strong> {{ $document->customer?->name??'Não informado' }}</p><p><strong>Vendedor creditado:</strong> {{ $document->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $document->creator?->name??'Não informado' }}</p><p><strong>Etapa:</strong> {{ ['draft'=>'Aberto','approved'=>'Aprovado','in_progress'=>'Em execução','completed'=>'Concluído','invoiced'=>'Venda gerada','cancelled'=>'Cancelado'][$document->status] }}</p><p><strong>Bem atendido:</strong> {{ $document->asset??'—' }} · <strong>Responsável:</strong> {{ $document->technician??'—' }}</p><p><strong>Validade / previsão:</strong> {{ $document->valid_until??'—' }}</p><p style="white-space:pre-wrap">{{ $document->notes }}</p><div class="scroll"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th class="num">Preço bruto unitário (R$)</th><th class="num">Bruto (R$)</th><th class="num">Desconto (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>
+@if($document->type==='work_order')
+<section class="panel no-print"><h2>Etapas da ordem de serviço</h2><p>Aberta → aprovação → execução → conclusão → venda.</p><p class="hint">Salvar ou concluir a OS não reserva nem baixa estoque. O movimento de estoque e os títulos financeiros são gerados ao confirmar a venda.</p>
+@if($document->status==='draft')<a class="button secondary" href="{{ route('document.edit',['company'=>$tenant->slug,'id'=>$document->id]) }}">Editar atendimento e itens da OS</a>@endif
+@if(empty($document->items))<div class="notice">Atendimento recebido sem itens. Edite a OS para registrar diagnóstico, produtos e serviços antes de aprovar ou gerar venda.</div>@endif
+</section>
+@endif
+<section class="panel"><h2>{{ $tenant->name }}</h2><p><strong>Cliente:</strong> {{ $document->customer?->name??'Não informado' }}</p><p><strong>Vendedor creditado:</strong> {{ $document->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $document->creator?->name??'Não informado' }}</p><p><strong>Etapa:</strong> {{ ['draft'=>'Aberto','approved'=>'Aprovado','in_progress'=>'Em execução','completed'=>'Concluído','invoiced'=>'Venda gerada','cancelled'=>'Cancelado'][$document->status] }}</p><p><strong>Equipamento / veículo:</strong> {{ $document->asset??'—' }} · <strong>Técnico:</strong> {{ $document->technician??'—' }}</p><p><strong>{{ $document->type==='work_order'?'Previsão de conclusão / entrega':'Validade' }}:</strong> {{ $document->valid_until??'—' }}</p><p style="white-space:pre-wrap">{{ $document->notes }}</p><div class="scroll"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th class="num">Preço bruto unitário (R$)</th><th class="num">Bruto (R$)</th><th class="num">Desconto (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>
 @php($documentGross='0.00')
 @php($documentDiscount='0.00')
 @foreach($document->items as $item)
@@ -44,7 +50,7 @@ Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O
 @endif
 @if(!in_array($document->status,['invoiced','cancelled']))<div class="actions no-print">
 @foreach(match($document->status){'draft'=>['approved'=>'Registrar aprovação'],'approved'=>$document->type==='work_order'?['in_progress'=>'Iniciar execução']:[],'in_progress'=>['completed'=>'Concluir serviço'],default=>[]} as $v=>$label)<form method="post" action="{{ route('document.status',['company'=>$tenant->slug,'id'=>$document->id]) }}">
-@csrf<input type="hidden" name="status" value="{{ $v }}"><button class="primary">{{ $label }}</button></form>
+@csrf<input type="hidden" name="status" value="{{ $v }}"><button class="primary" @disabled($document->type==='work_order' && $v==='approved' && empty($document->items))>{{ $label }}</button></form>
 @endforeach<form method="post" action="{{ route('document.status',['company'=>$tenant->slug,'id'=>$document->id]) }}" onsubmit="return confirm('Cancelar este documento?');">
 @csrf<input type="hidden" name="status" value="cancelled"><button class="button secondary">Cancelar documento</button></form></div>
 @endif
