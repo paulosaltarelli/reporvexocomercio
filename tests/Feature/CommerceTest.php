@@ -283,6 +283,142 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->get('/app/a/documents/'.$d->id)->assertOk();
     }
 
+    public function test_work_order_reception_edit_and_invoice_move_stock_and_finance_only_once(): void
+    {
+        $this->move('in', '5', '60');
+        $customer = \App\Models\Customer::create(['name' => 'Cliente da recepção']);
+        $service = Service::create(['name' => 'Mão de obra QA', 'price' => '50.00', 'cost' => '10.00']);
+        $mappedService = Product::create(['name' => 'Mão de obra QA', 'sku' => 'OS-LEGACY-SERVICE', 'product_group_id' => $this->product->product_group_id, 'type' => 'service', 'controls_stock' => false, 'reference_cost' => '10.0000', 'sale_price' => '50.00', 'unit' => 'UN', 'legacy_service_id' => $service->id]);
+        $documents = app(Documents::class);
+        $native = fn () => [Sale::count(), FinancialEntry::count(), \App\Models\Payment::count(), StockMovement::count(), $this->product->fresh()->quantity];
+        $before = $native();
+        $payload = ['type' => 'work_order', 'request_key' => (string) Str::uuid(), 'customer_id' => $customer->id,
+            'asset' => 'Notebook serial QA-ABC', 'technician' => 'Técnica responsável', 'notes' => 'Recebido para diagnóstico'];
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->post('/app/a/documents', $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post('/app/a/documents', $payload)->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $doc = \App\Models\Document::firstOrFail();
+        $this->assertSame(1, \App\Models\Document::count());
+        $this->assertSame('draft', $doc->status);
+        $this->assertSame([], $doc->items);
+        $this->assertSame('0.00', $doc->total);
+        $this->assertSame($before, $native());
+        try { $documents->transition($doc->id, 'approved'); $this->fail('OS vazia não pode ser aprovada.'); }
+        catch (ValidationException $exception) { $this->assertArrayHasKey('items', $exception->errors()); }
+        $payment = ['payment_method' => 'invoice', 'paid' => false, 'installments' => 2, 'due_date' => now()->addMonth()->toDateString()];
+        $doc->update(['status' => 'completed']);
+        try { $documents->invoice($doc->id, $payment, $this->user->id); $this->fail('Mesmo uma OS legada concluída sem itens não pode gerar venda.'); }
+        catch (ValidationException) { $this->assertSame($before, $native()); }
+        $doc->update(['status' => 'draft']);
+        $hash = $documents->editHash($doc->fresh());
+        $edit = ['expected_hash' => $hash, 'customer_id' => $customer->id, 'asset' => $payload['asset'],
+            'technician' => $payload['technician'], 'notes' => 'Diagnóstico concluído: substituir componente', 'items' => [
+                ['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1.500', 'unit_price' => '100.00'],
+                ['kind' => 'service', 'id' => $service->id, 'quantity' => '1', 'unit_price' => '50.00'],
+            ]];
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk();
+        $this->post('/app/a/documents/'.$doc->id.'/update', $edit)->assertRedirect('/app/a/documents/'.$doc->id)->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('200.00', $doc->fresh()->total);
+        $this->assertSame($before, $native());
+        $this->postJson('/app/a/documents/'.$doc->id.'/update', array_replace($edit, ['notes' => 'Edição antiga que não pode sobrescrever']))->assertUnprocessable()->assertJsonValidationErrors('expected_hash');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame($edit['notes'], $doc->fresh()->notes);
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk()->assertSee('data-legacy-service-id="'.$service->id.'"', false)->assertSee('value="product:'.$mappedService->id.'"', false);
+        app(TenantConnection::class)->connect($this->a);
+        foreach (['approved', 'in_progress', 'completed'] as $status) {
+            $documents->transition($doc->id, $status);
+            $this->assertSame($before, $native());
+        }
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertStatus(409);
+        app(TenantConnection::class)->connect($this->a);
+        $sale = $documents->invoice($doc->id, $payment, $this->user->id);
+        $this->assertSame($sale->id, $documents->invoice($doc->id, $payment, $this->user->id)->id);
+        $this->assertSame('200.00', $sale->total);
+        $this->assertSame('3.500', $this->product->fresh()->quantity);
+        $this->assertSame(1, Sale::count());
+        $this->assertSame(2, StockMovement::count());
+        $this->assertSame(['100.00', '100.00'], $sale->entries()->orderBy('installment_no')->pluck('amount')->all());
+        $this->assertSame(0, \App\Models\Payment::count());
+        $this->assertSame('invoiced', $doc->fresh()->status);
+        try { $documents->updateDraft($doc->id, array_replace($edit, ['expected_hash' => $documents->editHash($doc->fresh())]), $this->user->id); $this->fail('OS faturada não pode ser editada.'); }
+        catch (ValidationException) { $this->assertSame('200.00', $doc->fresh()->total); }
+        try { $documents->create(['type' => 'quote', 'request_key' => (string) Str::uuid(), 'items' => []], $this->user->id); $this->fail('Orçamento continua exigindo itens.'); }
+        catch (ValidationException) { $this->assertSame(1, \App\Models\Document::count()); }
+    }
+
+    public function test_work_order_document_filters_separate_type_status_customer_asset_and_id(): void
+    {
+        $customer = \App\Models\Customer::create(['name' => 'Cliente filtro QA', 'document' => '11222333000181', 'phone' => '35999990000']);
+        $documents = app(Documents::class);
+        $base = $this->saleData();
+        $base['customer_id'] = $customer->id;
+        $base['asset'] = 'QA-OS-ABC Notebook';
+        $base['type'] = 'work_order';
+        $draft = $documents->create($base, $this->user->id);
+        $base['request_key'] = (string) Str::uuid();
+        $approved = $documents->create($base, $this->user->id);
+        $documents->transition($approved->id, 'approved');
+        $base['request_key'] = (string) Str::uuid(); $base['type'] = 'quote';
+        $quote = $documents->create($base, $this->user->id);
+        $base['request_key'] = (string) Str::uuid(); $base['type'] = 'work_order'; $base['asset'] = 'Outro equipamento'; $base['customer_id'] = null;
+        $documents->create($base, $this->user->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        foreach ([
+            [['type' => 'work_order', 'status' => 'draft', 'q' => 'QA-OS-ABC'], [$draft->id]],
+            [['type' => 'work_order', 'status' => 'approved', 'q' => 'Cliente filtro QA'], [$approved->id]],
+            [['type' => 'work_order', 'status' => 'approved', 'q' => (string) $approved->id], [$approved->id]],
+            [['type' => 'quote', 'q' => 'QA-OS-ABC'], [$quote->id]],
+            [['type' => 'work_order', 'q' => '%'], []],
+            [['type' => 'work_order', 'q' => "' OR 1=1 --"], []],
+        ] as [$query, $ids]) {
+            $this->get('/app/a/documents?'.http_build_query($query))->assertOk()
+                ->assertViewHas('documents', fn ($page) => $page->pluck('id')->all() === $ids);
+        }
+        $this->get('/app/a/documents?type=unknown')->assertSessionHasErrors('type');
+        $this->get('/app/a/documents?status=unknown')->assertSessionHasErrors('status');
+        $this->get('/app/a/documents?q='.str_repeat('x', 101))->assertSessionHasErrors('q');
+    }
+
+    public function test_work_order_edit_preserves_seller_allows_operator_and_isolates_tenants(): void
+    {
+        $documents = app(Documents::class);
+        $doc = $documents->create(['type' => 'work_order', 'request_key' => (string) Str::uuid(), 'items' => $this->saleData()['items'], 'asset' => 'OS do responsável original'], $this->user->id);
+        $owner = [$doc->salesperson_id, $doc->seller_name];
+        $operator = User::create(['name' => 'Técnico operador', 'email' => 'os-operator@example.test', 'password' => 'operator-password-test', 'role' => 'operator']);
+        $operatorSeller = app(\App\Services\CommercialRules::class)->seller($operator->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $operator->id]);
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk()
+            ->assertViewHas('initialItems', fn ($rows) => count($rows) === 1 && collect($rows)->every(fn ($line) => ! array_key_exists('commission_rate', $line) && ! array_key_exists('commission_amount', $line)));
+        app(TenantConnection::class)->connect($this->a);
+        $data = ['expected_hash' => $documents->editHash($doc->fresh()), 'items' => [], 'asset' => 'Recepção revisada pelo técnico', 'notes' => 'Aguardando diagnóstico'];
+        $this->post('/app/a/documents/'.$doc->id.'/update', $data)->assertRedirect('/app/a/documents/'.$doc->id);
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame($owner, [$doc->fresh()->salesperson_id, $doc->fresh()->seller_name]);
+        $forged = array_replace($data, ['expected_hash' => $documents->editHash($doc->fresh()), 'salesperson_id' => $operatorSeller->id]);
+        $this->postJson('/app/a/documents/'.$doc->id.'/update', $forged)->assertUnprocessable()->assertJsonValidationErrors('salesperson_id');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame($owner, [$doc->fresh()->salesperson_id, $doc->fresh()->seller_name]);
+        $quoteData = $this->saleData(); $quoteData['type'] = 'quote';
+        $quote = $documents->create($quoteData, $this->user->id);
+        $this->get('/app/a/documents/'.$quote->id.'/edit')->assertStatus(409);
+        app(TenantConnection::class)->connect($this->a);
+        try { $documents->updateDraft($quote->id, ['expected_hash' => $documents->editHash($quote), 'items' => []], $this->user->id); $this->fail('Edição de OS não pode apagar itens de orçamento.'); }
+        catch (ValidationException) { $this->assertCount(1, $quote->fresh()->items); }
+        $other = $this->b;
+        app(TenantConnection::class)->connect($other);
+        $userB = User::forceCreate(['id' => $operator->id, 'name' => 'Operador B', 'email' => 'os-b@example.test', 'password' => 'other-password-test', 'role' => 'operator']);
+        $this->withSession(['tenant_id' => $other->id, 'user_id' => $userB->id]);
+        $this->get('/app/b/documents/'.$doc->id.'/edit')->assertNotFound();
+        $this->postJson('/app/b/documents/'.$doc->id.'/update', $data)->assertNotFound();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('Recepção revisada pelo técnico', $doc->fresh()->asset);
+        $this->assertSame(0, Sale::count());
+        $this->assertSame(0, FinancialEntry::count());
+        $this->assertSame(0, StockMovement::count());
+    }
+
     public function test_work_order_requires_completion_before_sale(): void
     {
         $this->move('in', '5', '60');

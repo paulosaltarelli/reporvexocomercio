@@ -1,6 +1,7 @@
 <section class="panel">
     <h2>{{ $itemsHeading??'Itens da venda' }}</h2>
     <p class="hint">Reduzir o preço unitário também conta como desconto. O limite é conferido pelo servidor contra o preço de cadastro.</p>
+    <input type="hidden" name="items_present" value="1">
     <div id="items"></div>
     <button type="button" id="add" class="button secondary">+ Adicionar item</button>
     <div class="sale-totals" role="status" aria-live="polite"><div><span>Bruto</span><strong id="gross-total">R$ 0,00</strong></div><div><span>Descontos</span><strong id="discount-total">R$ 0,00</strong></div><div class="sale-net-total"><span>Total líquido</span><strong id="total">R$ 0,00</strong></div></div>
@@ -13,7 +14,7 @@
                 @foreach($products as $product)
                     @php($isService=($product->type??'product')==='service')
                     @php($stockControlled=!$isService && ($product->controls_stock??true))
-                    <option value="product:{{ $product->id }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
+                    <option value="product:{{ $product->id }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
                 @endforeach
             </select><input type="hidden" class="kind"><input type="hidden" class="item-id"><input type="hidden" class="catalog-seen"></div>
             <div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div>
@@ -29,7 +30,8 @@
 <script>
 (() => {
     let sequence=0;
-    const previous=Object.values(@json(old('items',[])));
+    const previous=Object.values(@json(session()->hasOldInput('items_present')?old('items',[]):old('items',$initialItems??[])));
+    const allowEmptyItems=@json((bool)($allowEmptyItems??false));
     const container=document.querySelector('#items');
     const addButton=document.querySelector('#add');
     function percentText(numerator,denominator){
@@ -86,11 +88,19 @@
         row.querySelectorAll('input').forEach(input=>input.addEventListener('input',updateTotals));
         row.querySelector('.remove').addEventListener('click',()=>{block.remove();updateTotals();addButton.focus();});
         container.append(block);Vendra.associateLabels(block);
-        if(data){choice.value=data.kind+':'+data.id;row.querySelector('.qty').value=data.quantity;row.querySelector('.price').value=data.offered_unit_price??data.unit_price;discount.value=data.explicit_discount_percent??data.discount_percent??'0';choose(false);}
+        if(data){
+            choice.value=data.kind+':'+data.id;
+            if(!choice.value && data.kind==='service'){
+                const mapped=Array.from(choice.options).find(option=>option.dataset.legacyServiceId===String(data.id));
+                if(mapped)choice.value=mapped.value;
+            }
+            row.querySelector('.qty').value=data.quantity;row.querySelector('.price').value=data.offered_unit_price??data.unit_price;discount.value=data.explicit_discount_percent??data.discount_percent??'0';choose(false);
+        }
         else choose(true);
     }
     addButton.addEventListener('click',()=>add());
-    if(previous.length)previous.forEach(add);else add();
+    if(previous.length)previous.forEach(add);else if(!allowEmptyItems)add();
+    updateTotals();
 })();
 </script>
 @endpush
