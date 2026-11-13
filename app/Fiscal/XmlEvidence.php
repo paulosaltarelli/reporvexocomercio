@@ -7,9 +7,10 @@ use NFePHP\Common\Signer;
 
 final class XmlEvidence
 {
-    public function authorization(#[\SensitiveParameter] string $xml, #[\SensitiveParameter] array $payload, #[\SensitiveParameter] FiscalCredential $credential): array
+    public function authorization(#[\SensitiveParameter] string $xml, #[\SensitiveParameter] array $payload, #[\SensitiveParameter] FiscalCredential $credential, int $model = 65): array
     {
         try {
+            if (! in_array($model, [55, 65], true) || (int) ($payload['model'] ?? $model) !== $model || (int) ($payload['_model'] ?? $model) !== $model) { throw new \RuntimeException; }
             if (stripos($xml, '<!DOCTYPE') !== false || stripos($xml, '<!ENTITY') !== false) {
                 throw new \RuntimeException;
             }
@@ -29,7 +30,7 @@ final class XmlEvidence
             $base = '/n:nfeProc/n:NFe/n:infNFe';
             $prot = '/n:nfeProc/n:protNFe/n:infProt';
             $key = $value($prot.'/n:chNFe');
-            if ($value($prot.'/n:cStat') !== '100' || $value($prot.'/n:tpAmb') !== '2' || $value($base.'/n:ide/n:tpAmb') !== '2' || $value($base.'/n:ide/n:mod') !== '65' || $value($base.'/n:ide/n:tpEmis') !== '1'
+            if ($value($prot.'/n:cStat') !== '100' || $value($prot.'/n:tpAmb') !== '2' || $value($base.'/n:ide/n:tpAmb') !== '2' || $value($base.'/n:ide/n:mod') !== (string) $model || substr($key, 20, 2) !== (string) $model || $value($base.'/n:ide/n:tpEmis') !== '1'
                 || $value($base.'/n:emit/n:CNPJ') !== $payload['cnpj_emitente'] || (int) $value($base.'/n:ide/n:nNF') !== (int) $payload['numero'] || (int) $value($base.'/n:ide/n:serie') !== (int) $payload['serie']
                 || $value($base.'/@Id') !== 'NFe'.$key || $value('//s:Reference/@URI') !== '#NFe'.$key || ! preg_match('/^[0-9A-Z]{44}$/D', $key)
                 || bccomp($value($base.'/n:total/n:ICMSTot/n:vNF'), $payload['valor_total'], 2) !== 0 || ! $value($prot.'/n:nProt') || $value($prot.'/n:digVal') !== $value('//s:DigestValue')) {

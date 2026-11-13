@@ -1,5 +1,5 @@
 @include('fiscal.preferences',['settings'=>$fiscalSettings])
-<section class="panel" id="fiscal-company"><h2>Configuração fiscal da empresa</h2>
+<section class="panel" id="fiscal-company"><h2>NFC-e · modelo 65 · configuração da empresa</h2>
 <p>Comunicação direta com a <strong>SEFAZ em homologação, sem valor fiscal</strong>. O emitente e o endereço vêm do cadastro da empresa. A configuração, o certificado e a numeração pertencem exclusivamente a esta empresa. A emissão em produção permanece bloqueada.</p>
 @if($fiscalCertificate)
 <div class="notice"><strong>Certificado A1 cadastrado</strong><p>Validade: {{ \Carbon\Carbon::parse($fiscalCertificate['valid_from'])->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($fiscalCertificate['valid_until'])->format('d/m/Y') }}.</p>
@@ -46,3 +46,5 @@
 </form>
 @endif
 </section>
+
+@include('fiscal.nfe.company',['nfeConfiguration'=>$nfeConfiguration??null,'nfeNextNumber'=>$nfeNextNumber??null])

@@ -12,8 +12,9 @@ class SefazTransport
 {
     protected Tools $tools;
 
-    public function __construct(array $issuer, array $configuration, #[\SensitiveParameter] FiscalCredential $credential)
+    public function __construct(array $issuer, array $configuration, #[\SensitiveParameter] FiscalCredential $credential, private int $model = 65)
     {
+        if (! in_array($model, [55, 65], true)) { throw new FiscalTransportException('fiscal_model_invalid'); }
         try {
             $secrets = $credential->secrets ?? [];
             $pfx = base64_decode((string) ($secrets['pfx'] ?? ''), true);
@@ -27,7 +28,7 @@ class SefazTransport
             if ($certificate->getValidFrom()->getTimestamp() > time() || $certificate->isExpired() || $certificate->getCnpj() !== $cnpj || ! $fingerprint || ! hash_equals(strtolower(str_replace(':', '', (string) $credential->certificate_fingerprint)), strtolower($fingerprint))) {
                 throw new FiscalTransportException('certificate_context_invalid');
             }
-            if (! ($secrets['csc'] ?? '') || ! preg_match('/^[0-9]{1,6}$/D', (string) ($secrets['csc_id'] ?? ''))) {
+            if ($model === 65 && (! ($secrets['csc'] ?? '') || ! preg_match('/^[0-9]{1,6}$/D', (string) ($secrets['csc_id'] ?? '')))) {
                 throw new FiscalTransportException('csc_missing');
             }
             $config = [
@@ -35,11 +36,11 @@ class SefazTransport
                 'razaosocial' => (string) ($issuer['legal_name'] ?? ''),
                 'siglaUF' => (string) ($issuer['state'] ?? ''), 'cnpj' => $cnpj,
                 'schemes' => FiscalSchema::PACKAGE, 'versao' => '4.00',
-                'tokenIBPT' => '', 'CSC' => (string) $secrets['csc'],
-                'CSCid' => (string) $secrets['csc_id'],
+                'tokenIBPT' => '', 'CSC' => (string) ($secrets['csc'] ?? ''),
+                'CSCid' => (string) ($secrets['csc_id'] ?? ''),
             ];
             $this->tools = new Tools(json_encode($config, JSON_THROW_ON_ERROR), $certificate);
-            $this->tools->model(65);
+            $this->tools->model($model);
             $soap = new VerifiedSefazSoap($certificate);
             $soap->timeout(30);
             $this->tools->loadSoapClass($soap);
@@ -94,7 +95,7 @@ class SefazTransport
 
     private function key(string $key): void
     {
-        if (! preg_match('/^[0-9]{44}$/D', $key) || substr($key, 20, 2) !== '65') {
+        if (! preg_match('/^[0-9]{44}$/D', $key) || substr($key, 20, 2) !== (string) $this->model) {
             throw new FiscalTransportException('access_key_invalid');
         }
     }

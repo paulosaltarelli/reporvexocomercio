@@ -13,6 +13,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\FiscalController;
 use App\Http\Controllers\FiscalEmissionController;
+use App\Http\Controllers\NfeEmissionController;
 use App\Http\Controllers\FiscalProfileController;
 use App\Http\Controllers\SimulationFiscalController;
 
@@ -42,6 +43,17 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
+        Route::post('business/fiscal/nfe', [NfeEmissionController::class, 'configure'])->name('nfe.configure');
+        Route::post('business/fiscal/nfe/validate', [NfeEmissionController::class, 'validateLocal'])->name('nfe.validate');
+        Route::get('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'customer'])->whereNumber('id')->name('nfe.customer');
+        Route::post('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'saveCustomer'])->whereNumber('id')->name('nfe.customer.save');
+        Route::post('sales/{id}/fiscal/nfe/emit', [NfeEmissionController::class, 'emit'])->whereNumber('id')->name('nfe.emit');
+        Route::get('fiscal/nfe/documents/{id}', [NfeEmissionController::class, 'show'])->whereNumber('id')->name('nfe.document');
+        Route::post('fiscal/nfe/documents/{id}/consult', [NfeEmissionController::class, 'consult'])->whereNumber('id')->name('nfe.consult');
+        Route::post('fiscal/nfe/documents/{id}/resend', [NfeEmissionController::class, 'resend'])->whereNumber('id')->name('nfe.resend');
+        Route::post('fiscal/nfe/documents/{id}/cancel', [NfeEmissionController::class, 'cancel'])->whereNumber('id')->name('nfe.cancel');
+        Route::get('fiscal/nfe/documents/{id}/files/{kind}', [NfeEmissionController::class, 'download'])->whereNumber('id')->name('nfe.download');
+
         Route::get('fiscal/profiles', [FiscalProfileController::class, 'index'])->name('fiscal.profiles.index');
         Route::get('fiscal/profiles/create', [FiscalProfileController::class, 'create'])->name('fiscal.profiles.create');
         Route::post('fiscal/profiles', [FiscalProfileController::class, 'store'])->name('fiscal.profiles.store');
