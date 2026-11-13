@@ -379,6 +379,56 @@ class FiscalTest extends TestCase
             'ncm' => '84713012', 'origin' => '0', 'fiscal_gtin' => 'SEM GTIN', 'fiscal_cest' => '2106400'], $changes));
     }
 
+    private function nfe55Configuration(): array
+    {
+        return ['timezone' => 'America/Sao_Paulo', 'series' => 1, 'next_number' => 1, 'crt' => '1',
+            'natureza_operacao' => 'VENDA NF-E TESTE', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'QA sintético, sem validação contábil real'];
+    }
+
+    private function nfe55Customer(): \App\Models\Customer
+    {
+        $customer = \App\Models\Customer::create(['name' => 'Destinatário sintético', 'document' => '52998224725']);
+        return app(\App\Fiscal\NfeRecipient::class)->save($this->tenant, $customer->id, [
+            'fiscal_street' => 'Rua de teste', 'fiscal_number' => '1', 'fiscal_district' => 'Centro', 'fiscal_city' => 'São Paulo',
+            'fiscal_state' => 'SP', 'fiscal_postal_code' => '01001000', 'fiscal_municipality_code' => '3550308', 'fiscal_ie_indicator' => '9',
+        ], $this->user->id);
+    }
+
+    private function useNfe55Transport(\App\Models\FiscalIssuer $issuer): void
+    {
+        $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
+        $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class)->forIssuer($issuer)->configuration;
+        $this->transport = \Mockery::mock(SefazTransport::class.'[authorize,consult,cancel]', [BusinessProfile::findOrFail(1)->toArray(), $configuration, $credential, 55]);
+        foreach (['authorize', 'consult', 'cancel'] as $method) {
+            $this->transport->shouldReceive($method)->byDefault()->andReturnUsing(function (...$args) use ($method) {
+                $this->transportCalls[] = $method;
+                if ($method === 'authorize') { $this->submittedXml = $args[0]; }
+                throw new FiscalTransportException('sefaz_connection_uncertain');
+            });
+        }
+        $this->app->bind(SefazTransport::class, fn () => $this->transport);
+    }
+
+    private function configuredNfe55(): array
+    {
+        Http::preventStrayRequests();
+        BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'SIMULACAO NF-E SEM VALOR FISCAL', 'document' => '11.222.333/0001-81',
+            'state_registration' => '111111111111', 'tax_regime' => 'simples', 'street' => 'Rua de teste', 'number' => '1',
+            'district' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP', 'postal_code' => '01001000', 'municipality_code' => '3550308']);
+        $this->product->update(['ncm' => '84713012', 'origin' => '0']);
+        $certificate = FiscalFixtures::certificate();
+        $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
+        $model = $configuration->save($this->tenant, $this->nfe55Configuration(), ['certificate_password' => $certificate['password']], $certificate['pfx']);
+        $configuration->validateLocal($this->tenant);
+        $issuer = \App\Models\FiscalIssuer::findOrFail($model->issuer_id);
+        FiscalItemRule::create(['product_id' => $this->product->id, 'parameters' => FiscalFixtures::rule(), 'accountant_reference' => 'Somente fixture sintética', 'validated_by' => $this->user->id]);
+        $this->useNfe55Transport($issuer);
+        $customer = $this->nfe55Customer();
+        $this->sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'customer_id' => $customer->id, 'payment_method' => 'pix', 'paid' => true,
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10.01']]], $this->user->id);
+        return [$issuer, $certificate, $customer];
+    }
+
     private function operation(): array
     {
         return ['consumer_final' => true, 'not_taxpayer' => true, 'destination_state' => 'SP', 'presence' => '1', 'pix_mode' => 'dynamic'];
@@ -762,6 +812,225 @@ class FiscalTest extends TestCase
         $this->assertSame('authorized', $doc->fresh()->state);
         $this->assertNull(DB::connection('tenant')->table('fiscal_outbox')->where('id', $nextId)->value('completed_at'));
         $this->assertSame(1, FiscalDocument::count());
+    }
+
+    public function test_nfe55_without_csc_generates_signed_xml_authorizes_and_cancels_with_private_a4_danfe(): void
+    {
+        [$issuer, $cert] = $this->configuredNfe55();
+        $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
+        $this->assertArrayNotHasKey('csc', $credential->secrets);
+        $this->assertArrayNotHasKey('csc_id', $credential->secrets);
+        $this->assertFalse($issuer->enabled);
+        $this->assertFalse(app(FiscalReadiness::class)->inspect($this->tenant, $this->sale)['ready_to_transmit']);
+        $queue = app(\App\Fiscal\QueueNfe::class);
+        $doc = $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $this->assertSame(55, $doc->model);
+        $this->assertSame('55', substr($doc->access_key, 20, 2));
+        $this->assertStringContainsString('<mod>55</mod>', $doc->signed_xml);
+        $this->assertStringNotContainsString('infNFeSupl', $doc->signed_xml);
+        $this->assertSame($doc->id, $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation())->id);
+        $this->fakeAuthorization($doc, $cert);
+        $before = [$this->product->fresh()->quantity, DB::connection('tenant')->table('payments')->count()];
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));
+        $this->assertSame('authorized', $doc->fresh()->state, $doc->fresh()->operator_message ?? '');
+        $pdf = app(PrivateFiscalFiles::class)->get($this->tenant->id, $doc->id, 'danfe');
+        $this->assertStringStartsWith('%PDF', $pdf);
+        $this->assertSame(1, preg_match('/\/MediaBox\s*\[\s*[0-9.]+\s+[0-9.]+\s+([0-9.]+)\s+([0-9.]+)/', $pdf, $page));
+        $this->assertGreaterThan(500, (float) $page[1], 'DANFE 55 deve usar folha, não cupom NFC-e.');
+        $queue->consult($this->tenant, $doc->id);
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->where('operation', 'consult')->value('id'));
+        $this->assertSame('authorized', $doc->fresh()->state);
+        $this->transport->shouldReceive('cancel')->andReturnUsing(fn (string $key, string $protocol, string $reason) => FiscalFixtures::cancellationExchange($key, $protocol, $reason, $cert));
+        $queue->cancel($this->tenant, $doc->id, 'Cancelamento sintético NF-e sem valor fiscal');
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->where('operation', 'cancel')->value('id'));
+        $this->assertSame('cancelled', $doc->fresh()->state, $doc->fresh()->operator_message ?? '');
+        $this->assertSame($before, [$this->product->fresh()->quantity, DB::connection('tenant')->table('payments')->count()]);
+        $this->login();
+        $this->get('/app/a/fiscal/nfe/documents/'.$doc->id)->assertOk();
+        $this->get('/app/a/fiscal/nfe/documents/'.$doc->id.'/files/danfe')->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        Http::assertNothingSent();
+    }
+
+    public function test_nfe55_configuration_preserves_existing_65_hash_sequence_and_pins_cross_model_evidence(): void
+    {
+        [$issuer, $cert] = $this->configuredFiscal();
+        $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
+        // Persistent compatibility vector: this is the pre-NF55 approval payload.
+        $legacyHash = Snapshot::hash(['issuer' => $issuer->document, 'configuration' => $issuer->validated_configuration,
+            'profile' => BusinessProfile::findOrFail(1)->only(['legal_name', 'trade_name', 'document', 'state_registration', 'tax_regime', 'street', 'number', 'district', 'city', 'state', 'postal_code', 'municipality_code', 'email', 'phone']),
+            'certificate' => $credential->certificate_fingerprint, 'credential_digest' => Snapshot::hash($credential->secrets)]);
+        $credential->validated_hash = $legacyHash; $credential->save();
+        $oldSecrets = Snapshot::hash($credential->secrets);
+        $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
+        $configuration->save($this->tenant, $this->nfe55Configuration(), [], null);
+        $configuration->validateLocal($this->tenant);
+        $this->assertSame($legacyHash, app(CompanyFiscalConfiguration::class)->hash($issuer));
+        $this->assertSame($legacyHash, $credential->fresh()->validated_hash);
+        $this->assertSame($oldSecrets, Snapshot::hash($credential->fresh()->secrets));
+        $doc65 = app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $customer = $this->nfe55Customer();
+        $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'customer_id' => $customer->id, 'payment_method' => 'pix', 'paid' => true,
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10.01']]], $this->user->id);
+        $this->useNfe55Transport($issuer);
+        $doc55 = app(\App\Fiscal\QueueNfe::class)->enqueue($this->tenant, $sale->id, $this->user->id, $this->operation());
+        $this->assertSame(1, $doc55->number); $this->assertSame(1, $doc65->number);
+        $this->assertSame([2, 2], DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->orderBy('model')->pluck('next_number')->all());
+        foreach ([$doc55, $doc65] as $doc) {
+            $xml = \NFePHP\NFe\Complements::toAuthorize($doc->signed_xml, FiscalFixtures::authorizationResponse($doc->signed_xml));
+            $payload = $doc->snapshot['payload'] + ['_signed_xml' => $doc->signed_xml, '_certificate_fingerprint' => $doc->snapshot['certificate_fingerprint']];
+            $this->assertTrue(\NFePHP\Common\Signer::isSigned($xml, 'infNFe'));
+            app(\App\Fiscal\XmlEvidence::class)->authorization($xml, $payload, $credential->fresh(), (int) $doc->model);
+            try {
+                app(\App\Fiscal\XmlEvidence::class)->authorization($xml, $payload, $credential->fresh(), $doc->model === 55 ? 65 : 55);
+                $this->fail('XML válido de outro modelo não pode autorizar este documento.');
+            } catch (FiscalTransportException) { $this->assertTrue(true); }
+        }
+        $replacement = FiscalFixtures::certificate();
+        $configuration->save($this->tenant, array_replace($this->nfe55Configuration(), ['next_number' => 2]), ['certificate_password' => $replacement['password']], $replacement['pfx']);
+        $this->assertNull($credential->fresh()->validated_hash, 'Troca de A1 exige revalidação do 65.');
+        $this->assertNull($configuration->forIssuer($issuer)->validated_hash);
+        $this->assertSame($doc65->signed_xml, $doc65->fresh()->signed_xml);
+    }
+
+    public function test_nfe55_requires_valid_recipient_address_taxpayer_status_and_same_state(): void
+    {
+        [, , $customer] = $this->configuredNfe55();
+        $queue = app(\App\Fiscal\QueueNfe::class);
+        $attempt = function () use ($queue): void {
+            try { $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation()); $this->fail('Destinatário incompleto ou incompatível deve bloquear a emissão.'); }
+            catch (ValidationException) {
+                $this->assertSame(0, FiscalDocument::count());
+                $this->assertSame(1, DB::connection('tenant')->table('fiscal_sequences')->where('model', 55)->value('next_number'));
+            }
+        };
+        $this->sale->update(['customer_id' => null]); $attempt();
+        $this->sale->update(['customer_id' => $customer->id]);
+        $customer->update(['fiscal_street' => null]); $attempt();
+        $customer->update(['fiscal_street' => 'Rua de teste', 'fiscal_state' => 'MG', 'fiscal_municipality_code' => '3106200']); $attempt();
+        $customer->update(['fiscal_state' => 'SP', 'fiscal_municipality_code' => '3106200']); $attempt();
+        $customer->update(['fiscal_municipality_code' => '3550308', 'fiscal_ie_indicator' => '1', 'fiscal_state_registration' => '111111111111']); $attempt();
+        $customer->update(['fiscal_ie_indicator' => '9', 'fiscal_state_registration' => null]);
+        try { $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, array_replace($this->operation(), ['consumer_final' => false])); $this->fail('Não contribuinte exige consumidor final neste escopo.'); }
+        catch (ValidationException) { $this->assertSame(0, FiscalDocument::count()); }
+        $this->assertSame([], $this->transportCalls);
+    }
+
+    public function test_nfe55_non100_protocols_remain_uncertain_and_block_other_model_or_issuer(): void
+    {
+        $this->configuredNfe55();
+        $queue = app(\App\Fiscal\QueueNfe::class);
+        $doc = $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $codes = ['150', '120', '110', '205', '301', '302', '303'];
+        $this->transport->shouldReceive('authorize')->andReturnUsing(function (string $xml) {
+            $this->submittedXml = $xml; $this->transportCalls[] = 'authorize';
+            return ['request' => $xml, 'response' => str_replace('<cStat>100</cStat>', '<cStat>150</cStat>', FiscalFixtures::authorizationResponse($xml))];
+        });
+        $job = DB::connection('tenant')->table('fiscal_outbox')->value('id');
+        $this->runFiscalWorker($job);
+        foreach ($codes as $code) {
+            $this->transport->shouldReceive('consult')->once()->andReturnUsing(fn () => ['request' => '', 'response' => str_replace('<cStat>100</cStat>', '<cStat>'.$code.'</cStat>', FiscalFixtures::authorizationResponse($this->submittedXml, true))]);
+            DB::connection('tenant')->table('fiscal_outbox')->where('id', $job)->update(['available_at' => now()->subMinute()]);
+            $this->runFiscalWorker($job);
+            $this->assertSame('uncertain', $doc->fresh()->state, 'Protocolo '.$code.' não pode ser tratado como rejeição liberando outro modelo.');
+            try { app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation()); $this->fail('Uma venda incerta não pode ganhar outro modelo.'); }
+            catch (ValidationException $exception) { $this->assertStringContainsString('já possui', implode(' ', $exception->errors()['fiscal'])); }
+        }
+        BusinessProfile::findOrFail(1)->update(['document' => '04.252.011/0001-10']);
+        $certificate = FiscalFixtures::certificate('04252011000110');
+        $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
+        $newIssuer = $configuration->save($this->tenant, $this->nfe55Configuration(), ['certificate_password' => $certificate['password']], $certificate['pfx']);
+        $configuration->validateLocal($this->tenant);
+        try { $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation()); $this->fail('Trocar CNPJ não libera nova emissão para a mesma venda incerta.'); }
+        catch (ValidationException $exception) { $this->assertStringContainsString('já possui', implode(' ', $exception->errors()['fiscal'])); }
+        $this->assertSame(1, FiscalDocument::count());
+        $this->assertSame(1, DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $newIssuer->issuer_id)->where('model', 55)->value('next_number'));
+        $this->assertSame(['authorize'], $this->transportCalls);
+    }
+
+    public function test_nfe55_and_65_competing_for_same_sale_allocate_only_one_document(): void
+    {
+        if (! function_exists('pcntl_fork')) { $this->markTestSkipped('Concorrência real exige pcntl.'); }
+        [$issuer] = $this->configuredFiscal();
+        $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
+        $configuration->save($this->tenant, $this->nfe55Configuration(), [], null);
+        $configuration->validateLocal($this->tenant);
+        $customer = $this->nfe55Customer(); $this->sale->update(['customer_id' => $customer->id]);
+        $this->app->bind(SefazTransport::class, function ($app, array $parameters) {
+            $transport = \Mockery::mock(SefazTransport::class.'[authorize,consult,cancel]', [$parameters['issuer'], $parameters['configuration'], $parameters['credential'], $parameters['model'] ?? 65]);
+            foreach (['authorize', 'consult', 'cancel'] as $method) { $transport->shouldReceive($method)->byDefault()->andThrow(new FiscalTransportException('unexpected_network_during_queue')); }
+            return $transport;
+        });
+        $results = $this->raceEmission(function (int $worker) {
+            try {
+                $queue = $worker === 0 ? app(\App\Fiscal\QueueNfe::class) : app(QueueNfce::class);
+                return (int) $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation())->model;
+            } catch (ValidationException $exception) {
+                if (! str_contains(implode(' ', $exception->errors()['fiscal'] ?? []), 'já possui')) { throw $exception; }
+                return 0;
+            }
+        });
+        $winners = array_values(array_filter($results));
+        $this->assertCount(1, $winners);
+        $this->assertContains($winners[0], [55, 65]);
+        $this->assertSame(1, FiscalDocument::count());
+        $this->assertSame(1, DB::connection('tenant')->table('fiscal_outbox')->count());
+        $this->assertSame(3, (int) DB::connection('tenant')->table('fiscal_sequences')->sum('next_number'));
+        Http::assertNothingSent();
+    }
+
+    public function test_nfe55_http_rejects_csc_wrong_certificate_operator_and_cross_tenant_access(): void
+    {
+        [$issuer, $certificate, $customer] = $this->configuredNfe55();
+        $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
+        $approved = app(\App\Fiscal\NfeCompanyConfiguration::class)->forIssuer($issuer)->validated_hash;
+        $wrong = FiscalFixtures::certificate('04252011000110');
+        try {
+            app(\App\Fiscal\NfeCompanyConfiguration::class)->save($this->tenant, $this->nfe55Configuration(), ['certificate_password' => $wrong['password']], $wrong['pfx']);
+            $this->fail('A1 de outra empresa não pode substituir o certificado.');
+        } catch (ValidationException $exception) { $this->assertArrayHasKey('certificate', $exception->errors()); }
+        $this->assertSame($certificate['fingerprint'], $credential->fresh()->certificate_fingerprint);
+        $this->assertSame($approved, app(\App\Fiscal\NfeCompanyConfiguration::class)->forIssuer($issuer)->validated_hash);
+        $this->login();
+        $seriesInForm = function ($response, string $marker): string {
+            $dom = new \DOMDocument;
+            @$dom->loadHTML($response->getContent(), LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $xpath = new \DOMXPath($dom);
+            $inputs = $xpath->query('//form[.//input[@name="_fiscal_form" and @value="'.$marker.'"]]//input[@name="series"]');
+            $this->assertSame(1, $inputs->length);
+            return $inputs->item(0)->getAttribute('value');
+        };
+        $this->post('/app/a/business/fiscal/nfe', array_replace($this->nfe55Configuration(), ['series' => 7, 'environment' => 'homologation', '_fiscal_form' => 'nfe55', 'csc' => 'FORBIDDEN-SYNTHETIC']))
+            ->assertSessionHasErrors('csc')->assertSessionMissing('_old_input.csc');
+        $business = $this->get('/app/a/business')->assertOk();
+        $this->assertSame('7', $seriesInForm($business, 'nfe55'));
+        $this->assertNotSame('7', $seriesInForm($business, 'nfce65'));
+        $this->post('/app/a/business/fiscal', ['environment' => 'homologation', 'intent' => 'activate', '_fiscal_form' => 'nfce65', 'series' => 8])->assertSessionHasErrors('crt');
+        $business = $this->get('/app/a/business')->assertOk();
+        $this->assertSame('8', $seriesInForm($business, 'nfce65'));
+        $this->assertSame('1', $seriesInForm($business, 'nfe55'));
+        $this->get('/app/a/fiscal/nfe/customers/'.$customer->id)->assertOk();
+        $this->post('/app/a/sales/'.$this->sale->id.'/fiscal/nfe/emit', ['homologation_consent' => '1', 'consumer_final' => '1', 'presence' => '1', 'destination_state' => 'SP', 'pix_mode' => 'dynamic'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $doc = FiscalDocument::firstOrFail();
+        $this->assertSame(55, $doc->model);
+        $this->assertSame('pending', $doc->state);
+        $this->assertSame([], $this->transportCalls);
+        $this->user->update(['role' => 'operator']);
+        foreach (['/app/a/fiscal/nfe/customers/'.$customer->id, '/app/a/fiscal/nfe/documents/'.$doc->id, '/app/a/fiscal/nfe/documents/'.$doc->id.'/files/xml'] as $url) { $this->get($url)->assertForbidden(); }
+        foreach (['/app/a/business/fiscal/nfe', '/app/a/business/fiscal/nfe/validate', '/app/a/fiscal/nfe/customers/'.$customer->id,
+            '/app/a/sales/'.$this->sale->id.'/fiscal/nfe/emit', '/app/a/fiscal/nfe/documents/'.$doc->id.'/consult', '/app/a/fiscal/nfe/documents/'.$doc->id.'/cancel'] as $url) { $this->post($url, [])->assertForbidden(); }
+        app(TenantConnection::class)->connect($this->tenant); $this->user->update(['role' => 'admin']);
+        $other = Tenant::where('slug', 'b')->firstOrFail(); app(TenantConnection::class)->connect($other);
+        $userB = User::forceCreate(['id' => $this->user->id, 'name' => 'Admin B', 'email' => 'nfe-b@example.test', 'password' => 'other-password-test', 'role' => 'admin']);
+        $this->withSession(['tenant_id' => $other->id, 'user_id' => $userB->id, 'auth_version' => 0]);
+        $this->get('/app/b/fiscal/nfe/documents/'.$doc->id)->assertNotFound();
+        $this->get('/app/b/fiscal/nfe/customers/'.$customer->id)->assertNotFound();
+        $this->post('/app/b/business/fiscal/nfe', $this->nfe55Configuration() + ['environment' => 'homologation', 'tenant_id' => $this->tenant->id])->assertSessionHasErrors('tenant_id');
+        app(TenantConnection::class)->connect($other);
+        try { app(\App\Fiscal\NfeCompanyConfiguration::class)->save($this->tenant, $this->nfe55Configuration(), [], null); $this->fail('Configuração não pode usar conexão de outra empresa.'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(403, $exception->getStatusCode()); }
+        $this->assertSame(0, FiscalDocument::count());
+        Http::assertNothingSent();
     }
 
     public function test_tax_profiles_precedence_inheritance_and_inactive_bindings_fail_closed(): void
