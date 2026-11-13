@@ -7,7 +7,7 @@
 *.php diff=php
 
 # Preserve the official fiscal schemas byte for byte for SHA256SUMS.
-app/Fiscal/Nfse/schemas/*.xsd -text
+app/Fiscal/Nfse/schemas/*.xsd -text -whitespace
 
 /.github export-ignore
 CHANGELOG.md export-ignore
