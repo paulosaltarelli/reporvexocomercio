@@ -46,3 +46,5 @@
 </form>
 @endif
 </section>
+
+@include('fiscal.nfse.entry')
