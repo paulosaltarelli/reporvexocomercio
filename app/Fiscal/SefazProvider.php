@@ -6,13 +6,14 @@ use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
 use NFePHP\Common\Signer;
 use NFePHP\DA\NFe\Danfce;
+use NFePHP\DA\NFe\Danfe;
 use NFePHP\NFe\Complements;
 
 final class SefazProvider implements FiscalProvider
 {
-    public function __construct(private FiscalIssuer $issuer, #[\SensitiveParameter] private FiscalCredential $credential, #[\SensitiveParameter] private array $payload = [], private ?SefazTransport $transport = null)
+    public function __construct(private FiscalIssuer $issuer, #[\SensitiveParameter] private FiscalCredential $credential, #[\SensitiveParameter] private array $payload = [], private ?SefazTransport $transport = null, private int $model = 65)
     {
-        if ($issuer->environment !== 'homologation' || $issuer->provider !== 'sefaz_direct' || (int) $credential->issuer_id !== (int) $issuer->id) {
+        if (! in_array($model, [55, 65], true) || $issuer->environment !== 'homologation' || $issuer->provider !== 'sefaz_direct' || (int) $credential->issuer_id !== (int) $issuer->id) {
             throw new FiscalTransportException('provider_context_invalid');
         }
     }
@@ -22,7 +23,7 @@ final class SefazProvider implements FiscalProvider
         return $this->transport ??= app()->makeWith(SefazTransport::class, [
             'issuer' => $this->payload['_issuer_snapshot'] ?? [],
             'configuration' => $this->payload['_configuration'] ?? [],
-            'credential' => $this->credential,
+            'credential' => $this->credential, 'model' => $this->model,
         ]);
     }
 
@@ -50,9 +51,9 @@ final class SefazProvider implements FiscalProvider
         $xp = $this->xpath($dom);
         $value = fn (string $q) => $xp->evaluate('string('.$q.')');
         $base = '/n:NFe/n:infNFe';
-        if (! preg_match('/^[0-9]{44}$/D', $key) || $dom->documentElement->localName !== 'NFe' || $xp->query('//n:infNFe')->length !== 1 || $value($base.'/@Id') !== 'NFe'.$key
+        if (! preg_match('/^[0-9]{44}$/D', $key) || substr($key, 20, 2) !== (string) $this->model || (int) ($this->payload['_model'] ?? $this->model) !== $this->model || (int) ($this->payload['model'] ?? $this->model) !== $this->model || $dom->documentElement->localName !== 'NFe' || $xp->query('//n:infNFe')->length !== 1 || $value($base.'/@Id') !== 'NFe'.$key
             || $value($base.'/n:emit/n:CNPJ') !== $this->issuer->document || ($this->payload['cnpj_emitente'] ?? '') !== $this->issuer->document
-            || $value($base.'/n:ide/n:tpAmb') !== '2' || $value($base.'/n:ide/n:mod') !== '65' || $value($base.'/n:ide/n:tpEmis') !== '1'
+            || $value($base.'/n:ide/n:tpAmb') !== '2' || $value($base.'/n:ide/n:mod') !== (string) $this->model || $value($base.'/n:ide/n:tpEmis') !== '1'
             || (int) $value($base.'/n:ide/n:nNF') !== (int) ($this->payload['numero'] ?? 0) || (int) $value($base.'/n:ide/n:serie') !== (int) ($this->payload['serie'] ?? -1)) {
             throw new FiscalTransportException('frozen_xml_context_invalid');
         }
@@ -112,14 +113,14 @@ final class SefazProvider implements FiscalProvider
             if ($get('cStat') === '100') {
                 try {
                     $xml = Complements::toAuthorize($this->payload['_signed_xml'], $response);
-                    $evidence = app(XmlEvidence::class)->authorization($xml, $this->payload, $this->credential);
+                    $evidence = app(XmlEvidence::class)->authorization($xml, $this->payload, $this->credential, $this->model);
                     return new ProviderResult(DocumentState::Authorized, '100', $evidence['key'], $evidence['protocol'], $xml, $evidence['authorized_at']);
                 } catch (\Throwable) {
                     throw new FiscalTransportException('authorization_xml_invalid');
                 }
             }
             $code = $get('cStat');
-            if (preg_match('/^[0-9]{3}$/D', $code) && ! in_array($code, ['100', '103', '104', '105', '106', '108', '109', '110', '204', '217', '539', '999'], true)) {
+            if (preg_match('/^[2-9][0-9]{2}$/D', $code) && ! in_array($code, ['100', '103', '104', '105', '106', '108', '109', '110', '204', '205', '217', '301', '302', '303', '539', '999'], true)) {
                 return new ProviderResult(DocumentState::Rejected, $code);
             }
             return $this->rejectionOrUncertain($code);
@@ -219,7 +220,8 @@ final class SefazProvider implements FiscalProvider
     public function danfe(string $reference): string
     {
         try {
-            return (new Danfce($this->xml($reference)))->render();
+            $xml = $this->xml($reference);
+            return ($this->model === 55 ? new Danfe($xml) : new Danfce($xml))->render();
         } catch (FiscalTransportException $e) {
             throw $e;
         } catch (\Throwable) {

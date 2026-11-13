@@ -33,6 +33,9 @@ final class QueueNfce
             if ($existing) {
                 return $existing;
             }
+            if (FiscalDocument::where('sale_id', $saleId)->where(fn ($query) => $query->where('issuer_id', '<>', $issuer->id)->orWhere('model', '<>', 65))->whereNotIn('state', ['rejected', 'cancelled'])->exists()) {
+                throw ValidationException::withMessages(['fiscal' => 'Esta venda já possui documento fiscal ativo de outro modelo ou emitente. Consulte ou reconcilie antes de emitir novamente.']);
+            }
             if ($issuer->provider !== 'sefaz_direct') {
                 throw ValidationException::withMessages(['fiscal' => 'Configure emissão direta SEFAZ para esta empresa.']);
             }
@@ -64,6 +67,7 @@ final class QueueNfce
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId, $reason) {
             $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $doc->model === 65, 404);
             if ($doc->state === 'cancelled') {
                 return;
             }
@@ -86,7 +90,8 @@ final class QueueNfce
             abort(403);
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId) {
-            FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $doc->model === 65, 404);
             $outbox = DB::connection('tenant')->table('fiscal_outbox');
             if ((clone $outbox)->where('document_id', $documentId)->whereNull('completed_at')->exists()) {
                 $outbox->where('document_id', $documentId)->whereNull('completed_at')->whereNull('lease_token')->update(['available_at' => now()]);
@@ -105,6 +110,7 @@ final class QueueNfce
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
         DB::connection('tenant')->transaction(function () use ($documentId, $userId) {
             $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $doc->model === 65, 404);
             $table = DB::connection('tenant')->table('fiscal_outbox');
             $job = (clone $table)->where('document_id', $documentId)->where('operation', 'issue')->whereNull('completed_at')->lockForUpdate()->first();
             if ($doc->state !== 'uncertain' || ! $job || $job->last_error !== 'reference_not_found' || $job->lease_token) {

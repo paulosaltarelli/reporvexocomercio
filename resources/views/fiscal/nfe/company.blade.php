@@ -1,0 +1,17 @@
+@php
+    $nfeOld = static fn ($key, $default = null) => old('_fiscal_form') === 'nfe55' ? old($key, $default) : $default;
+@endphp
+<section class="panel" id="fiscal-nfe-company"><h2>NF-e · modelo 55 · homologação</h2><p>Configuração independente da NFC-e. A NF-e não utiliza CSC. Esta etapa atende vendas internas de mercadorias, sem frete, substituição tributária ou IPI. Produção permanece bloqueada.</p>
+@php($nc=$nfeConfiguration?->configuration??[])
+<form method="post" enctype="multipart/form-data" action="{{ route('nfe.configure',['company'=>$tenant->slug]) }}">@csrf
+<input type="hidden" name="_fiscal_form" value="nfe55"><input type="hidden" name="environment" value="homologation">
+<div class="form-grid">
+@foreach(['series'=>'Série NF-e','next_number'=>'Próximo número NF-e','natureza_operacao'=>'Natureza da operação','cancellation_minutes'=>'Prazo de cancelamento confirmado (até 30 minutos)','uf_validation_reference'=>'Referência da regra da UF confirmada'] as $field=>$label)
+<div class="field"><label for="nfe_{{ $field }}">{{ $label }}</label><input id="nfe_{{ $field }}" name="{{ $field }}" value="{{ $nfeOld($field,$field==='next_number'?($nfeNextNumber??''):($nc[$field]??'')) }}" required maxlength="{{ $field==='natureza_operacao'?60:180 }}" @if(in_array($field,['series','next_number','cancellation_minutes'],true)) type="number" step="1" min="{{ $field==='next_number'?1:0 }}" max="{{ ['series'=>889,'next_number'=>999999999,'cancellation_minutes'=>30][$field] }}" @endif></div>
+@endforeach
+<div class="field"><label for="nfe_timezone">Fuso do emitente</label><select id="nfe_timezone" name="timezone" required><option value="">Selecione</option>@foreach(\DateTimeZone::listIdentifiers(\DateTimeZone::PER_COUNTRY,'BR') as $tz)<option value="{{ $tz }}" @selected($nfeOld('timezone',$nc['timezone']??'')===$tz)>{{ $tz }}</option>@endforeach</select></div>
+<div class="field"><label for="nfe_crt">CRT confirmado</label><select id="nfe_crt" name="crt" required><option value="">Selecione o regime correto</option>@foreach(['1'=>'Simples Nacional','2'=>'Simples, excesso de sublimite','3'=>'Regime normal','4'=>'Simples Nacional MEI'] as $value=>$label)<option value="{{ $value }}" @selected((string)$nfeOld('crt',$nc['crt']??'')===(string)$value)>{{ $value }} · {{ $label }}</option>@endforeach</select></div>
+<div class="field"><label for="nfe_certificate">Certificado A1 (.pfx ou .p12, até 2 MB)</label><input id="nfe_certificate" type="file" name="certificate" accept=".pfx,.p12"></div><div class="field"><label for="nfe_certificate_password">Senha do certificado enviado</label><input id="nfe_certificate_password" name="certificate_password" type="password" maxlength="256" autocomplete="new-password"></div></div><p class="hint">Certificado e senha pertencem a esta empresa. Não são exibidos novamente. Deixe vazios para manter os cadastrados; envie arquivo e senha juntos para substituí-los. O certificado A1 é compartilhado com a NFC-e desta empresa; substituí-lo exige validar novamente a configuração NFC-e. Salvar não transmite nota. Confira série e numeração com as emissões anteriores.</p><button class="primary">Salvar configuração NF-e de homologação</button></form>
+@if($nfeConfiguration)<form method="post" action="{{ route('nfe.validate',['company'=>$tenant->slug]) }}" style="margin-top:20px">@csrf
+<input type="hidden" name="_fiscal_form" value="nfe55"><button class="button secondary">Validar configuração NF-e</button></form>@endif
+</section>

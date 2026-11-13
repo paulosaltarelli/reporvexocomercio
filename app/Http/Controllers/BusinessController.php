@@ -6,6 +6,7 @@ use App\Fiscal\TaxpayerDocument;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
+use App\Models\FiscalModelConfiguration;
 use App\Models\FiscalSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,12 +26,15 @@ class BusinessController extends Controller
         $profile = BusinessProfile::find(1) ?? new BusinessProfile(['legal_name' => $r->attributes->get('tenant')->name]);
         $issuer = FiscalIssuer::where('document', TaxpayerDocument::normalize((string) $profile->document))->where('environment', 'homologation')->first();
         $credential = $issuer ? FiscalCredential::where('issuer_id', $issuer->id)->first() : null;
-        $sequence = $issuer ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 65)->where('series', $issuer->validated_configuration['series'])->first() : null;
+        $sequence = $issuer && isset($issuer->validated_configuration['series']) ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 65)->where('series', $issuer->validated_configuration['series'])->first() : null;
 
+        $nfeConfiguration = $issuer ? FiscalModelConfiguration::where('issuer_id', $issuer->id)->where('model', 55)->first() : null;
+        $nfeSequence = $nfeConfiguration ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 55)->where('series', $nfeConfiguration->configuration['series'])->first() : null;
+        $nfeNextNumber = $nfeSequence?->next_number;
         $settings = FiscalSetting::find(1);
         $draft = $settings?->configuration_draft;
         $draftMatches = is_array($draft) && ($draft['document'] ?? null) === TaxpayerDocument::normalize((string) $profile->document);
-        return view('business', ['profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches]);
+        return view('business', ['nfeConfiguration' => $nfeConfiguration, 'nfeNextNumber' => $nfeNextNumber, 'profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches]);
     }
 
     public function save(Request $r)

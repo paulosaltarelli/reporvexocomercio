@@ -132,7 +132,7 @@ class FiscalEmissionController extends Controller
     private function documentFor(Request $r, int $id): FiscalDocument
     {
         $this->admin($r);
-        $doc = FiscalDocument::findOrFail($id);
+        $doc = FiscalDocument::where('model', 65)->findOrFail($id);
         abort_unless((int) ($doc->snapshot['tenant_id'] ?? 0) === (int) $r->attributes->get('tenant')->id, 404);
 
         return $doc;

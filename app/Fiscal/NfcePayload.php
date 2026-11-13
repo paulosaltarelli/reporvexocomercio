@@ -167,7 +167,7 @@ final class NfcePayload
             'unit_price' => $unit, 'gross' => $gross, 'discount' => $discount, 'net' => $net];
     }
 
-    private function paymentEvidence(Sale $sale, array $operation): array
+    public function paymentEvidence(Sale $sale, array $operation): array
     {
         $fail = fn (string $message) => throw ValidationException::withMessages(['fiscal' => $message]);
         if (! $sale->paid || ! in_array($sale->payment_method, ['cash', 'pix', 'transfer'], true)) {

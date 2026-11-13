@@ -28,7 +28,8 @@ class FiscalController extends Controller
             'settings' => FiscalSetting::find(1),
             'report' => $readiness->inspect($request->attributes->get('tenant')),
             'preparations' => FiscalPreparation::latest('id')->paginate(15),
-            'documents' => FiscalDocument::latest('id')->limit(20)->get(),
+            'documents' => FiscalDocument::where('model', 65)->latest('id')->limit(20)->get(),
+            'nfeDocuments' => FiscalDocument::where('model', 55)->with('sale')->latest('id')->paginate(15, ['*'], 'nfe_page'),
             'taxProducts' => Product::where('type', 'product')->orderBy('name')->limit(100)->get(),
             'voids' => DB::connection('tenant')->table('fiscal_voids')->latest('id')->limit(20)->get(),
         ]);
