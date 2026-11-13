@@ -2,6 +2,7 @@
 @section('title','Conferência fiscal da venda #'.$sale->id)
 @section('subtitle','Prévia para revisão. Não é NF-e, NFC-e, DANFE nem autorização fiscal.')
 @section('content')
+@include('fiscal.nfse.entry',['nfseSale'=>$sale])
 <section class="panel"><h2>Simular o fluxo sem certificado</h2><div class="notice"><strong>Simulação interna · sem valor fiscal</strong><p>Não se comunica com a SEFAZ, não usa certificado e não gera NFC-e, DANFE ou XML fiscal. As pendências da conferência abaixo não impedem o teste local.</p></div>
 @if($sale->status==='completed')<form method="post" action="{{ route('fiscal.simulations.create',['company'=>$tenant->slug,'id'=>$sale->id]) }}">
 @csrf

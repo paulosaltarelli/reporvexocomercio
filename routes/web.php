@@ -132,3 +132,15 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('users', [CommerceController::class, 'saveUser']);
     });
 });
+
+// Independent national NFS-e preparation: no production endpoint or transmission.
+Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware([ResolveTenant::class, TenantAuthenticated::class])->group(function () {
+    Route::get('nfse', [\App\Http\Controllers\NfseController::class, 'index'])->name('nfse.index');
+    Route::post('nfse/config', [\App\Http\Controllers\NfseController::class, 'save'])->name('nfse.config');
+    Route::get('nfse/sales/{id}', [\App\Http\Controllers\NfseController::class, 'sale'])->whereNumber('id')->name('nfse.sale');
+    Route::post('nfse/sales/{id}/prepare', [\App\Http\Controllers\NfseController::class, 'prepare'])->whereNumber('id')->name('nfse.prepare');
+    Route::get('nfse/documents/{id}', [\App\Http\Controllers\NfseController::class, 'show'])->whereNumber('id')->name('nfse.show');
+    Route::get('nfse/documents/{id}/xml', [\App\Http\Controllers\NfseController::class, 'xml'])->whereNumber('id')->name('nfse.xml');
+    Route::post('nfse/documents/{id}/issue', [\App\Http\Controllers\NfseController::class, 'unavailable'])->whereNumber('id')->name('nfse.issue');
+    Route::post('nfse/documents/{id}/consult', [\App\Http\Controllers\NfseController::class, 'unavailable'])->whereNumber('id')->name('nfse.consult');
+});

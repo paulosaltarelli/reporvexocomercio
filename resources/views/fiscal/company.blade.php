@@ -54,3 +54,4 @@
 </section>
 
 @include('fiscal.nfe.company',['nfeConfiguration'=>$nfeConfiguration??null,'nfeNextNumber'=>$nfeNextNumber??null])
+@include('fiscal.nfse.entry')

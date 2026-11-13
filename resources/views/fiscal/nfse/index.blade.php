@@ -1,0 +1,10 @@
+@extends('layout')
+@section('title','NFS-e nacional · preparação')
+@section('subtitle','Preparação local de DPS para produção restrita. Não há autorização fiscal nesta etapa.')
+@section('content')
+<div class="notice"><strong>Não é uma simulação de aceite nem uma NFS-e autorizada.</strong><p>Esta etapa prepara e confere a DPS. A transmissão e a consulta ao ambiente nacional permanecem indisponíveis enquanto o contrato externo não estiver validado. Produção fiscal não está liberada.</p></div>
+<section class="panel"><h2>Operações atendidas</h2><p>Venda com uma única linha de serviço, sem mercadorias, retenções ou exportação. O município e o regime devem ser compatíveis com o emissor nacional. Códigos e percentuais precisam ser confirmados pelo responsável fiscal.</p><p>O corte inicial atende MEI e Simples Nacional com apuração federal e municipal pelo Simples. Outros regimes podem ser cadastrados para revisão, mas bloqueiam a preparação.</p><div class="actions"><a class="button secondary" href="{{ route('sales',['company'=>$tenant->slug]) }}">Escolher venda de serviço</a><a href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Voltar ao fiscal</a></div></section>
+@include('fiscal.nfse.company')
+<section class="panel"><h2>Pendências da configuração</h2><ul>@forelse(($report['blockers']??[]) as $blocker)<li>{{ is_array($blocker)?($blocker['message']??'Confira a configuração fiscal.'):$blocker }}</li>@empty<li>Nenhuma pendência local informada. Isso não representa autorização ou disponibilidade de transmissão.</li>@endforelse</ul></section>
+<section class="panel"><h2>DPS preparadas</h2><div class="scroll"><table><thead><tr><th>DPS / série</th><th>Venda</th><th>Situação</th><th></th></tr></thead><tbody>@forelse($documents as $document)<tr><td>{{ $document->number }} / {{ $document->series }}</td><td>#{{ $document->sale_id }}</td><td>Preparada localmente · não autorizada</td><td><a href="{{ route('nfse.show',['company'=>$tenant->slug,'id'=>$document->id]) }}">Revisar DPS</a></td></tr>@empty<tr><td colspan="4" class="empty">Nenhuma DPS preparada.</td></tr>@endforelse</tbody></table></div>{{ $documents->links() }}</section>
+@endsection
