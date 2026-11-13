@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use NFePHP\DA\NFe\Danfce;
+use NFePHP\DA\NFe\Danfe;
 
 final class ProcessFiscalOutbox
 {
@@ -37,6 +38,7 @@ final class ProcessFiscalOutbox
                 if ((int) ($doc->snapshot['tenant_id'] ?? 0) !== $tenantId || ! hash_equals($doc->snapshot_sha256, Snapshot::hash($doc->snapshot))) {
                     throw new FiscalTransportException('snapshot_integrity_invalid');
                 }
+                if (! in_array((int) $doc->model, [55, 65], true) || (int) ($doc->snapshot['model'] ?? 65) !== (int) $doc->model || substr((string) $doc->access_key, 20, 2) !== (string) $doc->model) { throw new FiscalTransportException('document_model_invalid'); }
                 if (! is_string($doc->signed_xml) || $doc->signed_xml === '' || ! $doc->signed_xml_sha256 || ! hash_equals($doc->signed_xml_sha256, hash('sha256', $doc->signed_xml)) || ! preg_match('/^[0-9]{44}$/D', (string) $doc->access_key) || ! isset($doc->snapshot['configuration'])) {
                     throw new FiscalTransportException('signed_xml_integrity_invalid');
                 }
@@ -71,12 +73,13 @@ final class ProcessFiscalOutbox
                 $payload['_issuer_snapshot'] = $doc->snapshot['issuer_snapshot'];
                 $payload['_configuration'] = $doc->snapshot['configuration'];
                 $payload['_protocol'] = $doc->protocol;
-                $provider = new SefazProvider($issuer, $credential, $payload);
+                $payload['_model'] = (int) $doc->model;
+                $provider = new SefazProvider($issuer, $credential, $payload, model: (int) $doc->model);
                 if ($send) {
                     if ($credential->valid_from->isFuture() || $credential->valid_until->isPast()) {
                         throw new FiscalTransportException('certificate_expired');
                     }
-                    if (! $issuer->enabled || ! $credential->validated_hash || ! hash_equals($credential->validated_hash, app(CompanyFiscalConfiguration::class)->hash($issuer)) || ! hash_equals($doc->snapshot['configuration_hash'], app(CompanyFiscalConfiguration::class)->hash($issuer))) {
+                    if (! $this->configurationCurrent($doc, $issuer, $credential)) {
                         throw new FiscalTransportException('issuer_configuration_changed');
                     }
                     if (Sale::whereKey($doc->sale_id)->value('status') !== 'completed') {
@@ -90,7 +93,7 @@ final class ProcessFiscalOutbox
                         if ($e->getMessage() !== 'reference_not_found' || ! $job->resend_requested_at || $job->operation !== 'issue') {
                             throw $e;
                         }
-                        if ($credential->valid_from->isFuture() || $credential->valid_until->isPast() || ! $issuer->enabled || ! $credential->validated_hash || ! hash_equals($credential->validated_hash, app(CompanyFiscalConfiguration::class)->hash($issuer)) || ! hash_equals($doc->snapshot['configuration_hash'], app(CompanyFiscalConfiguration::class)->hash($issuer))) {
+                        if ($credential->valid_from->isFuture() || $credential->valid_until->isPast() || ! $this->configurationCurrent($doc, $issuer, $credential)) {
                             throw new FiscalTransportException('issuer_configuration_changed');
                         }
                         // Explicitly requested replay after a fresh SEFAZ 217.
@@ -108,12 +111,12 @@ final class ProcessFiscalOutbox
                 // Generate DANFE from verified authorized XML, outside any DB transaction.
                 $pdf = null;
                 if ($result->state === DocumentState::Authorized && $result->xml) {
-                    $pdf = (new Danfce($result->xml))->render();
+                    $pdf = ((int) $doc->model === 55 ? new Danfe($result->xml) : new Danfce($result->xml))->render();
                 }
                 if ($result->state === DocumentState::Cancelled) {
                     $xml = app(PrivateFiscalFiles::class)->get($tenantId, $doc->id, 'xml');
-                    $danfe = new Danfce($xml);
-                    $danfe->setAsCanceled();
+                    $danfe = (int) $doc->model === 55 ? new Danfe($xml) : new Danfce($xml);
+                    if ((int) $doc->model === 55) { $danfe->setCancelFlag(true); } else { $danfe->setAsCanceled(); }
                     $pdf = $danfe->render();
                 }
                 DB::connection('tenant')->transaction(function () use ($tenantId, $job, $doc, $token, $result, $pdf) {
@@ -165,6 +168,18 @@ final class ProcessFiscalOutbox
         } finally {
             $connection->disconnect();
         }
+    }
+
+    private function configurationCurrent(FiscalDocument $doc, FiscalIssuer $issuer, FiscalCredential $credential): bool
+    {
+        if ((int) $doc->model === 55) {
+            $service = app(NfeCompanyConfiguration::class);
+            $row = $service->forIssuer($issuer);
+            $hash = $service->hash($issuer);
+            return $row->enabled && $row->validated_hash && hash_equals($row->validated_hash, $hash) && hash_equals($doc->snapshot['configuration_hash'], $hash);
+        }
+        $hash = app(CompanyFiscalConfiguration::class)->hash($issuer);
+        return $issuer->enabled && $credential->validated_hash && hash_equals($credential->validated_hash, $hash) && hash_equals($doc->snapshot['configuration_hash'], $hash);
     }
 
     private function void(object $job, string $token): void
