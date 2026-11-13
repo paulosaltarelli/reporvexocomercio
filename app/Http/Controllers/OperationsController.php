@@ -27,10 +27,29 @@ class OperationsController extends Controller
 
     public function documents(Request $request)
     {
-        $data = $request->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $data = $request->validate([
+            'salesperson_id' => 'nullable|integer|exists:tenant.sellers,id',
+            'type' => 'nullable|in:quote,work_order',
+            'status' => 'nullable|in:draft,approved,in_progress,completed,invoiced,cancelled',
+            'q' => 'nullable|string|max:100',
+        ]);
         $sellerId = isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null;
-        return view('documents.index', ['documents'=>Document::with('customer')->when($sellerId,fn($q)=>$q->where('salesperson_id',$sellerId))->latest()->paginate(20)->withQueryString(),
-            'sellers'=>Seller::orderBy('name')->get(),'sellerId'=>$sellerId]);
+        $typeFilter = $data['type'] ?? null;
+        $statusFilter = $data['status'] ?? null;
+        $search = trim($data['q'] ?? '');
+        $documents = Document::with('customer')
+            ->when($sellerId, fn ($q) => $q->where('salesperson_id', $sellerId))
+            ->when($typeFilter, fn ($q) => $q->where('type', $typeFilter))
+            ->when($statusFilter, fn ($q) => $q->where('status', $statusFilter))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $needle = '%'.addcslashes($search, '\\%_').'%';
+                    $q->where('asset', 'like', $needle)->orWhere('technician', 'like', $needle)->orWhere('notes', 'like', $needle)
+                        ->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', $needle)->orWhere('document', 'like', $needle)->orWhere('phone', 'like', $needle));
+                    if (ctype_digit($search) && strlen($search) <= 18) { $q->orWhere('id', (int) $search); }
+                });
+            })->latest('id')->paginate(20)->withQueryString();
+        return view('documents.index', compact('documents', 'sellerId', 'typeFilter', 'statusFilter', 'search') + ['sellers' => Seller::orderBy('name')->get()]);
     }
 
     public function form(Request $r)
@@ -40,15 +59,36 @@ class OperationsController extends Controller
         $context=app(SellerFormContext::class)->forUser($r->attributes->get('currentUser'),isset($data['salesperson_id'])?(int)$data['salesperson_id']:null);
         return view('documents.form',array_merge($context,['type'=>$r->query('type','quote'),
             'customers'=>Customer::orderBy('name')->get(),'products'=>Product::with('group')->where('active',true)->orderBy('name')->get(),
-            'services'=>collect(),'selectedCustomerId'=>$data['customer_id']??null]));
+            'services'=>collect(),'selectedCustomerId'=>$data['customer_id']??null,'document'=>null,'initialItems'=>[]]));
     }
 
     public function create(Request $r, string $company)
     {
-        $d = $r->validate(['type' => 'required|in:quote,work_order', 'request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'valid_until' => 'nullable|date', 'asset' => 'nullable|string|max:255', 'technician' => 'nullable|string|max:255', 'notes' => 'nullable|string|max:2000', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(['type' => 'required|in:quote,work_order', 'request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'valid_until' => 'nullable|date', 'asset' => 'nullable|string|max:255', 'technician' => 'nullable|string|max:255', 'notes' => 'nullable|string|max:2000', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items' => ($r->input('type') === 'work_order' ? 'sometimes|array|max:50' : 'required|array|min:1|max:50'), 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d['items'] ??= [];
         $doc = app(Documents::class)->create($d, $r->attributes->get('currentUser')->id);
 
         return redirect()->route('document.show', ['company' => $company, 'id' => $doc->id])->with('success', 'Documento criado. Nenhum estoque foi movimentado.');
+    }
+
+    public function edit(Request $r, string $company, int $id, Documents $documents)
+    {
+        $document = Document::findOrFail($id);
+        abort_unless($document->type === 'work_order' && $document->status === 'draft' && ! $document->sale_id, 409, 'Somente uma OS aberta pode ser editada.');
+        $current = Seller::where('user_id', $r->attributes->get('currentUser')->id)->first();
+        return view('documents.form', [
+            'document' => $document, 'type' => 'work_order', 'editHash' => $documents->editHash($document),
+            'initialItems' => collect($document->items)->map(fn ($item) => \Illuminate\Support\Arr::only($item, ['kind', 'id', 'quantity', 'unit_price', 'offered_unit_price', 'discount_percent', 'explicit_discount_percent']))->all(), 'selectedCustomerId' => $document->customer_id,
+            'customers' => Customer::orderBy('name')->get(), 'products' => Product::with('group')->where('active', true)->orderBy('name')->get(),
+            'services' => collect(), 'sellers' => collect(), 'currentSalesperson' => $current, 'selectedSalespersonId' => $current?->id,
+        ]);
+    }
+
+    public function update(Request $r, string $company, int $id, Documents $documents)
+    {
+        // Domain validates every editable field again and rejects seller/type overrides.
+        $document = $documents->updateDraft($id, $r->all(), $r->attributes->get('currentUser')->id);
+        return redirect()->route('document.show', ['company' => $company, 'id' => $document->id])->with('success', 'OS atualizada. Estoque e financeiro não foram movimentados.');
     }
 
     public function show(Request $r, string $company, int $id)
