@@ -8,3 +8,40 @@
 @media print{.site-header,.hero-actions,.hero-note,.contact-section,.mobile-menu,.site-footer,.quiet-link,.inline-link{display:none}.hero{background:#fff;color:#17243b;padding-top:20px}.hero h1 em,.hero-copy>p{color:#17243b}.container{width:100%}.section{padding:30px 0}.hero-grid{grid-template-columns:1fr}.product-preview{display:none}.feature-grid,.segment-grid{grid-template-columns:repeat(2,1fr)}.feature-card,.segment-card{break-inside:avoid}.faq-list details>p{display:block}.hero-bottom{display:none}}
 
 .arrow-icon{width:16px;height:16px}.login-link{display:inline-flex;align-items:center;gap:6px}.login-link .arrow-icon{width:14px;height:14px}.section-copy a{display:inline-flex;align-items:center;gap:10px}.footer-top>a:last-child{display:inline-flex;align-items:center;gap:8px}.footer-top>a:last-child .arrow-icon{width:13px;height:13px}
+
+/* Commercial landing: readable preview, shorter benefits and mobile conversion. */
+.hero-copy>.demo-note{font-size:12px;line-height:1.7;color:#b5c7df;margin-top:16px;max-width:470px}
+.benefit-number{display:block;font-size:11px;letter-spacing:1px;color:#32588c;font-weight:650;margin-bottom:22px}
+.privacy-note{padding-block:24px}.privacy-note p{font-size:12px;color:#52627b;max-width:900px}
+.mobile-conversion{display:none}
+.feature-card p,.segment-card p,.workflow-steps p,.faq-list p{font-size:14px}
+.product-preview figcaption{font-size:11px;color:#b5c7df}
+.preview-window{transform:none;margin-right:0}
+.preview-chrome,.preview-tag,.preview-kicker,.preview-summary span,.preview-table-row small{font-size:10px}
+.preview-summary strong,.preview-table-row,.preview-table-row strong,.preview-footer{font-size:11px}
+.preview-table-row.table-head{font-size:9px}
+@media(min-width:681px) and (max-width:900px){.feature-grid{grid-template-columns:1fr}.feature-card{padding:24px}.benefit-number{margin-bottom:12px}}
+@media(max-width:680px){
+ body{padding-bottom:80px}html{scroll-padding-bottom:90px}
+ .hero{padding-top:32px}.hero h1{font-size:40px}.hero-actions{margin-top:22px;gap:14px}
+ .hero-actions .button{font-size:13px;gap:12px;max-width:none}
+ .hero-copy>.demo-note{font-size:12px}.hero-note{font-size:11px}
+ .benefit-number{margin-bottom:14px}.feature-card{padding:22px}
+ .segment-illustration{height:90px;margin-bottom:18px}.segment-illustration svg{height:80px}
+ .preview-body{padding:18px 12px 0}.preview-top h2{font-size:19px}
+ .preview-summary{grid-template-columns:1fr;gap:7px;margin-block:14px}
+ .preview-summary>div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px}
+ .preview-summary span{margin:0}.preview-summary strong{font-size:11px}
+ .preview-chrome{font-size:10px}.preview-chrome>span:nth-child(2){display:none}.preview-tag{font-size:10px}
+ .preview-table-row{grid-template-columns:minmax(0,1fr) 44px 68px;gap:6px;font-size:11px}
+ .preview-table-row>*:nth-child(3){display:none}.preview-table-row strong{font-size:11px}
+ .preview-table-row small{font-size:10px}.preview-table-row.table-head{font-size:9px}
+ .preview-footer{margin-inline:-12px;padding:12px;font-size:11px}
+ .preview-footer>svg{display:none}.product-preview figcaption{font-size:11px;padding:0}
+ .mobile-conversion{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:25;border-radius:0;min-height:64px;padding:16px 20px calc(16px + env(safe-area-inset-bottom));justify-content:space-between;box-shadow:0 -3px 18px #06132926}
+ .contact-actions .button{font-size:13px;gap:12px}.privacy-note{padding-block:20px}
+ .login-link,.mobile-menu>summary{min-height:44px;min-width:44px}
+}
+@media(max-width:360px){.hero h1{font-size:35px}.hero .eyebrow{font-size:8px;letter-spacing:.7px}.preview-top h2{font-size:17px}.preview-summary>div{flex-wrap:wrap;gap:3px}.preview-table-row{grid-template-columns:minmax(0,1fr) 39px 63px}}
+@media print{body{padding-bottom:0}.mobile-conversion,.privacy-note{display:none}.hero-copy>.demo-note{color:#17243b}.faq-list details{break-inside:avoid}.contact-section{display:block;background:#fff;color:#17243b;padding:25px 0}.contact-section .eyebrow,.contact-section p,.contact-phone,.contact-email{color:#17243b}.contact-actions .button{display:none}}
+.preview-chrome,.preview-tag,.preview-table-row.table-head,.preview-table-row.table-head>span:first-child{color:#52627b}
