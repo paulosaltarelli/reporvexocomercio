@@ -3,6 +3,16 @@
 Base inspecionada: main `99a74b2e1d17ca58a0d17812c5c896bdfa0db637`.
 Escopo publicado: somente `resources/views/welcome.blade.php`, `public/marketing.css` e `public/marketing.js`. Este documento e `tests/marketing/landing.cjs` não entram no overlay.
 
+## Segunda revisão visual — 15/11/2026
+
+Base: main `f6e20b262d39a54444dbac3df6dd2d83ca99adc1` (PR #8). Esta revisão substitui o CSS cumulativo por uma folha exclusiva organizada, sem dependências. A abertura passa a usar fundo claro, texto azul-marinho e destaque azul. A prévia ganha moldura de aplicação, navegação lateral apenas decorativa e tabela HTML com caption e escopos de linha/coluna. É uma representação do fluxo, identificada como fictícia, não uma captura do ERP nem promessa de identidade com suas telas.
+
+Headline: “Estoque e vendas em ordem. Seu negócio em movimento.” O subtítulo explicita serviços e financeiro. Benefícios e segmentos têm espaçamento e tipografia consistentes; demonstração em painel azul-marinho, FAQ e fechamento com CTA mantêm hierarquia. Ícones locais em SVG; nenhuma fonte, imagem ou biblioteca externa. Os contatos, limites fiscais e eventos/privacidade continuam iguais. Sem preços, testemunhos ou métricas comerciais inventadas.
+
+Validação: `node tests/marketing/landing.cjs` e `node --check public/marketing.js`, além de `git diff --check`. Testes em 320, 390, 768, 1024 e 1440 px: HTTP local 200, nenhuma rolagem horizontal ou exceção JS; links/CTAs, teclado, menu/Escape, FAQ, foco, impressão, ausência de armazenamento e requisições de analytics. Ampliado o teste para a estrutura acessível da tabela e altura mínima de 44 px no CTA principal. Capturas de desktop/celular revisadas. Nenhum teste envia mensagem externa. Mantida a limitação: prévia estática, sem PHP/Laravel ou smoke da VPS.
+
+Overlay desta segunda revisão: **somente `resources/views/welcome.blade.php` e `public/marketing.css`**, com assets versionados `20261115b`. `public/marketing.js` não mudou. Documentação e testes ficam no Git, fora do overlay. Publicação será executada no outro chat com acesso à VPS, conforme combinado, usando os cuidados de baseline, lock compartilhado, backup e smoke descritos abaixo. O novo PR precisa estar integrado antes da publicação; não publicar uma branch junto com mudanças de ERP.
+
 ## Auditoria e decisão
 
 A auditoria da versão pública foi bloqueada: curl com TLS verificado em https://2.25.146.67:8445/ retornou erro 60 (certificado apresentado para openai.com incompatível com o IP). Isso não permite atribuir a causa ao certificado de origem; o caminho de proxy pode estar envolvido. Nenhum bypass de TLS foi usado. Auditoria visual feita sobre o código atual do GitHub em prévia estática local, sem login nem dados reais. Não equivale a validar o PHP/servidor publicado.
