@@ -1,0 +1,66 @@
+# Landing comercial — revisão de 15/11/2026
+
+Base inspecionada: main `99a74b2e1d17ca58a0d17812c5c896bdfa0db637`.
+Escopo publicado: somente `resources/views/welcome.blade.php`, `public/marketing.css` e `public/marketing.js`. Este documento e `tests/marketing/landing.cjs` não entram no overlay.
+
+## Auditoria e decisão
+
+A auditoria da versão pública foi bloqueada: curl com TLS verificado em https://2.25.146.67:8445/ retornou erro 60 (certificado apresentado para openai.com incompatível com o IP). Isso não permite atribuir a causa ao certificado de origem; o caminho de proxy pode estar envolvido. Nenhum bypass de TLS foi usado. Auditoria visual feita sobre o código atual do GitHub em prévia estática local, sem login nem dados reais. Não equivale a validar o PHP/servidor publicado.
+
+Prioridades encontradas: headline genérica para tráfego frio; CTAs sem pedido explícito de demonstração; seis cartões extensos no celular; prévia com textos de 6–9 px; FAQ fiscal anterior ao desenvolvimento atual; ausência de eventos. Base já tinha marca consistente, skip link, FAQ nativo, menu sem dependências, contatos corretos e exemplos identificados como fictícios. Não havia formulário que entregasse leads; WhatsApp permanece a conversão funcional.
+
+Narrativa implementada: dificuldade com controles separados → estoque, vendas e serviços conectados → exemplo fictício → três benefícios → segmentos → o que avaliar na demonstração → objeções e CTA. Preservados azul-marinho, azul e ciano. CTAs incluem mensagem editável com segmento e necessidade. Nenhum preço, prova social ou resultado foi inventado.
+
+Fiscal conferido em `app/Fiscal/NfePayload.php`, `SefazProvider.php`, `SefazTransport.php`, `Nfse/PrepareDps.php` e `Nfse/Readiness.php`: fluxos SEFAZ 55/65 em homologação; NFS-e apenas preparação local, `transport_ready=false`. A landing não promete produção, homologação oficial ou autorização obtida. Nenhum arquivo fiscal foi alterado.
+
+## Referências de posicionamento
+
+Pesquisa consultada em 15/11/2026, em fontes oficiais; sem copiar textos, layout ou ativos:
+
+- [Bling — controle de vendas](https://www.bling.com.br/funcionalidades/vendas): ênfase em gestão de vendas e conexão de canais. Vendra concentra a narrativa na rotina do balcão; não alega integração com marketplaces.
+- [Bling — controle de estoque](https://www.bling.com.br/funcionalidades/controle-de-estoque): estoque como benefício central. Vendra demonstra saldos/custo/margem com exemplo fictício e evita prometer sincronização multicanal.
+- [Conta Azul — demonstração](https://contaazul.com/demo-pme/): convite concreto para ver o sistema. Vendra explicita o próximo passo pelo WhatsApp, sem copiar duração, formulário ou condições comerciais.
+- [Conta Azul — planos](https://contaazul.com/planos/): segmentação da oferta por perfil de empresa. Vendra pede segmento e necessidade, sem inventar planos ou preços.
+
+## Medição e privacidade
+
+Eventos DOM `vendra:whatsapp_click` e `vendra:demo_request` emitidos uma vez por ativação do CTA. `detail`: versão 1, event, placement (`header`, `hero`, `resources`, `demo`, `faq`, `contact`, `mobile_fixed`), channel `whatsapp`, attribution. Os dois eventos representam o mesmo clique/intenção; não somar como dois leads. Mensagem enviada, conversa recebida e demonstração agendada exigem confirmação posterior no processo comercial.
+
+Sem SDK, GA4, GTM, Pixel, cookies, armazenamento local ou transmissão de eventos. Um adaptador futuro deve carregar só depois da configuração e escolha de privacidade aplicável. Não encaminhar page_location com query completa, texto da mensagem, telefone, e-mail ou identificadores de anúncios.
+
+UTMs ficam apenas na URL original e em memória durante a página, sem persistência entre navegações nem repasse ao WhatsApp. Somente valores revisados entram em attribution: source google/meta/facebook/instagram, medium cpc/paid_social/paid_search, campaign vendra_informatica/vendra_moda/vendra_automotivo. São códigos aceitos, não campanhas criadas. Valores desconhecidos são descartados; utm_term, utm_content, gclid, fbclid e demais parâmetros nunca entram nos eventos. Para outras campanhas, revisar e ampliar a lista explicitamente. Não colocar dados pessoais nas URLs de entrada: o servidor/proxy pode registrar a URL antes do JavaScript.
+
+## Validação local
+
+Chromium headless disponível no ambiente, via Playwright. Executar com Playwright instalado e Chromium disponível:
+
+```sh
+node --check public/marketing.js
+node tests/marketing/landing.cjs
+# Opcional: QA_OUTPUT=/caminho/temporario CHROMIUM_PATH=/caminho/chromium node tests/marketing/landing.cjs
+```
+
+O teste serve somente os três arquivos da landing em porta efêmera, substituindo a expressão do ano na prévia. Não inicia Laravel, não usa banco e cancela a navegação externa dos cliques de teste.
+
+Resultados: 320/390/768/1440 px, HTTP local 200, sem overflow horizontal ou exceções JS, sete CTAs com destino/telefone/mensagem corretos, todas as âncoras existentes, menu por teclado/Escape, foco após navegação, FAQ por Enter, impressão com FAQ aberto e contato visível, restauração do FAQ após impressão, CTA funcional sem JS. Eventos preservam somente UTMs permitidas, rejeitam valores pessoais e não geram requisição externa; cookies/localStorage/sessionStorage vazios. Revisão visual das capturas móvel e desktop. Amostras de contraste: texto principal secundário #61718a/branco 4,96:1 e botão branco/#1463eb 5,23:1; cabeçalhos da prévia ajustados para #52627b após detectar contraste abaixo de 4,5:1. Não é certificação completa de acessibilidade.
+
+Altura em 390 px passou de 6895 a 6389 px; em 1440 de 4448 a 4246 px. O aumento de legibilidade pode ampliar altura em tablet. HTML/CSS/JS somam aproximadamente 48 KB brutos; gzip local estimado 12,4 KB, sem fontes ou imagens externas. São medidas de arquivos, não desempenho real de rede. Não foi executado Lighthouse nem medida conversão comercial. PHP CLI e dependências Laravel não estavam disponíveis para renderização nativa; a expressão Blade dinâmica preexistente do ano não foi modificada. Login da aplicação não é servido pelo teste estático.
+
+## Publicação pendente: procedimento restrito
+
+Não executado: faltam `/workspace/vps-access/hostinger_ed25519`, `known_hosts` e `connect.py`, e a VPN não teve prontidão comprovada. Provisionar por canal seguro, nunca por texto em chat/Git. O endereço HTTPS precisa funcionar com validação de identidade. Scripts `ops/deploy-nfse-preparation.sh` e `ops/backup.sh` foram inspecionados; não executar deploy fiscal antigo para esta entrega.
+
+Após acesso, preparar procedimento específico e revisar antes de aplicar:
+
+1. Buscar main novamente e comparar o commit integrado com a branch testada. Na VPS, inspecionar os três arquivos e hashes, git status e versão atual dos scripts; não presumir que a VPS coincide com main. Se algum arquivo diferir da baseline revisada, reconciliar e repetir QA antes de sobrescrever.
+2. Preparar stage somente com os três arquivos, manifestos SHA-256 de baseline/overlay e cópia de recuperação com proprietário/permissões. Rejeitar symlinks e caminhos fora da allowlist. Não incluir documentação, testes, ERP, dependências, .env ou bancos no overlay.
+3. Adquirir e aguardar o lock `/run/lock/vendra-fiscal-deploy.lock`. Revalidar hashes depois de obtê-lo. Registrar estados de `vendra.service`, timer e worker. Não iniciar worker manualmente.
+4. Se necessário pausar para backup consistente, parar somente `vendra-fiscal.timer`, aguardar worker terminar naturalmente com prazo e abortar sem matá-lo se não terminar; parar somente `vendra.service`. Sem escritas, executar `VENDRA_BACKUP_ACK_QUIESCED=1 /srv/reporvexo/ops/backup.sh`; validar SHA256SUMS, integridade tar/gzip e presença do dump não vazio. Backup contém segredos: fica privado na VPS.
+5. Revalidar hashes sob lock e aplicar apenas os três arquivos revisados, preservando proprietário e permissões. Validar hashes finais. Compilar/conferir somente a view da landing com PHP `php -c /opt/reporvexo-tools/php/cli.ini` e usuário `vendra-web`; não limpar caches globais, migrar, seedar ou instalar dependências. Se a view compilada existir, invalidar somente a correspondente ao welcome, após conferir o caminho calculado pelo Blade.
+6. Retomar somente Vendra e aguardar readiness HTTPS validado (repetições curtas e limitadas). Conferir landing, CSS/JS versionados, login sem autenticar, links/âncoras e ausência de erros. Repetir os quatro viewports contra a versão real. Só restaurar timer se estava ativo antes, depois de readiness. Em falha, restaurar somente os três arquivos do backup restrito e validar novamente antes de retomar agendamento. Preservar evidências; não iniciar outros serviços.
+
+Não alterar apache2 global, firewall, SSH, TLS, PHP global ou outros sistemas. Nenhum deploy, migração ou envio fiscal foi feito nesta revisão.
+
+## Próximos testes comerciais
+
+Depois de publicar e configurar medição consentida: testar headline focada em estoque versus atendimento, mantendo o restante estável; comparar CTAs hero/fixo por segmento; acompanhar conversas recebidas, leads qualificados e demonstrações agendadas, sem confundir cliques com leads. Validar primeiro o HTTPS público antes de direcionar tráfego pago. Nenhuma campanha ou despesa foi autorizada por este trabalho.
