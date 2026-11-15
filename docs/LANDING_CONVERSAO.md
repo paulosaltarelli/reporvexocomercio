@@ -11,7 +11,17 @@ Headline: “Estoque e vendas em ordem. Seu negócio em movimento.” O subtítu
 
 Validação: `node tests/marketing/landing.cjs` e `node --check public/marketing.js`, além de `git diff --check`. Testes em 320, 390, 768, 1024 e 1440 px: HTTP local 200, nenhuma rolagem horizontal ou exceção JS; links/CTAs, teclado, menu/Escape, FAQ, foco, impressão, ausência de armazenamento e requisições de analytics. Ampliado o teste para a estrutura acessível da tabela e altura mínima de 44 px no CTA principal. Capturas de desktop/celular revisadas. Nenhum teste envia mensagem externa. Mantida a limitação: prévia estática, sem PHP/Laravel ou smoke da VPS.
 
-Overlay desta segunda revisão: **somente `resources/views/welcome.blade.php` e `public/marketing.css`**, com assets versionados `20261115b`. `public/marketing.js` não mudou. Documentação e testes ficam no Git, fora do overlay. Publicação será executada no outro chat com acesso à VPS, conforme combinado, usando os cuidados de baseline, lock compartilhado, backup e smoke descritos abaixo. O novo PR precisa estar integrado antes da publicação; não publicar uma branch junto com mudanças de ERP.
+Overlay desta segunda revisão: `resources/views/welcome.blade.php`, `public/marketing.css` e os três novos JPEG em `public/brand/`, com assets versionados `20261115c`. `public/marketing.js` não mudou. Documentação e testes ficam no Git, fora do overlay. Publicação será executada no outro chat com acesso à VPS, conforme combinado, usando os cuidados de baseline, lock compartilhado, backup e smoke descritos abaixo. O novo PR precisa estar integrado antes da publicação; não publicar uma branch junto com mudanças de ERP.
+
+## Imagens e destaques — ajuste solicitado
+
+Removido o parágrafo visível de aviso sobre rastreadores/WhatsApp conforme solicitação. A implementação continua sem rastreadores ativos. A área de benefícios foi substituída por três seções visuais com preços, ordens de serviço e fluxo financeiro, cada uma com destaques em texto, alt descritivo e link para ampliar a imagem sem JavaScript.
+
+Os JPEG são **prévias estáticas reconstruídas**, baseadas nas views `prices.blade.php`, `documents/index.blade.php`, `cashflow.blade.php`, `layout.blade.php` e no CSS atual do ERP, somente lidos. Não são capturas de uma sessão autenticada ou renderização nativa Laravel. A estrutura foi resumida para apresentação. Todos os nomes, valores, alertas e projeções são fictícios; cada imagem contém essa identificação. Não representam clientes reais, resultados, ganhos ou saldo bancário conciliado. Nenhuma base ou credencial foi acessada.
+
+Ativos: `public/brand/vendra-precos.jpg`, `public/brand/vendra-servicos.jpg`, `public/brand/vendra-financeiro.jpg`, 1200 × 760 px cada, aproximadamente 240 KB no total. Dimensões declaradas, carregamento lazy e decoding assíncrono. O teste estático passou a servir e decodificar os três arquivos e conferir alt e dimensões nos cinco viewports. A versão publicada ainda exige conferência real após deploy.
+
+**Overlay completo do PR #9:** os dois arquivos da landing acima e esses três JPEG. `marketing.js` não mudou. Não publicar `app.css`, `ui.js`, `layout.blade.php`, fontes de geração, documentação ou testes. Conferir baseline dos arquivos existentes e ausência dos novos JPEG antes de aplicar. Seguir o procedimento de backup/lock/readiness deste documento e preservar permissões de leitura para o servidor web.
 
 ## Auditoria e decisão
 
