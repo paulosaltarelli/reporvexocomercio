@@ -200,7 +200,7 @@ class CommerceTest extends TestCase
     {
         $this->get('/app/a/login')->assertOk()->assertSee('Empresa a');
         $this->post('/app/a/login', ['email' => 'admin@example.test', 'password' => 'test-password-123'])->assertRedirect('/app/a');
-        foreach (['/app/a', '/app/a/products', '/app/a/products/new', '/app/a/catalog/groups', '/app/a/catalog/customers', '/app/a/products?type=service', '/app/a/stock', '/app/a/sales', '/app/a/sales/new', '/app/a/users', '/app/a/catalog/suppliers', '/app/a/documents', '/app/a/documents/new?type=quote', '/app/a/documents/new?type=work_order', '/app/a/finance', '/app/a/purchases', '/app/a/purchases/new', '/app/a/reports', '/app/a/account/password', '/app/a/business', '/app/a/cash', '/app/a/cashflow', '/app/a/prices'] as $path) {
+        foreach (['/app/a', '/app/a/desk', '/app/a/products', '/app/a/products/new', '/app/a/catalog/groups', '/app/a/catalog/customers', '/app/a/products?type=service', '/app/a/stock', '/app/a/sales', '/app/a/sales/new', '/app/a/users', '/app/a/catalog/suppliers', '/app/a/documents', '/app/a/documents/new?type=quote', '/app/a/documents/new?type=work_order', '/app/a/finance', '/app/a/purchases', '/app/a/purchases/new', '/app/a/reports', '/app/a/account/password', '/app/a/business', '/app/a/cash', '/app/a/cashflow', '/app/a/prices'] as $path) {
             $this->get($path)->assertOk();
         }
         $this->get('/app/a/catalog/services')->assertRedirect('/app/a/products?type=service');
@@ -247,6 +247,70 @@ class CommerceTest extends TestCase
         foreach (['fiscal', 'nfse', 'finance', 'cash', 'cashflow', 'reports', 'users', 'business', 'commissions'] as $section) {
             $this->assertNotContains('/app/a/'.$section, $links);
             $this->get('/app/a/'.$section)->assertForbidden();
+        }
+    }
+
+    public function test_navigation_omits_empty_stock_group_and_keeps_account_and_history_accessible(): void
+    {
+        app(\App\Services\CompanyOperations::class)->save(
+            $this->operationPayload(['inventory' => false, 'commissions' => false, 'quotes' => false, 'work_orders' => false]),
+            $this->user->id
+        );
+        $this->user->update(['role' => 'operator']);
+        $response = $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])
+            ->get('/app/a/desk')->assertOk();
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($dom);
+        $this->assertCount(0, $xpath->query('//nav//details[not(.//a)]'));
+        $this->assertCount(0, $xpath->query('//nav//a[contains(@href,"/stock")]'));
+        $this->assertCount(1, $xpath->query('//aside//a[contains(@href,"/account/password")]'));
+        $this->assertCount(1, $xpath->query('//nav//a[contains(@href,"/documents")]'));
+        $this->assertCount(0, $xpath->query('//nav//a[contains(@href,"/documents/new")]'));
+        $this->assertCount(1, $xpath->query('//button[@class="menu-toggle"][@aria-controls="company-navigation"]'));
+        $this->get('/app/a/account/password')->assertOk();
+    }
+
+    public function test_dashboard_and_desk_hide_disabled_operation_shortcuts_without_removing_history(): void
+    {
+        $this->product->update(['active' => false]);
+        app(\App\Services\CompanyOperations::class)->save($this->operationPayload([
+            'catalog_mode' => 'services', 'inventory' => false, 'nfce' => false, 'nfe' => false,
+            'quotes' => false, 'work_orders' => false,
+        ]), $this->user->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a')->assertOk()
+            ->assertDontSee('Registrar compra')->assertDontSee('Acompanhar OS')
+            ->assertDontSee('Repor estoque')->assertDontSee('Estoque a custo médio')
+            ->assertSee('Conferir financeiro')->assertSee('Últimas vendas');
+        $this->get('/app/a/desk')->assertOk()
+            ->assertDontSee('Acompanhar ordens de serviço')->assertDontSee('Orçamentos para continuar')
+            ->assertDontSee('Orçamentos em andamento')->assertDontSee('Criar orçamento')
+            ->assertSee('Registrar venda')->assertSee('Alterar minha senha');
+        $this->get('/app/a/documents')->assertOk();
+        $this->get('/app/a/purchases')->assertOk();
+    }
+
+    public function test_navigation_marks_nested_catalog_documents_and_settings_destinations(): void
+    {
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        foreach ([
+            '/app/a/products/'.$this->product->id.'/edit' => '/app/a/products',
+            '/app/a/catalog/customers' => '/app/a/catalog/customers',
+            '/app/a/documents/new?type=work_order' => '/app/a/documents',
+            '/app/a/setup?step=2' => '/app/a/setup',
+            '/app/a/account/password' => '/app/a/account/password',
+        ] as $path => $destination) {
+            $response = $this->get($path)->assertOk();
+            $dom = new \DOMDocument();
+            @$dom->loadHTML($response->getContent());
+            $xpath = new \DOMXPath($dom);
+            $active = $xpath->query('//aside//a[@aria-current="page"]');
+            $this->assertCount(1, $active, $path);
+            $this->assertSame($destination, parse_url($active->item(0)->getAttribute('href'), PHP_URL_PATH));
+            if (!str_contains($path, '/account/')) {
+                $this->assertCount(1, $xpath->query('//details[@open]//a[@aria-current="page"]'), $path);
+            }
         }
     }
 
