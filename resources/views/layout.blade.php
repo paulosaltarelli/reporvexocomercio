@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     <link rel="stylesheet" href="/navigation.css?v={{ filemtime(public_path('navigation.css')) }}">
     @if(request()->routeIs('desk','sale.new'))<link rel="stylesheet" href="/pos.css?v={{ filemtime(public_path('pos.css')) }}">@endif
+    @if(request()->routeIs('dashboard','commissions*','commission.*','payment.methods*'))<link rel="stylesheet" href="/commercial-insights.css?v={{ filemtime(public_path('commercial-insights.css')) }}">@endif
     @if(request()->routeIs('access.profiles*'))<link rel="stylesheet" href="/access-profiles.css?v={{ filemtime(public_path('access-profiles.css')) }}">@endif
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css?v={{ filemtime(public_path('company-setup.css')) }}">@endif
 <link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>

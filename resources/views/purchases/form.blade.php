@@ -30,7 +30,7 @@
         <h2>Pagamento</h2>
         <div class="form-grid">
             <div class="field"><label>Situação</label><select name="paid"><option value="1" @selected((string)old('paid','1')==='1')>Já pago</option><option value="0" @selected((string)old('paid')==='0')>A pagar</option></select></div>
-            <div class="field"><label>Forma de pagamento</label><select name="payment_method">@foreach(['cash'=>'Dinheiro','pix'=>'Pix','credit'=>'Cartão de crédito','debit'=>'Cartão de débito','transfer'=>'Transferência','invoice'=>'A prazo'] as $value=>$label)<option value="{{ $value }}" @selected(old('payment_method','pix')===$value)>{{ $label }}</option>@endforeach</select></div>
+            <div class="field"><label>Forma de pagamento</label>@include('components.payment-method-select',['paymentSelectId'=>'payment-option','paymentDefault'=>'pix'])</div>
             <div class="field"><label>Número de parcelas</label><input name="installments" type="number" min="1" max="24" step="1" value="{{ old('installments',1) }}" required><small class="hint">Até 24 parcelas mensais para compras a pagar.</small></div>
             <div class="field"><label>Primeiro vencimento</label><input type="date" name="due_date" value="{{ old('due_date') }}"><small class="hint">Obrigatório se a compra estiver a pagar.</small></div>
         </div>

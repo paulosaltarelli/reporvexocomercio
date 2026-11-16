@@ -117,7 +117,7 @@ class OperationsController extends Controller
 
     public function invoice(Request $r, string $company, int $id)
     {
-        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24','seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24','seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
         $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 
@@ -184,8 +184,8 @@ class OperationsController extends Controller
     public function payEntry(Request $r, string $company, int $id)
     {
         $this->admin($r);
-        $d = $r->validate(['request_key' => 'required|uuid', 'amount' => 'required|numeric|min:0.01|max:999999999999.99|decimal:0,2', 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice']);
-        app(FinancialService::class)->pay($id, (string) $d['amount'], $d['paid_on'], $d['payment_method'], $r->attributes->get('currentUser')->id, $d['request_key']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'amount' => 'required|numeric|min:0.01|max:999999999999.99|decimal:0,2', 'paid_on' => 'required|date_format:Y-m-d|before_or_equal:today', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60']);
+        app(FinancialService::class)->pay($id, (string) $d['amount'], $d['paid_on'], $d['payment_method'], $r->attributes->get('currentUser')->id, $d['request_key'],$d['payment_option']??null);
 
         return back()->with('success', 'Baixa registrada no histórico financeiro.');
     }

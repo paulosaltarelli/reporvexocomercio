@@ -19,7 +19,7 @@
     </form>
 </details>
 <section class="panel">
-    <h2>Equipe da empresa</h2>
+    <h2>Equipe da empresa</h2><p class="hint">Para o vendedor consultar somente suas comissões, vincule este login em Cadastros → Vendedores. O acesso “Minhas comissões” usa esse vínculo e não libera as comissões da equipe.</p>
     <p class="hint">Cada operador segue o perfil operacional vinculado. Consulte Perfis e permissões para conferir todas as funções liberadas. Administradores mantêm acesso completo.</p>
     <div class="scroll"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody>
     @foreach($users as $user)

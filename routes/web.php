@@ -106,6 +106,12 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('sellers',[SellerController::class,'index'])->name('sellers');
         Route::post('sellers',[SellerController::class,'save'])->name('seller.save');
         Route::post('documents/{id}/seller',[OperationsController::class,'assignSeller'])->whereNumber('id')->name('document.seller');
+        Route::get('my-commissions',[CommissionController::class,'mine'])->name('commissions.mine');
+        Route::get('my-commissions/{id}',[CommissionController::class,'mineShow'])->whereNumber('id')->name('commissions.mine.show');
+        Route::get('commissions/preview',[CommissionController::class,'preview'])->name('commission.preview');
+        Route::post('commissions/close',[CommissionController::class,'close'])->name('commission.close');
+        Route::get('commissions/closures/{id}',[CommissionController::class,'show'])->whereNumber('id')->name('commission.closure');
+        Route::post('commissions/closures/{id}/pay',[CommissionController::class,'pay'])->whereNumber('id')->name('commission.pay');
         Route::get('commissions', [CommissionController::class, 'index'])->name('commissions');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export/{kind}', [ReportController::class, 'csv'])->name('report.csv');
@@ -135,6 +141,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('finance', [OperationsController::class, 'finance'])->name('finance');
         Route::post('finance', [OperationsController::class, 'createEntry']);
         Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
+        Route::get('payment-methods',[\App\Http\Controllers\PaymentMethodController::class,'index'])->name('payment.methods');
+        Route::post('payment-methods',[\App\Http\Controllers\PaymentMethodController::class,'save'])->name('payment.methods.save');
         Route::get('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'index'])->name('access.profiles');
         Route::post('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'save'])->name('access.profiles.save');
         Route::post('access-profiles/delete', [\App\Http\Controllers\AccessProfileController::class, 'delete'])->name('access.profiles.delete');

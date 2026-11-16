@@ -1,22 +1,35 @@
 @extends('layout')
-@section('title','Comissões por vendedor')
-@section('subtitle','Conferência das vendas com comissão. A apuração não representa pagamento ao vendedor nem cria uma conta a pagar.')
+@section('title',($personal??false)?'Minhas comissões':'Comissões da equipe')
+@section('subtitle',($personal??false)?'Acompanhe somente suas vendas, comissões e pagamentos.':'Confira a apuração, feche comissões e acompanhe o pagamento de cada vendedor.')
 @section('actions')<button class="button secondary no-print" type="button" onclick="window.print()">Imprimir / salvar PDF</button>@endsection
 @section('content')
+<div class="actions commission-period-shortcuts no-print">
+@foreach(['Este mês'=>[now()->startOfMonth()->toDateString(),now()->toDateString()],'Mês anterior'=>[now()->subMonthNoOverflow()->startOfMonth()->toDateString(),now()->subMonthNoOverflow()->endOfMonth()->toDateString()],'Últimos 30 dias'=>[now()->subDays(29)->toDateString(),now()->toDateString()]] as $label=>$dates)
+<a class="button secondary" href="{{ route($personal?'commissions.mine':'commissions',['company'=>$tenant->slug,'from'=>$dates[0],'to'=>$dates[1]]+(!$personal&&$sellerId?['salesperson_id'=>$sellerId]:[])) }}">{{ $label }}</a>
+@endforeach
+</div>
 <p class="report-period">Vendas de {{ \Carbon\Carbon::parse($from)->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($to)->format('d/m/Y') }} · recebimentos acumulados até o momento da consulta</p>
 <form class="panel toolbar filter-bar commission-filters" method="get">
     <div><label for="commission-from">Vendas de</label><input id="commission-from" type="date" name="from" value="{{ $from }}" required></div>
     <div><label for="commission-to">Vendas até</label><input id="commission-to" type="date" name="to" value="{{ $to }}" required></div>
-    <div><label for="commission-seller">Vendedor</label><select id="commission-seller" name="salesperson_id"><option value="">Todos os vendedores</option>@foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)$sellerId===(string)$seller->id)>{{ $seller->name }}{{ $seller->active?'':' · inativo' }}</option>@endforeach</select></div>
+    @if(!($personal??false))<div><label for="commission-seller">Vendedor</label><select id="commission-seller" name="salesperson_id"><option value="">Todos os vendedores</option>@foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)$sellerId===(string)$seller->id)>{{ $seller->name }}{{ $seller->active?'':' · inativo' }}</option>@endforeach</select></div>@endif
     <button class="primary">Atualizar relatório</button>
 </form>
+@if($personal)
+@include('commissions.personal-summary')
+@else
 <div class="cards">
     <div class="card"><small>Vendas líquidas com comissão</small><strong>R$ {{ number_format($totals['net_sales'],2,',','.') }}</strong><small>Descontos nessas vendas: R$ {{ number_format($totals['discounts'],2,',','.') }}</small></div>
     <div class="card"><small>Comissão apurada nas vendas</small><strong>R$ {{ number_format($totals['commission'],2,',','.') }}</strong><small>Regras registradas em cada venda</small></div>
     <div class="card featured"><small>Comissão elegível pelo regime</small><strong>R$ {{ number_format($totals['eligible'],2,',','.') }}</strong><small>Caixa: proporcional recebido · competência: integral</small></div>
     <div class="card"><small>Comissão ainda não elegível</small><strong>R$ {{ number_format($totals['awaiting'],2,',','.') }}</strong><small>Ainda depende do recebimento das vendas</small></div>
 </div>
-<div class="form-note">O período filtra a <strong>data da venda</strong>, apenas em vendas com comissão positiva. O regime é o registrado na venda: caixa usa os recebimentos acumulados até agora, inclusive baixas fora do período; competência considera a comissão integral. Nenhum valor abaixo significa comissão já paga ao vendedor.</div>
+@endif
+<div class="form-note">O período filtra a <strong>data da venda</strong>, apenas em vendas com comissão positiva. O regime é o registrado na venda: caixa usa os recebimentos acumulados até agora, inclusive baixas fora do período; competência considera a comissão integral. A apuração das vendas não representa pagamento ao vendedor; os pagamentos efetivos aparecem no histórico de fechamentos.</div>
+@if(!($personal??false)&&$currentUser->allows('commissions.close'))
+<section class="panel"><h2>Fechar comissões</h2><p>Escolha o vendedor para conferir o saldo liberado até a data final. Fechar cria uma conta a pagar; a baixa será registrada quando o pagamento acontecer.</p><form method="get" action="{{ route('commission.preview',['company'=>$tenant->slug]) }}" class="form-grid"><input type="hidden" name="from" value="{{ $from }}"><input type="hidden" name="to" value="{{ $to }}"><div class="field"><label for="closure-seller">Vendedor do fechamento</label><select id="closure-seller" name="salesperson_id" required><option value="">Selecione</option>@foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)$sellerId===(string)$seller->id)>{{ $seller->name }}{{ $seller->active?'':' · inativo' }}</option>@endforeach</select></div><div class="actions"><button class="primary">Conferir fechamento</button></div></form></section>
+@endif
+@include('commissions.history')
 <section class="panel">
     <div class="section-heading"><h2>Vendas que compõem a apuração</h2><span class="hint">{{ $rows->total() }} {{ $rows->total()===1?'venda encontrada':'vendas encontradas' }}</span></div>
     <div class="scroll" role="region" aria-label="Apuração de comissões por venda" tabindex="0"><table>

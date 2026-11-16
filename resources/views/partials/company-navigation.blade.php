@@ -44,12 +44,14 @@
             ]],
             ['label' => 'Relatórios', 'icon' => 'chart', 'links' => array_filter([
                 $link('reports', 'Relatórios gerenciais', request()->routeIs('reports', 'report.*')),
-                $operationConfig['commissions'] ? $link('commissions', 'Comissões', request()->routeIs('commissions')) : null,
+                $link('commissions', 'Comissões da equipe', request()->routeIs('commissions','commission.*')),
+                $currentUser->allows('commissions.self') ? $link('commissions.mine','Minhas comissões',request()->routeIs('commissions.mine*')) : null,
             ])],
             ['label' => 'Configurações', 'icon' => 'settings', 'links' => [
                 $link('business', 'Minha empresa', request()->routeIs('business')),
                 $link('setup', 'Operação e implantação', request()->routeIs('setup*')),
                 $link('users', 'Usuários e permissões', request()->routeIs('users', 'user.*')),
+                $link('payment.methods','Formas de pagamento',request()->routeIs('payment.methods*')),
                 $link('access.profiles', 'Perfis e permissões', request()->routeIs('access.profiles*')),
             ]],
         ]);

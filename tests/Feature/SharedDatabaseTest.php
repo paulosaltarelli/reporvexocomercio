@@ -404,6 +404,19 @@ class SharedDatabaseTest extends TestCase
         $this->assertSame(0, FiscalDocument::count());
     }
 
+    public function test_shared_commission_closure_and_named_payment_remain_tenant_scoped(): void
+    {
+        $shop=$this->catalog($this->a);$catalog=app(\App\Services\PaymentMethods::class);
+        $catalog->save(['version'=>CompanyOperation::find(1)->version,'label'=>'PIX PRIVATE STORE A','type'=>'pix','active'=>1],$shop['owner']->id);$method=array_key_last($catalog->all());
+        $sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'payment_method'=>'pix','payment_option'=>$method,'paid'=>true,'items'=>[['kind'=>'product','id'=>$shop['service']->id,'quantity'=>'1','unit_price'=>'50']]],$shop['owner']->id);
+        $service=app(\App\Services\CommissionSettlements::class);$preview=$service->preview(['from'=>now()->startOfMonth()->toDateString(),'to'=>now()->toDateString(),'salesperson_id'=>$sale->salesperson_id]);
+        $closure=$service->close(array_intersect_key($preview,array_flip(['from','to','salesperson_id','preview_hash']))+['request_key'=>(string)Str::uuid(),'due_date'=>now()->toDateString(),'reviewed'=>1],$shop['owner']->id);$this->assertSame('5.00',$closure->after['total']);
+        $this->connect($this->b);$this->assertSame(0,$service->records()->count());$this->assertArrayNotHasKey($method,$catalog->all());
+        try{$service->record($closure->id);$this->fail('Another tenant closure exposed.');}catch(\Illuminate\Database\Eloquent\ModelNotFoundException){$this->assertSame(0,FinancialEntry::where('category','Comissões de vendas')->count());}
+        $this->sessionFor($this->b);$this->get('/app/shared-b/my-commissions/'.$closure->id)->assertForbidden();
+        $this->sessionFor($this->a);$this->get('/app/shared-a/my-commissions/'.$closure->id)->assertOk()->assertSee('5,00');
+    }
+
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
         $owner = $this->connect($this->a);

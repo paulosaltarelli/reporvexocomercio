@@ -58,6 +58,7 @@ class CommerceController extends Controller
                 'count'=>(int) ($monthly->get($month)?->sales_count ?? 0)];
         }
         return view('dashboard', [
+            'salesBreakdown'=>$request->attributes->get('currentUser')->allows('dashboard.view')?app(\App\Services\SalesBreakdown::class)->year($salesYear):null,
             'salesYear'=>$salesYear,'salesYears'=>$salesYears,'salesTrend'=>$salesTrend,'salesPeriodTotal'=>(string)(clone $period)->sum('total'),'salesPeriodCount'=>(clone $period)->count(),
             'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'),
             'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total'),
@@ -206,7 +207,7 @@ class CommerceController extends Controller
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 

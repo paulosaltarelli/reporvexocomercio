@@ -42,6 +42,7 @@ final class AccessProfiles
     {
         if (!$user->active) return false;
         if ($permission==='account.self') return true;
+        if ($permission==='commissions.self') return \App\Models\Seller::where('user_id',$user->id)->exists();
         if ($permission==='denied'||(!array_key_exists($permission,Permissions::labels())&&!in_array($permission,['administration','home'],true))) return false;
         if ($user->role==='admin') return true;
         if ($permission==='administration') return false;
@@ -69,6 +70,7 @@ final class AccessProfiles
     public function landing(User $user): string
     {
         foreach(['desk'=>'desk.use','dashboard'=>'dashboard.view','sales'=>'sales.view','finance'=>'finance.view','stock'=>'stock.view','products'=>'products.view','reports'=>'reports.view'] as $route=>$permission)if($this->allows($user,$permission))return $route;
+        if($this->allows($user,'commissions.self'))return 'commissions.mine';
         return 'account.password';
     }
     private function admin(int $actor): void { abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403); }

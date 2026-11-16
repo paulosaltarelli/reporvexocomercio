@@ -63,8 +63,10 @@ class Checkout
                     isset($data['seller_id']) ? (int) $data['seller_id'] : null,
                     isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null);
                 if (! $seller) throw new \LogicException('O vendedor do documento não foi resolvido pelo fluxo autorizado.');
-                $method = FinancialService::paymentMethod((string) $data['payment_method']);
+                $choice=app(PaymentMethods::class)->resolve($data['payment_option']??null,(string)$data['payment_method']);
+                $method = FinancialService::paymentMethod($choice['type']);
                 $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'commission_basis'=>$configuration['commission_basis'], 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
+                app(PaymentMethods::class)->snapshot('sale_payment_method',$sale->id,$choice,$userId);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);
@@ -123,7 +125,7 @@ class Checkout
                 if ((bool) $data['paid']) {
                     foreach ($entries as $entry) {
                         $finance->pay($entry->id, $entry->amount, now()->toDateString(), $method, $userId,
-                            Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:immediate-payment:'.$entry->request_key)->toString());
+                            Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:immediate-payment:'.$entry->request_key)->toString(),$choice['id']);
                     }
                 }
 

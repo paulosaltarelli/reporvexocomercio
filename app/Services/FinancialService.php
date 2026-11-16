@@ -134,7 +134,7 @@ class FinancialService
         return $entries;
     }
 
-    public function pay(int $entryId, string $amount, string $paidOn, string $method, int $userId, string $key): Payment
+    public function pay(int $entryId, string $amount, string $paidOn, string $method, int $userId, string $key,?string $paymentOption=null): Payment
     {
         $key = $this->uuid($key);
         $amount = Decimal::input($amount, 2, 'amount', '0.01');
@@ -142,7 +142,7 @@ class FinancialService
         $method = self::paymentMethod($method);
 
         try {
-            return DB::connection('tenant')->transaction(function () use ($entryId, $amount, $paidOn, $method, $userId, $key) {
+            return DB::connection('tenant')->transaction(function () use ($entryId, $amount, $paidOn, $method, $userId, $key,$paymentOption) {
                 // Lock parent first, matching cancellation and all other payment paths.
                 $origin = FinancialEntry::findOrFail($entryId);
                 $sale = $origin->sale_id ? Sale::lockForUpdate()->findOrFail($origin->sale_id) : null;
@@ -159,11 +159,14 @@ class FinancialService
                 if (bccomp($amount, $balance, 2) > 0) {
                     throw ValidationException::withMessages(['amount' => 'O pagamento não pode ultrapassar o saldo da conta.']);
                 }
+                $choice=app(PaymentMethods::class)->resolve($paymentOption,$method);
+                if($choice['type']!==$method)throw ValidationException::withMessages(['payment_option'=>'Forma e tipo de pagamento incompatíveis.']);
                 $payment = Payment::create([
                     'request_key' => $key, 'entry_id' => $entry->id, 'user_id' => $userId,
                     'amount' => $amount, 'paid_on' => $paidOn, 'method' => $method,
                     'direction' => $entry->direction, 'kind' => 'payment',
                 ]);
+                app(PaymentMethods::class)->snapshot('payment_method_used',$payment->id,$choice,$userId);
                 $paid = bcadd($entry->paid_amount, $amount, 2);
                 $entry->update(['paid_amount' => $paid, 'paid_at' => bccomp($paid, $entry->amount, 2) === 0 ? now() : null]);
                 if ($sale) {

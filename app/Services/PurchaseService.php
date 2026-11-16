@@ -28,7 +28,8 @@ class PurchaseService
                 }
                 Supplier::findOrFail($data['supplier_id']);
                 $date = FinancialService::date((string) $data['purchased_on'], 'purchased_on');
-                $method = FinancialService::paymentMethod((string) $data['payment_method']);
+                $choice=app(PaymentMethods::class)->resolve($data['payment_option']??null,(string)$data['payment_method']);
+                $method = FinancialService::paymentMethod($choice['type']);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);
@@ -84,7 +85,7 @@ class PurchaseService
                 if ((bool) $data['paid']) {
                     foreach ($entries as $entry) {
                         $finance->pay($entry->id, $entry->amount, now()->toDateString(), $method, $userId,
-                            Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:immediate-payment:'.$entry->request_key)->toString());
+                            Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:immediate-payment:'.$entry->request_key)->toString(),$choice['id']);
                     }
                 }
 

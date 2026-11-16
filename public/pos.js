@@ -3,7 +3,7 @@
     const form=document.querySelector('#checkout-form');
     if(!form)return;
     const button=form.querySelector('#checkout-submit'),search=form.querySelector('#pos-search');
-    const method=form.querySelector('[name="payment_method"]'),paid=form.querySelector('[name="paid"]');
+    const method=form.querySelector('[name="payment_option"]'),paid=form.querySelector('[name="paid"]');
     const cash=form.querySelector('#pos-cash-received'),cashFields=form.querySelector('#pos-cash-fields');
     const creditFields=form.querySelector('#pos-credit-fields'),due=form.querySelector('[name="due_date"]');
     const initiallyDisabled=button.disabled;
@@ -22,7 +22,7 @@
     function refreshPayment(){
         creditFields.hidden=paid.value!=='0';
         due.required=paid.value==='0';
-        cashFields.hidden=paid.value!=='1'||method.value!=='cash';
+        cashFields.hidden=paid.value!=='1'||(method.selectedOptions[0]?.dataset.type??method.value)!=='cash';
         cash.disabled=cashFields.hidden;
         cashPreview();
     }
@@ -34,7 +34,7 @@
     }
     document.addEventListener('vendra:cart-updated',event=>{totals=event.detail;refreshTotals();});
     method.addEventListener('change',()=>{
-        if(method.value==='invoice'){paid.value='0';paid.dispatchEvent(new Event('change'));}
+        if((method.selectedOptions[0]?.dataset.type??method.value)==='invoice'){paid.value='0';paid.dispatchEvent(new Event('change'));}
         refreshPayment();
     });
     paid.addEventListener('change',refreshPayment);cash.addEventListener('input',cashPreview);
