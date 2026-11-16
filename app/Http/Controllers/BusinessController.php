@@ -56,7 +56,8 @@ class BusinessController extends Controller
             if(!$disk->put($newPath,$png,'private'))throw ValidationException::withMessages(['logo'=>'Não foi possível salvar a logo.']);
         }
         try{
-            DB::connection('tenant')->transaction(function()use($d,$remove,$newPath,&$oldPath){
+            DB::connection('tenant')->transaction(function()use($r,$d,$remove,$newPath,&$oldPath){
+                app(\App\Services\CompanyOperations::class)->invalidateCompany((int)$r->attributes->get('currentUser')->id);
                 $profile=BusinessProfile::whereKey(1)->lockForUpdate()->first()??new BusinessProfile;
                 $profile->id=1;$oldPath=$profile->logo_path;$profile->fill($d);
                 if($newPath||$remove){$profile->logo_path=$newPath;$profile->logo_updated_at=now();}

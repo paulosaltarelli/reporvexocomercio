@@ -22,6 +22,8 @@ final class PrepareDps
         Access::admin($tenant, $actor);
         $data = Validator::make($input, ['request_key' => 'required|uuid', 'competence' => 'required|date_format:Y-m-d|before_or_equal:today', 'operation_scope_confirmed' => 'required|accepted'])->validate();
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $actor, $data) {
+            app(\App\Services\CompanyOperations::class)->lock();
+            app(\App\Services\CompanyOperations::class)->requireModule('nfse');
             $sale = Sale::whereKey($saleId)->lockForUpdate()->firstOrFail();
             $existing = NfseDocument::where('request_key', $data['request_key'])->first();
             if ($existing) {

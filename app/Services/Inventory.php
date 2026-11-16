@@ -18,6 +18,8 @@ class Inventory
         }
 
         return DB::connection('tenant')->transaction(function () use ($productId, $type, $qty, $cost, $reason, $userId, $key, $saleId) {
+            $configuration=app(CompanyOperations::class)->lock();
+            if (!$configuration['inventory'] && $type!=='return') throw ValidationException::withMessages(['inventory'=>'A gestão de estoque está desabilitada para esta empresa.']);
             $p = Product::lockForUpdate()->findOrFail($productId);
             $existing = StockMovement::where('request_key', $key)->first();
             if ($existing) {

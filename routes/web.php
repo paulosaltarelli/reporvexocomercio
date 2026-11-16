@@ -41,6 +41,9 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('cashflow', [CashflowController::class, 'index'])->name('cashflow');
         Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');
         Route::get('business', [BusinessController::class, 'form'])->name('business');
+        Route::get('setup', [\App\Http\Controllers\CompanySetupController::class,'index'])->name('setup');
+        Route::post('setup', [\App\Http\Controllers\CompanySetupController::class,'save'])->name('setup.save');
+        Route::post('setup/complete', [\App\Http\Controllers\CompanySetupController::class,'complete'])->name('setup.complete');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
         Route::post('business/fiscal/nfe', [NfeEmissionController::class, 'configure'])->name('nfe.configure');

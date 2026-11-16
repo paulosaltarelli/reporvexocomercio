@@ -23,6 +23,8 @@ final class QueueNfe
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
 
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $operation) {
+            app(\App\Services\CompanyOperations::class)->lock();
+            app(\App\Services\CompanyOperations::class)->requireModule('nfe');
             $sale = Sale::whereKey($saleId)->lockForUpdate()->firstOrFail();
             $cnpj = TaxpayerDocument::normalize((string) BusinessProfile::findOrFail(1)->document);
             $issuer = FiscalIssuer::where('document', $cnpj)->where('environment', 'homologation')->lockForUpdate()->first();

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>@yield('title','Visão geral') · Vendra</title>
     <link rel="stylesheet" href="/app.css">
+    @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css">@endif
 </head>
 <body>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
@@ -19,7 +20,7 @@
         @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*','stock','prices','price.*','purchases','purchase.*'))
         @php($financeNavigation=request()->routeIs('finance','finance.*','cashflow','cash','cash.*'))
         @php($reportNavigation=request()->routeIs('reports','report.*','commissions'))
-        @php($settingsNavigation=request()->routeIs('business','users','account.password','fiscal','fiscal.*'))
+        @php($settingsNavigation=request()->routeIs('business','setup*','users','account.password','fiscal','fiscal.*'))
         <nav aria-label="Menu da empresa" class="grouped-navigation">
             <a class="nav {{ request()->routeIs('desk')?'selected':'' }}" href="{{ route('desk',['company'=>$tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif>Painel de operação</a>
             @if($currentUser?->role==='admin')
@@ -39,6 +40,7 @@
                 <summary>Operações</summary>
                 <div class="nav-group-links">
                     @foreach(['sales'=>'Vendas','documents'=>'Orçamentos e OS','stock'=>'Movimentações de estoque'] as $route=>$label)
+                        @continue($route==='stock' && !$operationConfig['inventory'])
                         @php($active=match($route){'sales'=>request()->routeIs('sales','sale.*'),'documents'=>request()->routeIs('documents','document.*'),default=>request()->routeIs($route)})
                         <a class="nav {{ $active?'selected':'' }}" href="{{ route($route,['company'=>$tenant->slug]) }}" @if($active) aria-current="page" @endif>{{ $label }}</a>
                     @endforeach
@@ -60,11 +62,12 @@
                 </details>
                 <details class="nav-group {{ $reportNavigation?'current-group':'' }}" @if($reportNavigation) open @endif>
                     <summary>Relatórios</summary>
-                    <div class="nav-group-links"><a class="nav {{ request()->routeIs('reports','report.*')?'selected':'' }}" href="{{ route('reports',['company'=>$tenant->slug]) }}" @if(request()->routeIs('reports','report.*')) aria-current="page" @endif>Visão gerencial e exportações</a><a class="nav {{ request()->routeIs('commissions')?'selected':'' }}" href="{{ route('commissions',['company'=>$tenant->slug]) }}" @if(request()->routeIs('commissions')) aria-current="page" @endif>Comissões por vendedor</a></div>
+                    <div class="nav-group-links"><a class="nav {{ request()->routeIs('reports','report.*')?'selected':'' }}" href="{{ route('reports',['company'=>$tenant->slug]) }}" @if(request()->routeIs('reports','report.*')) aria-current="page" @endif>Visão gerencial e exportações</a>@if($operationConfig['commissions'])<a class="nav {{ request()->routeIs('commissions')?'selected':'' }}" href="{{ route('commissions',['company'=>$tenant->slug]) }}" @if(request()->routeIs('commissions')) aria-current="page" @endif>Comissões por vendedor</a>@endif</div>
                 </details>
                 <details class="nav-group {{ $settingsNavigation?'current-group':'' }}" @if($settingsNavigation) open @endif>
                     <summary>Administração</summary>
                     <div class="nav-group-links">
+                        <a class="nav {{ request()->routeIs('setup*')?'selected':'' }}" href="{{ route('setup',['company'=>$tenant->slug]) }}" @if(request()->routeIs('setup*')) aria-current="page" @endif>Operação e implantação</a>
                         <a class="nav {{ request()->routeIs('business')?'selected':'' }}" href="{{ route('business',['company'=>$tenant->slug]) }}" @if(request()->routeIs('business')) aria-current="page" @endif>Minha empresa</a>
                         <a class="nav {{ request()->routeIs('fiscal','fiscal.*')?'selected':'' }}" href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Fiscal</a>
                         <a class="nav {{ request()->routeIs('users')?'selected':'' }}" href="{{ route('users',['company'=>$tenant->slug]) }}" @if(request()->routeIs('users')) aria-current="page" @endif>Usuários e acesso</a>
@@ -90,6 +93,9 @@
         @if($errors->any())
             <div class="notice error" id="validation-errors" tabindex="-1" role="alert"><strong>Confira os dados antes de continuar:</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
             <script id="validation-fields" type="application/json">@json($errors->keys())</script>
+        @endif
+        @if($currentUser?->role==='admin' && request()->routeIs('dashboard','desk') && !$companySetup?->completed_at)
+            <div class="notice" role="status">Confira a implantação desta empresa. <a href="{{ route('setup',['company'=>$tenant->slug]) }}">Configurar operação e acompanhar etapas</a></div>
         @endif
         @yield('content')
     </main>

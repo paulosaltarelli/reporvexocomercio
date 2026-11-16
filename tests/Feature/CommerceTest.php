@@ -222,7 +222,7 @@ class CommerceTest extends TestCase
 
     public function test_public_page_renders(): void
     {
-        $this->get('/')->assertOk()->assertSee('vendra')->assertSee('https://wa.me/5535999193304', false)->assertSee('99919-3304')->assertSee('mailto:ivancasvilela@gmail.com', false)->assertSee('/app/vexo/login', false)->assertSee('Exemplo ilustrativo');
+        $this->get('/')->assertOk()->assertSee('vendra')->assertSee('https://wa.me/5535999193304', false)->assertSee('99919-3304')->assertSee('mailto:ivancasvilela@gmail.com', false)->assertSee('/app/vexo/login', false)->assertSee('Demonstração ilustrativa');
     }
 
     public function test_http_catalog_stock_sale_and_receipt_workflow(): void
@@ -2093,5 +2093,142 @@ class CommerceTest extends TestCase
             }
             rmdir($directory);
         }
+    }
+    public function test_company_setup_is_admin_only_and_each_step_renders(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        foreach (range(1,5) as $step) $this->get('/app/a/setup?step='.$step)->assertOk()->assertSee('Operação e implantação');
+        $this->get('/app/a/setup?step[]=1')->assertSessionHasErrors('step');
+        app(TenantConnection::class)->connect($this->a);
+        $this->user->update(['role'=>'operator']);
+        $this->get('/app/a/setup')->assertForbidden();
+        $this->post('/app/a/setup',$this->operationPayload())->assertForbidden();
+        $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertForbidden();
+    }
+
+    private function operationPayload(array $changes=[]): array
+    {
+        return array_replace(\App\Services\CompanyOperations::DEFAULTS,['version'=>0],$changes);
+    }
+
+    public function test_company_configuration_is_isolated_audited_and_rejects_stale_writes(): void
+    {
+        $ops=app(\App\Services\CompanyOperations::class);
+        $row=$ops->save($this->operationPayload(['commissions'=>false]),$this->user->id);
+        $this->assertSame(1,$row->version);
+        $this->assertFalse($ops->current()['commissions']);
+        $this->assertSame(1,DB::connection('tenant')->table('company_operation_audits')->count());
+        try {$ops->save($this->operationPayload(['inventory'=>false]),$this->user->id);$this->fail('Stale write accepted');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('version',$e->errors());}
+        app(TenantConnection::class)->connect($this->b);
+        $this->assertTrue($ops->current()['commissions']);
+        $this->assertSame(0,DB::connection('tenant')->table('company_operation_audits')->count());
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertFalse($ops->current()['commissions']);
+    }
+
+    public function test_configuration_rejects_incompatible_modes_and_unreconciled_stock(): void
+    {
+        $ops=app(\App\Services\CompanyOperations::class);
+        app(Inventory::class)->move($this->product->id,'in','2','60','Entrada',$this->user->id,(string)Str::uuid());
+        foreach ([$this->operationPayload(['inventory'=>false]),$this->operationPayload(['catalog_mode'=>'services'])] as $payload) {
+            try {$ops->save($payload,$this->user->id);$this->fail('Unsafe settings accepted');}
+            catch (ValidationException $e) {$this->assertNotEmpty($e->errors());}
+        }
+        $this->assertTrue($ops->current()['inventory']);
+        $this->assertSame('2.000',$this->product->fresh()->quantity);
+    }
+
+    public function test_disabled_inventory_does_not_move_stock_and_discounts_commissions_are_enforced(): void
+    {
+        $this->product->group->update(['commission_percent'=>'10','discount_enabled'=>true,'max_discount_percent'=>'20']);
+        $ops=app(\App\Services\CompanyOperations::class);
+        $ops->save($this->operationPayload(['inventory'=>false,'commissions'=>false,'discounts'=>false]),$this->user->id);
+        $data=['request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']], 'payment_method'=>'pix','paid'=>false,'due_date'=>now()->addDay()->toDateString()];
+        $sale=app(Checkout::class)->complete($data,$this->user->id);
+        $this->assertSame('0.00',$sale->commission_total);
+        $this->assertSame(0,StockMovement::count());
+        $this->assertSame('0.000',$this->product->fresh()->quantity);
+        $data['request_key']=(string)Str::uuid();$data['items'][0]['discount_percent']='5';
+        try {app(Checkout::class)->complete($data,$this->user->id);$this->fail('Discount accepted');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('items',$e->errors());}
+        $this->assertSame(1,Sale::count());
+    }
+
+    public function test_commission_basis_is_frozen_and_report_supports_both_regimes(): void
+    {
+        $this->product->group->update(['commission_percent'=>'10']);
+        $ops=app(\App\Services\CompanyOperations::class);
+        $ops->save($this->operationPayload(['inventory'=>false,'commission_basis'=>'accrual']),$this->user->id);
+        $data=['request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']], 'payment_method'=>'pix','paid'=>false,'due_date'=>now()->addDay()->toDateString()];
+        $accrual=app(Checkout::class)->complete($data,$this->user->id);
+        $this->assertSame('accrual',$accrual->commission_basis);
+        $ops->save($this->operationPayload(['inventory'=>false,'commission_basis'=>'cash','version'=>1]),$this->user->id);
+        $data['request_key']=(string)Str::uuid();
+        $cash=app(Checkout::class)->complete($data,$this->user->id);
+        $this->assertSame('cash',$cash->commission_basis);
+        $this->assertSame('accrual',$accrual->fresh()->commission_basis);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a/commissions')->assertOk()->assertViewHas('totals',fn($t)=>$t['commission']==='20.00'&&$t['eligible']==='10.00'&&$t['awaiting']==='10.00');
+    }
+
+    public function test_setup_blocks_completion_until_company_is_ready_then_invalidates_after_change(): void
+    {
+        $ops=app(\App\Services\CompanyOperations::class);
+        $ops->save($this->operationPayload(['nfce'=>false,'nfe'=>false,'nfse'=>false]),$this->user->id);
+        try {$ops->complete(1,$this->user->id);$this->fail('Incomplete setup accepted');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('configuration',$e->errors());}
+        \App\Models\BusinessProfile::forceCreate(['id'=>1,'legal_name'=>'Empresa Teste','document'=>'07.396.600/0001-60']);
+        $ops->complete(1,$this->user->id);
+        $this->assertNotNull(\App\Models\CompanyOperation::find(1)->completed_at);
+        $ops->save($this->operationPayload(['nfce'=>false,'nfe'=>false,'nfse'=>false,'commissions'=>false,'version'=>2]),$this->user->id);
+        $this->assertNull(\App\Models\CompanyOperation::find(1)->completed_at);
+        $ops->complete(3,$this->user->id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->post('/app/a/business',['legal_name'=>'Empresa Atualizada','document'=>'07.396.600/0001-60'])->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertNull(\App\Models\CompanyOperation::find(1)->completed_at);
+        $this->assertSame('company_changed',DB::connection('tenant')->table('company_operation_audits')->latest('id')->value('action'));
+    }
+
+    public function test_disabled_documents_and_fiscal_issuance_are_rejected_without_hiding_history(): void
+    {
+        $ops=app(\App\Services\CompanyOperations::class);
+        $ops->save($this->operationPayload(['quotes'=>false,'work_orders'=>false,'nfce'=>false,'nfe'=>false,'nfse'=>false]),$this->user->id);
+        try {app(Documents::class)->create(['type'=>'work_order','request_key'=>(string)Str::uuid()],$this->user->id);$this->fail('Disabled OS accepted');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('configuration',$e->errors());}
+        foreach ([\App\Fiscal\QueueNfce::class,\App\Fiscal\QueueNfe::class] as $queue) {
+            try {app($queue)->enqueue($this->a,999,$this->user->id,[]);$this->fail('Disabled fiscal accepted');}
+            catch (ValidationException $e) {$this->assertArrayHasKey('configuration',$e->errors());}
+        }
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a/documents')->assertOk()->assertDontSee('+ Ordem de serviço');
+        $this->get('/app/a/documents/new?type=work_order')->assertSessionHasErrors('configuration');
+    }
+    public function test_services_only_filters_catalog_and_blocks_product_sale_in_domain(): void
+    {
+        $this->product->update(['active'=>false]);
+        $service=Product::create(['name'=>'Manutenção','sku'=>'SRV','type'=>'service','controls_stock'=>false,'reference_cost'=>'20','product_group_id'=>$this->product->product_group_id,'sale_price'=>'100','unit'=>'UN']);
+        $ops=app(\App\Services\CompanyOperations::class);
+        $ops->save($this->operationPayload(['catalog_mode'=>'services','inventory'=>false,'nfce'=>false,'nfe'=>false]),$this->user->id);
+        $data=['request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$service->id,'quantity'=>'1','unit_price'=>'100']], 'payment_method'=>'pix','paid'=>false,'due_date'=>now()->addDay()->toDateString()];
+        $sale=app(Checkout::class)->complete($data,$this->user->id);
+        $this->assertSame('20.0000',$sale->cost_total);
+        $this->assertSame('service',$sale->items->first()->fiscal_kind);
+        $this->assertSame(0,StockMovement::count());
+        try {$ops->assertItem('product');$this->fail('Excluded type accepted');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('items',$e->errors());}
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a/sales/new')->assertOk()->assertViewHas('products',fn($items)=>$items->count()===1&&$items->first()->id===$service->id);
+    }
+
+    public function test_disabling_documents_rejects_pending_work_and_preserves_approved_discount(): void
+    {
+        $ops=app(\App\Services\CompanyOperations::class);
+        $this->product->group->update(['discount_enabled'=>true,'max_discount_percent'=>'20']);
+        $document=app(Documents::class)->create(['type'=>'quote','request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100','discount_percent'=>'10']]],$this->user->id);
+        try {$ops->save($this->operationPayload(['quotes'=>false]),$this->user->id);$this->fail('Pending document ignored');}
+        catch (ValidationException $e) {$this->assertArrayHasKey('quotes',$e->errors());}
+        $ops->save($this->operationPayload(['discounts'=>false,'inventory'=>false]),$this->user->id);
+        $document->update(['status'=>'approved']);
+        $sale=app(Checkout::class)->completeFromDocument($document->id,['payment_method'=>'pix','paid'=>false,'due_date'=>now()->addDay()->toDateString()],$this->user->id);
+        $this->assertSame('90.00',$sale->total);
+        $this->assertSame('10.00',$sale->discount_total);
     }
 }

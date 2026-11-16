@@ -55,10 +55,11 @@ class OperationsController extends Controller
     public function form(Request $r)
     {
         abort_unless(in_array($r->query('type','quote'),['quote','work_order']),404);
+        app(\App\Services\CompanyOperations::class)->requireModule($r->query('type','quote')==='work_order'?'work_orders':'quotes');
         $data=$r->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','customer_id'=>'nullable|integer|exists:tenant.customers,id']);
         $context=app(SellerFormContext::class)->forUser($r->attributes->get('currentUser'),isset($data['salesperson_id'])?(int)$data['salesperson_id']:null);
         return view('documents.form',array_merge($context,['type'=>$r->query('type','quote'),
-            'customers'=>Customer::orderBy('name')->get(),'products'=>Product::with('group')->where('active',true)->orderBy('name')->get(),
+            'customers'=>Customer::orderBy('name')->get(),'products'=>Product::with('group')->where('active',true)->when(app(\App\Services\CompanyOperations::class)->current()['catalog_mode']!=='mixed',fn($q)=>$q->where('type',app(\App\Services\CompanyOperations::class)->current()['catalog_mode']==='services'?'service':'product'))->orderBy('name')->get(),
             'services'=>collect(),'selectedCustomerId'=>$data['customer_id']??null,'document'=>null,'initialItems'=>[]]));
     }
 

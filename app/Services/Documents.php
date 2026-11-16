@@ -17,9 +17,11 @@ class Documents
     {
         try {
             return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+                $configuration=app(CompanyOperations::class)->lock();
                 if ($existing = Document::where('request_key', $data['request_key'])->first()) {
                     return $existing;
                 }
+                app(CompanyOperations::class)->requireModule(($data['type']??'')==='work_order'?'work_orders':'quotes');
                 $data['items'] ??= [];
                 if (! in_array($data['type'], ['quote', 'work_order'], true) || ! is_array($data['items']) || count($data['items']) > 50 || ($data['type'] === 'quote' && $data['items'] === [])) {
                     throw ValidationException::withMessages(['items' => 'Orçamentos exigem de 1 a 50 itens. A recepção da OS pode ser aberta sem itens.']);
@@ -65,6 +67,7 @@ class Documents
             'items.*.catalog_price_seen' => 'nullable|numeric|min:0|max:999999999999.99|decimal:0,2',
         ])->validate();
         return DB::connection('tenant')->transaction(function () use ($id, $validated) {
+            $configuration=app(CompanyOperations::class)->lock();
             $document = Document::whereKey($id)->lockForUpdate()->firstOrFail();
             if ($document->type !== 'work_order' || $document->status !== 'draft' || $document->sale_id) {
                 throw ValidationException::withMessages(['document' => 'Somente uma OS aberta, ainda sem aprovação ou venda, pode ser editada.']);

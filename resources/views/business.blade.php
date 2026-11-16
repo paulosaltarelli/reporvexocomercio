@@ -2,6 +2,7 @@
 @section('title','Minha empresa')
 @section('subtitle','Cadastro, identidade e configuração fiscal por empresa.')
 @section('content')
+<p class="no-print"><a href="{{ route('setup',['company'=>$tenant->slug]) }}">Operação e implantação: acompanhar etapas e módulos da empresa</a></p>
 <form class="panel" method="post" enctype="multipart/form-data">@csrf<h2>Identificação</h2><div class="form-grid">
 @foreach(['legal_name'=>'Razão social','trade_name'=>'Nome fantasia','document'=>'CNPJ','email'=>'E-mail','phone'=>'Telefone'] as $field=>$label)
 <div class="field"><label>{{ $label }}</label><input name="{{ $field }}" value="{{ old($field,$profile->$field) }}" type="{{ $field==='email'?'email':'text' }}" @required($field==='legal_name') maxlength="{{ ['document'=>18,'phone'=>30][$field]??180 }}"></div>

@@ -18,6 +18,7 @@ class PricingService
         $this->validateSource($source);
 
         return DB::connection('tenant')->transaction(function () use ($productId, $userId, $source, $previousPrice) {
+            app(CompanyOperations::class)->lock();
             $product = Product::lockForUpdate()->findOrFail($productId);
             $before = Decimal::input($previousPrice ?? (string) $product->sale_price, 2, 'sale_price');
             $context = $this->context($product);
@@ -44,6 +45,7 @@ class PricingService
     public function syncGroup(int $groupId, int $userId): void
     {
         DB::connection('tenant')->transaction(function () use ($groupId, $userId) {
+            app(CompanyOperations::class)->lock();
             ProductGroup::whereKey($groupId)->sharedLock()->firstOrFail();
             // Stable ordering prevents product/product lock inversion between groups.
             $products = Product::where('product_group_id', $groupId)->orderBy('id')->lockForUpdate()->get();
@@ -62,6 +64,7 @@ class PricingService
 
         try {
             return DB::connection('tenant')->transaction(function () use ($productId, $userId, $expectedPrice, $requestKey) {
+            app(CompanyOperations::class)->lock();
                 $product = Product::lockForUpdate()->findOrFail($productId);
                 $existing = PriceChange::where('request_key', $requestKey)->lockForUpdate()->first();
                 if ($existing) {
@@ -112,8 +115,9 @@ class PricingService
             throw ValidationException::withMessages(['price_policy' => 'Política de preço inválida.']);
         }
         $margin = Decimal::input((string) ($product->margin ?? $group->margin), 2, 'margin', '0', '99.99');
-        $cost = Decimal::input($product->pricingCost(), 4, $product->controlsStock() ? 'average_cost' : 'reference_cost', '0', '999999999999.9999');
-        $costSource = $product->controlsStock() ? 'average_cost' : 'reference_cost';
+        $usesStock=app(CompanyOperations::class)->current()['inventory'] && $product->controlsStock();
+        $costSource=$usesStock?'average_cost':'reference_cost';
+        $cost = Decimal::input((string)$product->$costSource, 4, $costSource, '0', '999999999999.9999');
         $product->setRelation('group', $group);
         if (bccomp($cost, '0', 4) === 0) {
             return ['mode' => $mode, 'margin' => $margin, 'cost' => $cost, 'cost_source' => $costSource, 'state' => 'no_cost', 'suggested_price' => null];
