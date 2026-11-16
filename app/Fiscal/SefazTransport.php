@@ -21,6 +21,7 @@ class SefazTransport
             if ($pfx === false || $pfx === '') {
                 throw new FiscalTransportException('certificate_missing');
             }
+            $pfx=app(PfxCompatibility::class)->normalize($pfx,(string)($secrets['certificate_password']??''));
             $certificate = Certificate::readPfx($pfx, (string) ($secrets['certificate_password'] ?? ''));
             $cnpj = preg_replace('/\D/', '', (string) ($issuer['document'] ?? ''));
             $pem = openssl_x509_read((string) $certificate);

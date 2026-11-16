@@ -150,6 +150,15 @@ class NfseTest extends TestCase
             'service_national_code'=>'010701','service_municipal_code'=>null,'nbs'=>'115021100',
             'iss_mode'=>'municipal_parameterized','total_tax_mode'=>'not_informed','series'=>1,'next_number'=>1];
     }
+    public function test_legacy_a1_is_normalized_before_nfse_storage_and_can_sign_local_dps(): void
+    {
+        $fixture=FiscalFixtures::certificate();$legacy=FiscalFixtures::legacyCertificate($fixture);
+        $configuration=app(Configuration::class)->save($this->tenant,$this->input()+['certificate_password'=>$fixture['password']],$legacy,$this->user->id);
+        $stored=base64_decode($configuration->secrets['pfx']);$keys=[];$this->assertNotSame($legacy,$stored);$this->assertTrue(openssl_pkcs12_read($stored,$keys,$fixture['password']));
+        $this->assertSame($fixture['fingerprint'],$configuration->certificate_fingerprint);
+        $document=$this->prepare();$this->assertNotEmpty($document->signed_xml);
+    }
+
     private function configured(): NfseConfiguration
     {
         $fixture=$this->fixture();

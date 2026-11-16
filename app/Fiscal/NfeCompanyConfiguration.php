@@ -30,6 +30,7 @@ final class NfeCompanyConfiguration
             $credential = FiscalCredential::where('issuer_id', $issuer->id)->lockForUpdate()->first();
             $secrets = $credential?->secrets ?? [];
             if ($pfx !== null) {
+                $pfx=app(\App\Fiscal\PfxCompatibility::class)->normalize($pfx,(string)($input['certificate_password']??''));
                 $metadata = app(CertificateInspector::class)->inspect($pfx, (string) ($input['certificate_password'] ?? ''), $document);
                 $credential ??= new FiscalCredential(['issuer_id' => $issuer->id]);
                 $credential->fill($metadata);

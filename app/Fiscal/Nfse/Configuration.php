@@ -91,6 +91,7 @@ final class Configuration
             $secrets = $configuration->secrets ?? [];
             $metadata = [];
             if ($pfx !== null) {
+                $pfx=app(\App\Fiscal\PfxCompatibility::class)->normalize($pfx,(string)($input['certificate_password']??''));
                 $metadata = app(CertificateInspector::class)->inspect($pfx, (string) ($input['certificate_password'] ?? ''), $cnpj);
                 $secrets = ['pfx' => base64_encode($pfx), 'certificate_password' => (string) ($input['certificate_password'] ?? '')];
             }

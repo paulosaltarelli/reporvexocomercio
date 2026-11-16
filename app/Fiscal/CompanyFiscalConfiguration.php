@@ -44,6 +44,7 @@ final class CompanyFiscalConfiguration
                 }
             }
             if ($pfx !== null) {
+                $pfx=app(\App\Fiscal\PfxCompatibility::class)->normalize($pfx,(string)($input['certificate_password']??''));
                 $metadata = app(CertificateInspector::class)->inspect($pfx, (string) ($input['certificate_password'] ?? ''), $cnpj);
                 $secrets['pfx'] = base64_encode($pfx);
                 $secrets['certificate_password'] = (string) ($input['certificate_password'] ?? '');

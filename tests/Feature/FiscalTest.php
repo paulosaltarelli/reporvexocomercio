@@ -315,6 +315,21 @@ class FiscalTest extends TestCase
         }
     }
 
+    public function test_legacy_pfx_is_normalized_before_nfce_and_nfe_storage_without_changing_identity(): void
+    {
+        [$issuer]=$this->configuredFiscal();
+        $fixture=FiscalFixtures::certificate();$legacy=FiscalFixtures::legacyCertificate($fixture);
+        app(CompanyFiscalConfiguration::class)->save($this->tenant,$issuer->validated_configuration,['certificate_password'=>$fixture['password']],$legacy);
+        $credential=FiscalCredential::where('issuer_id',$issuer->id)->firstOrFail();$stored=base64_decode($credential->secrets['pfx']);$keys=[];
+        $this->assertNotSame($legacy,$stored);$this->assertTrue(openssl_pkcs12_read($stored,$keys,$fixture['password']));$this->assertSame($fixture['fingerprint'],$credential->certificate_fingerprint);
+        app(CompanyFiscalConfiguration::class)->validateLocal($this->tenant);
+        $other=FiscalFixtures::certificate();$legacy=FiscalFixtures::legacyCertificate($other);
+        app(\App\Fiscal\NfeCompanyConfiguration::class)->save($this->tenant,$this->nfe55Configuration(),['certificate_password'=>$other['password']],$legacy);
+        $credential=$credential->fresh();$stored=base64_decode($credential->secrets['pfx']);
+        $this->assertNotSame($legacy,$stored);$this->assertTrue(openssl_pkcs12_read($stored,$keys,$other['password']));$this->assertSame($other['fingerprint'],$credential->certificate_fingerprint);
+        app(\App\Fiscal\NfeCompanyConfiguration::class)->validateLocal($this->tenant);
+    }
+
     private function configuredFiscal(): array
     {
         Http::preventStrayRequests();
