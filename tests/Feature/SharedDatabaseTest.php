@@ -411,7 +411,8 @@ class SharedDatabaseTest extends TestCase
         $this->post('/app/shared-a/login', ['email' => 'owner@example.test', 'password' => self::OWNER_PASSWORD])->assertRedirect('/app/shared-a/setup');
         $this->get('/app/shared-a/setup')->assertRedirect('/app/shared-a/account/password');
         $this->post('/app/shared-a/account/password', ['current_password' => self::OWNER_PASSWORD, 'password' => 'Changed-owner-pass-1234', 'password_confirmation' => 'Changed-owner-pass-1234'])->assertRedirect('/app/shared-a/setup');
-        $this->get('/app/shared-a/setup')->assertOk();
+        $this->get('/app/shared-a')->assertRedirect('/app/shared-a/setup');
+        $this->get('/app/shared-a/setup')->assertOk()->assertSee('Salvar empresa e continuar');
         $this->post('/app/shared-a/business', ['legal_name' => 'Empresa A com logo', 'logo' => UploadedFile::fake()->image('logo.png', 96, 96)])->assertRedirect()->assertSessionHasNoErrors();
         $this->connect($this->a);
         $path = BusinessProfile::findOrFail(1)->logo_path;

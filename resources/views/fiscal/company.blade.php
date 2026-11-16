@@ -1,4 +1,5 @@
 @include('fiscal.preferences',['settings'=>$fiscalSettings])
+@if(!($setupFiscal??false)||$configuration['nfce'])
 @php
     $fiscalOld = static fn ($key, $default = null) => in_array(old('_fiscal_form'), [null, 'nfce65'], true) ? old($key, $default) : $default;
 @endphp
@@ -53,5 +54,12 @@
 @endif
 </section>
 
+@endif
+@if(!($setupFiscal??false)||$configuration['nfe'])
 @include('fiscal.nfe.company',['nfeConfiguration'=>$nfeConfiguration??null,'nfeNextNumber'=>$nfeNextNumber??null])
+@endif
+@if($setupFiscal??false)
+@if($configuration['nfse'])@include('fiscal.nfse.company',['configuration'=>$nfseConfiguration])@endif
+@else
 @include('fiscal.nfse.entry')
+@endif

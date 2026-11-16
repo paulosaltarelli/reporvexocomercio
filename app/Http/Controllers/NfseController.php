@@ -40,9 +40,15 @@ class NfseController extends Controller
             $configuration->parameters = $parameters;
         }
         $profile = BusinessProfile::find(1);
-        return view('fiscal.nfse.index', ['configuration' => $configuration, 'configurationDefaults' => ['municipality_code' => $profile?->municipality_code, 'municipal_registration' => $profile?->municipal_registration], 'report' => $readiness->inspect($configuration), 'documents' => NfseDocument::latest('id')->paginate(20)]);
+        return view('fiscal.nfse.index', ['configuration' => $configuration, 'configurationDefaults' => array_replace(['municipality_code' => $profile?->municipality_code, 'municipal_registration' => $profile?->municipal_registration],app(Configuration::class)->draftValues()), 'report' => $readiness->inspect($configuration), 'documents' => NfseDocument::latest('id')->paginate(20)]);
     }
 
+    public function draft(Request $request,Configuration $service)
+    {
+        $this->admin($request);
+        $service->draft($request->attributes->get('tenant'),$request->except('_token'),(int)$request->attributes->get('currentUser')->id);
+        return back()->with('success','Rascunho NFS-e salvo sem certificado ou reserva de numeração. Complete e valide antes de preparar DPS.');
+    }
     public function save(Request $request, Configuration $service)
     {
         $this->admin($request);

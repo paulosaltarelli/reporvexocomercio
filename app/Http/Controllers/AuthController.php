@@ -22,19 +22,18 @@ class AuthController extends Controller
             return back()->withErrors(['email' => 'Muitas tentativas. Aguarde um minuto.']);
         }
         $user = User::where('email', $data['email'])->where('active', true)->first();
-        if (! $user || ! Hash::check($data['password'], $user->password)) {
+        if (! $user || \App\Platform\SupportAccess::isManaged($user) || ! Hash::check($data['password'], $user->password)) {
             RateLimiter::hit($key, 60);
 
             return back()->withErrors(['email' => 'E-mail ou senha inválidos.']);
         }
         RateLimiter::clear($key);
         $r->session()->regenerate();
+        $r->session()->forget('platform_support');
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
         $start=$user->role==='admin'?'dashboard':app(\App\Access\AccessProfiles::class)->landing($user);
-        if ($user->role==='admin' && $r->attributes->get('tenant')->storage_mode==='shared'
-            && ! \App\Models\CompanyOperation::find(1)?->completed_at
-            && !($r->attributes->get('tenant')->is_demonstration && \App\Models\DemoRun::where('code','computer-store-v1')->whereNotNull('completed_at')->exists())) $start='setup';
+        if ($user->role==='admin' && app(\App\Services\CompanyOnboarding::class)->required($r->attributes->get('tenant'))) $start='setup';
         return redirect()->route($start, ['company' => $r->route('company')]);
     }
 

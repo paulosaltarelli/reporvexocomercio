@@ -28,6 +28,11 @@ class BusinessController extends Controller
     public function form(Request $r)
     {
         $this->admin($r);
+        return view('business', $this->viewData($r));
+    }
+
+    public function viewData(Request $r): array
+    {
         $profile = BusinessProfile::find(1) ?? new BusinessProfile(['legal_name' => $r->attributes->get('tenant')->name]);
         $issuer = FiscalIssuer::where('document', TaxpayerDocument::normalize((string) $profile->document))->where('environment', 'homologation')->first();
         $credential = $issuer ? FiscalCredential::where('issuer_id', $issuer->id)->first() : null;
@@ -39,7 +44,7 @@ class BusinessController extends Controller
         $settings = FiscalSetting::find(1);
         $draft = $settings?->configuration_draft;
         $draftMatches = is_array($draft) && ($draft['document'] ?? null) === TaxpayerDocument::normalize((string) $profile->document);
-        return view('business', ['nfeConfiguration' => $nfeConfiguration, 'nfeNextNumber' => $nfeNextNumber, 'profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches]);
+        return ['nfeConfiguration' => $nfeConfiguration, 'nfeNextNumber' => $nfeNextNumber, 'profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches];
     }
 
     public function save(Request $r)
@@ -71,6 +76,7 @@ class BusinessController extends Controller
         }catch(\Throwable $e){if($newPath)$disk->delete($newPath);throw $e;}
         if(($newPath||$remove)&&$oldPath&&$this->ownedPath($oldPath,$tenantId))$disk->delete($oldPath);
 
+        if ($r->routeIs('setup.company.save')) return redirect()->route('setup',['company'=>$r->route('company'),'step'=>2])->with('success','Dados da empresa salvos. Continue com a operação.');
         return back()->with('success', 'Dados e identidade da empresa atualizados.');
     }
     public function logo(Request $r){
