@@ -42,3 +42,14 @@ Requer a migração tenant `2026_11_16_000001_create_company_operations.php`. El
 Antes de publicar: suíte em checkout e bancos exclusivos de teste; conferir baseline/allowlist, adquirir `/run/lock/vendra-fiscal-deploy.lock`, drenar worker naturalmente e pausar só Vendra/timer se necessário. Backup privado validado antes da migração. Aplicar apenas a migração nova por empresa e o overlay revisado, compilar views e verificar HTTPS/fluxos em stage. Retomar os estados anteriores dos serviços. Rollback de código não pode deixar runtime que dependa de tabela ausente; preferir manter as colunas aditivas no retorno da versão anterior e preservar auditorias/dados.
 
 Não publicar a mudança para banco compartilhado junto desta primeira entrega. A aprovação de uma etapa não comprova a segurança da seguinte.
+
+## Evidência da revisão de 16/11/2026
+
+Checkout QA exclusivo `/srv/vendra-company-qa.XQorM0`, com dependências de teste já existentes e acesso restrito aos três bancos dedicados `vendra_test_central`, `vendra_t_test_a` e `vendra_t_test_b`. Nenhuma base operacional foi usada pelos testes.
+
+- Suíte final: **149 testes, 1.938 verificações, nenhuma falha ou skip**, saída 0, 4min42s. Inclui concorrência real com `pcntl`, caixa, estoque, vendas, perfis e fiscal simulado.
+- O primeiro ensaio encontrou leitura antecipada do snapshot MySQL durante a inicialização da configuração, afetando criação simultânea de orçamento e disputa 55/65. Corrigido com leitura corrente sob bloqueio compartilhado, sem criar configuração como efeito colateral das operações. As regressões concorrentes e a suíte completa passaram após a correção.
+- O teste HTTP da landing tinha uma expectativa de texto anterior ao PR #9. Foi atualizado para o texto já integrado; HTML/CSS/JS da landing não foram modificados.
+- Smoke Chromium em 320/390/768/1440 px: cinco etapas por viewport, **20 páginas** sem overflow ou exceções JavaScript. Login, gravação das escolhas e conclusão da conferência passaram. POST real sem CSRF retornou 419. Foram usados somente usuário e dados temporários de teste; nenhum envio fiscal ou mensagem externa ocorreu.
+- 146 arquivos PHP passaram no lint. Os 28 arquivos de runtime/teste alterados tiveram SHA-256 conferido entre Git e o stage efetivamente testado.
+- Servidor de prévia, encaminhamento e credenciais temporárias foram encerrados/removidos. Não houve publicação operacional ou migração do banco de produção.
