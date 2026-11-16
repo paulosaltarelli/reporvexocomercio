@@ -6,12 +6,12 @@
     <title>@yield('title','Visão geral') · Vendra</title>
     <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css">@endif
-</head>
+<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>
 <body>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 <aside aria-label="Navegação da empresa">
     <div class="sidebar-heading">
-        <a class="brand" href="{{ route($currentUser?->role==='admin'?'dashboard':'desk',['company'=>$tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span>por Vexo</span></a>
+        <a class="brand" href="{{ route($currentUser?->role==='admin'?'dashboard':'desk',['company'=>$tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span class="brand-endorsement">por <img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></span></a>
         <button type="button" class="menu-toggle" aria-controls="company-navigation" aria-expanded="true">Menu <span aria-hidden="true">☰</span></button>
     </div>
     <div class="company">{{ $tenant->name }}</div>
@@ -113,7 +113,7 @@
         @endif
         @yield('content')
     </main>
-    <footer>Vendra · um produto Vexo</footer>
+    <footer class="product-owner">Vendra · um produto <img src="/brand/vexo-logo-dark.png" width="2172" height="724" alt="Vexo"></footer>
 </div>
 <script src="/ui.js?v={{ filemtime(public_path('ui.js')) }}"></script>
 @stack('scripts')
