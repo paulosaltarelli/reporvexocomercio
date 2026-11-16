@@ -79,7 +79,7 @@
                             <div class="form-grid">
                                 <div class="field"><label>Valor {{ $entry->direction==='out'?'pago':'recebido' }} agora (R$)</label><input name="amount" type="number" min="0.01" max="{{ number_format($balance,2,'.','') }}" step="0.01" value="{{ $editingEntry?old('amount'):number_format($balance,2,'.','') }}" required><small class="hint">Informe até o saldo. Uma baixa menor mantém o restante pendente.</small></div>
                                 <div class="field"><label>Data do {{ $entry->direction==='out'?'pagamento':'recebimento' }}</label><input type="date" name="paid_on" value="{{ $editingEntry?old('paid_on',now()->toDateString()):now()->toDateString() }}" required></div>
-                                <div class="field"><label>Forma de pagamento</label><select name="payment_method">@foreach(['cash'=>'Dinheiro','pix'=>'Pix','credit'=>'Cartão de crédito','debit'=>'Cartão de débito','transfer'=>'Transferência','invoice'=>'A prazo / outro registro'] as $value=>$label)<option value="{{ $value }}" @selected(($editingEntry?old('payment_method','pix'):'pix')===$value)>{{ $label }}</option>@endforeach</select></div>
+                                <div class="field"><label>Forma de pagamento</label>@include('components.payment-method-select',['paymentSelectId'=>'payment-option','paymentDefault'=>'pix'])</div>
                             </div>
                             <div class="actions"><button class="primary">Confirmar baixa registrada</button></div>
                             <p class="hint">Confirme somente valores já movimentados fora do sistema. Esta ação não transfere dinheiro nem cobra o cliente.</p>
@@ -100,7 +100,7 @@
     <div class="disclosure-content">
         <div class="scroll"><table><thead><tr><th>Data informada</th><th>Movimento</th><th>Tipo</th><th>Forma</th><th class="num">Valor (R$)</th></tr></thead><tbody>
         @forelse($payments as $payment)
-            <tr><td>{{ $payment->paid_on?\Carbon\Carbon::parse($payment->paid_on)->format('d/m/Y'):'Não informada' }}</td><td>{{ $payment->direction==='in'?'Entrada':'Saída' }}</td><td>{{ $payment->kind==='refund'?'Estorno':'Baixa' }}</td><td>{{ ['cash'=>'Dinheiro','pix'=>'Pix','credit'=>'Crédito','debit'=>'Débito','transfer'=>'Transferência','invoice'=>'A prazo / outro'][$payment->method]??'Não informada' }}</td><td class="num">{{ number_format($payment->amount,2,',','.') }}</td></tr>
+            <tr><td>{{ $payment->paid_on?\Carbon\Carbon::parse($payment->paid_on)->format('d/m/Y'):'Não informada' }}</td><td>{{ $payment->direction==='in'?'Entrada':'Saída' }}</td><td>{{ $payment->kind==='refund'?'Estorno':'Baixa' }}</td><td>{{ app(\App\Services\PaymentMethods::class)->labels('payment_method_used',[$payment->id])[$payment->id]??\App\Services\PaymentMethods::TYPES[$payment->method]??$payment->method }}</td><td class="num">{{ number_format($payment->amount,2,',','.') }}</td></tr>
         @empty
             <tr><td colspan="5" class="empty">Nenhuma baixa ou estorno registrado.</td></tr>
         @endforelse

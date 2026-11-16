@@ -27,6 +27,7 @@ class TenantAuthenticated
         view()->share('currentUser', $user);
 
         app(\App\Access\AccessProfiles::class)->authorize($r);
+        if($r->isMethod('POST')&&$r->has('payment_option'))app(\App\Services\PaymentMethods::class)->request($r);
         if($r->attributes->get('supportAdmin'))app(\App\Platform\SupportAccess::class)->record($r,$r->attributes->get('supportAdmin'));
         return $next($r);
     }

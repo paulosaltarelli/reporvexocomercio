@@ -11,7 +11,7 @@ final class Permissions
         'Cadastros' => ['products.view'=>'Consultar produtos e serviços','products.manage'=>'Cadastrar e editar produtos/serviços','customers.view'=>'Consultar clientes','customers.manage'=>'Cadastrar e editar clientes','suppliers.view'=>'Consultar fornecedores','suppliers.manage'=>'Cadastrar e editar fornecedores','groups.view'=>'Consultar grupos','groups.manage'=>'Alterar grupos e regras comerciais','sellers.manage'=>'Gerenciar vendedores'],
         'Estoque e preços' => ['stock.view'=>'Consultar saldos e movimentações','stock.manage'=>'Movimentar estoque','costs.view'=>'Visualizar custos, margens e sugestões','prices.view'=>'Consultar preços e alertas','prices.manage'=>'Aplicar preços e atualizar regras','purchases.view'=>'Consultar compras e custos','purchases.manage'=>'Registrar compras'],
         'Financeiro e caixa' => ['finance.view'=>'Consultar contas a pagar e receber','finance.manage'=>'Criar contas e registrar baixas','cash.view'=>'Consultar caixa diário','cash.close'=>'Fechar caixa','cashflow.view'=>'Consultar fluxo e previsão'],
-        'Gestão e fiscal' => ['dashboard.view'=>'Visualizar indicadores gerenciais','reports.view'=>'Consultar relatórios gerenciais','reports.export'=>'Exportar relatórios CSV','commissions.view'=>'Consultar comissões','fiscal.manage'=>'Operar fiscal: consulta, configuração, emissão e cancelamento'],
+        'Gestão e fiscal' => ['dashboard.view'=>'Visualizar indicadores gerenciais','reports.view'=>'Consultar relatórios gerenciais','reports.export'=>'Exportar relatórios CSV','commissions.view'=>'Consultar comissões de toda a equipe','commissions.close'=>'Fechar comissões e gerar contas a pagar','commissions.pay'=>'Registrar pagamentos de comissões','fiscal.manage'=>'Operar fiscal: consulta, configuração, emissão e cancelamento'],
     ];
     public const NAVIGATION = [
         ['Visão geral','dashboard',[],'dashboard.view'],['Frente de caixa','desk',[],'desk.use'],
@@ -25,7 +25,7 @@ final class Permissions
         'documents.create'=>['documents.view','products.view'], 'documents.edit'=>['documents.view','products.view'], 'documents.status'=>['documents.view'], 'documents.invoice'=>['documents.view','products.view','sales.view'], 'documents.seller'=>['documents.view','sales.seller'],
         'products.manage'=>['products.view','groups.view','costs.view'],'customers.manage'=>['customers.view'],'suppliers.manage'=>['suppliers.view'],'groups.manage'=>['groups.view','costs.view'],
         'stock.manage'=>['stock.view','costs.view'],'prices.view'=>['costs.view'],'prices.manage'=>['prices.view'],'purchases.view'=>['costs.view'],'purchases.manage'=>['purchases.view','products.view','suppliers.view'],
-        'fiscal.manage'=>['sales.view'],'finance.manage'=>['finance.view'],'cash.close'=>['cash.view'],'reports.view'=>['costs.view'],'reports.export'=>['reports.view'],'dashboard.view'=>['costs.view','sales.view','stock.view','finance.view'],
+        'commissions.close'=>['commissions.view','finance.view'],'commissions.pay'=>['commissions.close','finance.manage'],'fiscal.manage'=>['sales.view'],'finance.manage'=>['finance.view'],'cash.close'=>['cash.view'],'reports.view'=>['costs.view'],'reports.export'=>['reports.view'],'dashboard.view'=>['costs.view','sales.view','stock.view','finance.view'],
     ];
     public const OPERATOR = ['desk.use','sales.view','sales.create','documents.view','documents.create','documents.edit','documents.status','documents.invoice','products.view','customers.view','suppliers.view','groups.view','stock.view'];
     public static function labels(): array { return array_merge(...array_values(self::GROUPS)); }
@@ -52,7 +52,7 @@ final class Permissions
             'AuthController'=>'account.self',
             'AccountController'=>$action==='updateUser'?'administration': 'account.self',
             'BusinessController'=>match($action){'logo'=>'account.self','fiscal'=>'fiscal.manage',default=>'administration'},
-            'CompanySetupController','AccessProfileController'=>'administration',
+            'CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',
             'DeskController'=>'desk.use',
             'CommerceController'=>match($action) {
                 'dashboard'=>'home', 'products'=>'products.view', 'productForm','saveProduct'=>'products.manage',
@@ -65,7 +65,7 @@ final class Permissions
             'PricingController'=>$action==='index'?'prices.view':'prices.manage',
             'PurchaseController'=>in_array($action,['index','show'],true)?'purchases.view':'purchases.manage',
             'CashController'=>$action==='index'?'cash.view':'cash.close',
-            'CashflowController'=>'cashflow.view','CommissionController'=>'commissions.view',
+            'CashflowController'=>'cashflow.view','CommissionController'=>match($action){'mine'=>'commissions.self','show'=>'commissions.view','mineShow'=>'commissions.self','preview','close'=>'commissions.close','pay'=>'commissions.pay','index'=>'commissions.view',default=>'denied'},
             'ReportController'=>$action==='csv'?'reports.export':'reports.view',
             default=>'denied',
         };

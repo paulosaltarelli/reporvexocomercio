@@ -1482,7 +1482,7 @@ class CommerceTest extends TestCase
             $request=\Illuminate\Http\Request::create('/'.$uri,in_array('POST',$route->methods(),true)?'POST':'GET');
             $route=clone $route;$route->bind($request);$request->setRouteResolver(fn()=>$route);
             $permission=\App\Access\Permissions::request($request);
-            $this->assertTrue(in_array($permission,array_merge(array_keys(\App\Access\Permissions::labels()),['administration','account.self','home']),true),$route->uri().' '.$route->getActionMethod());
+            $this->assertTrue(in_array($permission,array_merge(array_keys(\App\Access\Permissions::labels()),['administration','account.self','commissions.self','home']),true),$route->uri().' '.$route->getActionMethod());
         }
         $id=$this->accessProfile(['products.view'],'Consulta catálogo');
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
@@ -2600,6 +2600,117 @@ class CommerceTest extends TestCase
         $this->assertNotEmpty(\App\Models\CompanyOperation::find(1)->configuration['_platform_support']);
         $this->get('/app/b/desk')->assertRedirect('/app/b/login')->assertSessionMissing('platform_admin_id');
         app(TenantConnection::class)->connect($this->b);$this->assertSame(0,User::where('email','like','%@support.vexo.invalid')->count());
+    }
+
+    private function commissionSale(string $total='100',bool $paid=true,?int $seller=null,array $extra=[]): Sale
+    {
+        $this->product->update(['controls_stock'=>false]);$this->product->group->update(['commission_percent'=>'10']);
+        return app(Checkout::class)->complete(array_replace(['request_key'=>(string)Str::uuid(),'salesperson_id'=>$seller,'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>bcdiv($total,'100',3),'unit_price'=>'100']],'payment_method'=>'pix','paid'=>$paid,'due_date'=>now()->addDay()->toDateString()],$extra),$this->user->id);
+    }
+    private function commissionInput(Sale $sale): array
+    {
+        return ['from'=>now()->startOfMonth()->toDateString(),'to'=>now()->toDateString(),'salesperson_id'=>$sale->salesperson_id];
+    }
+    private function commissionCloseInput(array $preview): array
+    {
+        return array_intersect_key($preview,array_flip(['from','to','salesperson_id','preview_hash']))+['request_key'=>(string)Str::uuid(),'due_date'=>now()->toDateString(),'reviewed'=>1];
+    }
+    public function test_commission_closure_creates_one_payable_and_payments_reconcile_without_double_close(): void
+    {
+        $sale=$this->commissionSale();$service=app(\App\Services\CommissionSettlements::class);$preview=$service->preview($this->commissionInput($sale));
+        $this->assertSame('10.00',$preview['total']);$input=$this->commissionCloseInput($preview);$closure=$service->close($input,$this->user->id);
+        $this->assertSame($closure->id,$service->close($input,$this->user->id)->id);
+        $entry=FinancialEntry::findOrFail($closure->after['entry_id']);$this->assertSame('out',$entry->direction);$this->assertSame('10.00',$entry->amount);$this->assertSame('0.00',$entry->paid_amount);
+        $this->assertSame('0.00',$service->preview($this->commissionInput($sale))['total']);
+        try{$service->close($this->commissionCloseInput($preview),$this->user->id);$this->fail('Duplicate recognition accepted.');}catch(ValidationException $e){$this->assertArrayHasKey('preview_hash',$e->errors());}
+        $pay=['request_key'=>(string)Str::uuid(),'amount'=>'4.00','paid_on'=>now()->toDateString(),'payment_method'=>'pix'];$payment=$service->pay($closure->id,$pay,$this->user->id);$this->assertSame($payment->id,$service->pay($closure->id,$pay,$this->user->id)->id);
+        $this->assertSame('6.00',$entry->fresh()->balance);$service->pay($closure->id,array_replace($pay,['request_key'=>(string)Str::uuid(),'amount'=>'6.00']),$this->user->id);
+        $this->assertSame('10.00',$entry->fresh()->paid_amount);$this->assertNotNull($entry->fresh()->paid_at);
+        $this->assertSame(['closed'=>'10.00','paid'=>'10.00','balance'=>'0.00'],$service->balances($sale->salesperson_id));
+    }
+    public function test_commissions_partial_receipts_enter_later_period_and_cancellation_adjusts_next_close(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-10 12:00:00'));
+        try{
+            $sale=$this->commissionSale('100',false);$entry=$sale->entries()->firstOrFail();$service=app(\App\Services\CommissionSettlements::class);
+            app(\App\Services\FinancialService::class)->pay($entry->id,'50','2026-10-10','pix',$this->user->id,(string)Str::uuid());
+            $first=$service->close($this->commissionCloseInput($service->preview($this->commissionInput($sale))),$this->user->id);$frozen=$first->fresh()->after;
+            $this->assertSame('5.00',$first->after['total']);
+            $this->travelTo(\Carbon\Carbon::parse('2026-11-05 12:00:00'));
+            app(\App\Services\FinancialService::class)->pay($entry->id,'50','2026-11-05','pix',$this->user->id,(string)Str::uuid());
+            $second=$service->close($this->commissionCloseInput($service->preview($this->commissionInput($sale))),$this->user->id);$this->assertSame('5.00',$second->after['total']);
+            app(Checkout::class)->cancel($sale->id,$this->user->id,true);
+            $preview=$service->preview($this->commissionInput($sale));$this->assertSame('-10.00',$preview['total']);
+            try{$service->close($this->commissionCloseInput($preview),$this->user->id);$this->fail('Negative payout created.');}catch(ValidationException $e){$this->assertArrayHasKey('total',$e->errors());}
+            $new=$this->commissionSale('200');$preview=$service->preview($this->commissionInput($new));$this->assertSame('-10.00',$preview['adjustments']);$this->assertSame('10.00',$preview['total']);
+            $third=$service->close($this->commissionCloseInput($preview),$this->user->id);$this->assertCount(2,$third->after['lines']);$this->assertSame($frozen,$first->fresh()->after);
+        }finally{$this->travelBack();}
+    }
+    public function test_commissions_accrual_and_stale_preview_and_legacy_receipts_are_distinct(): void
+    {
+        $sale=$this->commissionSale('100',false);$service=app(\App\Services\CommissionSettlements::class);$preview=$service->preview($this->commissionInput($sale));$this->assertSame('0.00',$preview['total']);
+        $sale->update(['commission_basis'=>'accrual']);$preview=$service->preview($this->commissionInput($sale));$this->assertSame('10.00',$preview['total']);
+        $sale->update(['commission_total'=>'12.00']);
+        try{$service->close($this->commissionCloseInput($preview),$this->user->id);$this->fail('Stale preview accepted.');}catch(ValidationException $e){$this->assertArrayHasKey('preview_hash',$e->errors());}
+        $sale->update(['commission_basis'=>'cash']);$sale->entries()->first()->update(['legacy_paid_amount'=>'50.00','paid_amount'=>'50.00']);
+        $this->assertSame(1,$service->preview($this->commissionInput($sale))['legacy_sales']);
+    }
+    public function test_seller_sees_only_own_commissions_and_cannot_close_pay_or_change_filter(): void
+    {
+        $sale=$this->commissionSale();$other=User::create(['name'=>'OTHER PRIVATE SELLER','email'=>'other-commission@example.test','password'=>'test-other-password','role'=>'operator','active'=>true]);$seller=\App\Models\Seller::create(['name'=>$other->name,'user_id'=>$other->id,'active'=>true]);
+        $otherSale=$this->commissionSale('200',true,$seller->id);$service=app(\App\Services\CommissionSettlements::class);
+        $closure=$service->close($this->commissionCloseInput($service->preview($this->commissionInput($otherSale))),$this->user->id);
+        $this->user->update(['role'=>'operator']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a/my-commissions')->assertOk()->assertSee('Minhas comissões')->assertDontSee('OTHER PRIVATE SELLER')->assertViewHas('rows',fn($rows)=>$rows->count()===1&&$rows->first()->id===$sale->id);
+        $this->get('/app/a/my-commissions?salesperson_id='.$seller->id)->assertForbidden();
+        $this->get('/app/a/my-commissions/'.$closure->id)->assertForbidden();
+        $this->get('/app/a/commissions')->assertForbidden();
+        $this->post('/app/a/commissions/close',[])->assertForbidden();
+        $this->post('/app/a/commissions/closures/'.$closure->id.'/pay',[])->assertForbidden();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(1,$service->records()->count());$this->assertSame('0.00',FinancialEntry::find($closure->after['entry_id'])->paid_amount);
+        $this->get('/app/b/my-commissions')->assertRedirect('/app/b/login');
+    }
+    public function test_concurrent_commission_closures_recognize_the_sale_once(): void
+    {
+        $sale=$this->commissionSale();$service=app(\App\Services\CommissionSettlements::class);$preview=$service->preview($this->commissionInput($sale));$a=$this->commissionCloseInput($preview);$b=$this->commissionCloseInput($preview);
+        $attempt=function($input){try{return app(\App\Services\CommissionSettlements::class)->close($input,$this->user->id)->id;}catch(ValidationException){return 0;}};
+        $results=$this->race(null,fn()=>$attempt($a),fn()=>$attempt($b));
+        $this->assertCount(1,array_filter($results,fn($id)=>$id>0));$this->assertCount(1,array_filter($results,fn($id)=>$id===0));
+        $this->assertSame(1,$service->records()->count());$this->assertSame(1,FinancialEntry::where('category','Comissões de vendas')->count());
+    }
+    public function test_commission_rounding_uses_cumulative_receipts_and_closed_cash_blocks_payout(): void
+    {
+        $sale=$this->commissionSale('100',false);$entry=$sale->entries()->firstOrFail();$service=app(\App\Services\CommissionSettlements::class);$totals=[];
+        foreach(['33.33','33.33','33.34'] as $amount){
+            app(\App\Services\FinancialService::class)->pay($entry->id,$amount,now()->toDateString(),'pix',$this->user->id,(string)Str::uuid());
+            $closure=$service->close($this->commissionCloseInput($service->preview($this->commissionInput($sale))),$this->user->id);$totals[]=$closure->after['total'];
+        }
+        $this->assertSame(['3.33','3.34','3.33'],$totals);$this->assertSame('10.00',$service->balances($sale->salesperson_id)['closed']);
+        app(\App\Services\CashService::class)->close(['request_key'=>(string)Str::uuid(),'date'=>now()->toDateString(),'opening_balance'=>'0','counted_balance'=>'0'],$this->user->id);
+        try{$service->pay($closure->id,['request_key'=>(string)Str::uuid(),'amount'=>$closure->after['total'],'paid_on'=>now()->toDateString(),'payment_method'=>'pix'],$this->user->id);$this->fail('Closed cash payout accepted.');}catch(ValidationException $e){$this->assertArrayHasKey('paid_on',$e->errors());}
+        $this->assertSame('0.00',FinancialEntry::find($closure->after['entry_id'])->paid_amount);
+    }
+
+    public function test_named_payment_methods_keep_canonical_type_and_historical_labels_after_changes(): void
+    {
+        $catalog=app(\App\Services\PaymentMethods::class);$catalog->save(['version'=>0,'label'=>'Pix Sicoob','type'=>'pix','active'=>1],$this->user->id);$id=array_key_last($catalog->all());
+        $sale=$this->commissionSale('100',true,null,['payment_option'=>$id,'payment_method'=>'cash']);$this->assertSame('pix',$sale->payment_method);
+        $labels=$catalog->labels('sale_payment_method',[$sale->id]);$this->assertSame('Pix Sicoob',$labels[$sale->id]);
+        $payment=\App\Models\Payment::where('entry_id',$sale->entries()->first()->id)->firstOrFail();$this->assertSame('Pix Sicoob',$catalog->labels('payment_method_used',[$payment->id])[$payment->id]);
+        $version=\App\Models\CompanyOperation::find(1)->version;$catalog->save(['id'=>$id,'version'=>$version,'label'=>'Pix novo nome','type'=>'pix','active'=>0],$this->user->id);
+        $this->assertSame('Pix Sicoob',$catalog->labels('sale_payment_method',[$sale->id])[$sale->id]);
+        $breakdown=app(\App\Services\SalesBreakdown::class)->year((int)now()->year);$this->assertSame('Pix Sicoob',$breakdown['methods'][0]['label']);$this->assertSame('100.00',$breakdown['total']);$this->assertSame('100.00',$breakdown['methods'][0]['percent']);
+        try{$this->commissionSale('100',true,null,['payment_option'=>$id]);$this->fail('Inactive method accepted.');}catch(ValidationException $e){$this->assertArrayHasKey('payment_option',$e->errors());}
+        $version=\App\Models\CompanyOperation::find(1)->version;app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['version'=>$version,'commissions'=>false]),$this->user->id);
+        $this->assertArrayHasKey($id,$catalog->all());
+    }
+    public function test_checkout_resolves_named_payment_server_side_and_seller_cannot_manage_catalog(): void
+    {
+        $catalog=app(\App\Services\PaymentMethods::class);$catalog->save(['version'=>0,'label'=>'Cartão balcão','type'=>'debit','active'=>1],$this->user->id);$id=array_key_last($catalog->all());$this->product->update(['controls_stock'=>false]);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->post('/app/a/sales',['request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']],'paid'=>1,'payment_option'=>$id,'payment_method'=>'cash'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame('debit',Sale::firstOrFail()->payment_method);
+        $this->user->update(['role'=>'operator']);$this->get('/app/a/payment-methods')->assertForbidden();$this->post('/app/a/payment-methods',['version'=>1,'label'=>'Spoof','type'=>'cash','active'=>1])->assertForbidden();
     }
 
     private function operationPayload(array $changes=[]): array

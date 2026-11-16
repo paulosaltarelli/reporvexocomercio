@@ -1,0 +1,8 @@
+@if(!$personal)@include('commissions.balances')@endif
+<section class="panel"><div class="section-heading"><div><h2>{{ $personal?'Meus fechamentos e pagamentos':'Fechamentos e pagamentos' }}</h2><p class="hint">Histórico dos fechamentos, independente do período de vendas selecionado acima.</p></div></div><div class="scroll"><table><thead><tr><th>Fechamento</th>@if(!$personal)<th>Vendedor</th>@endif<th>Período</th><th class="num">Fechado (R$)</th><th class="num">Pago (R$)</th><th class="num">A pagar (R$)</th><th>Situação</th></tr></thead><tbody>
+@forelse($closures as $record)
+@php($snapshot=$record->after)
+@php($account=$closureAccounts->get($snapshot['entry_id']))
+<tr><td><a href="{{ route($personal?'commissions.mine.show':'commission.closure',['company'=>$tenant->slug,'id'=>$record->id]) }}">#{{ $record->id }}</a><small class="hint">{{ $record->created_at->format('d/m/Y') }}</small></td>@if(!$personal)<td>{{ $snapshot['seller_name'] }}</td>@endif<td>{{ \Carbon\Carbon::parse($snapshot['from'])->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($snapshot['to'])->format('d/m/Y') }}</td><td class="num">{{ number_format($snapshot['total'],2,',','.') }}</td><td class="num">{{ number_format($account?->paid_amount??0,2,',','.') }}</td><td class="num">{{ number_format($account?->balance??$snapshot['total'],2,',','.') }}</td><td><span class="badge {{ $account?->paid_at?'':'warning' }}">{{ $account?->paid_at?'Pago':(bccomp($account?->paid_amount??'0','0',2)>0?'Pagamento parcial':'A pagar') }}</span></td></tr>
+@empty<tr><td colspan="7" class="empty">Nenhum fechamento registrado.</td></tr>@endforelse
+</tbody></table></div>{{ $closures->links() }}</section>

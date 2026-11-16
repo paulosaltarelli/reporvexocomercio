@@ -27,7 +27,7 @@ class CompanySetupController extends Controller
             'users'=>User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'sellers'=>Seller::where('active',true)->orderBy('name')->get(),
             'accessState'=>app(AccessProfiles::class)->state(),'profileService'=>app(AccessProfiles::class),
             'setup'=>CompanyOperation::find(1), 'profile'=>BusinessProfile::find(1)??new BusinessProfile(['legal_name'=>$r->attributes->get('tenant')->name]), 'pending'=>$operations->pending(),
-            'audit'=>DB::connection('tenant')->table('company_operation_audits')->latest('id')->limit(10)->get(['action','version','created_at']),
+            'audit'=>DB::connection('tenant')->table('company_operation_audits')->whereIn('action',['configuration','company_changed','completed','setup_step','nfse_draft'])->latest('id')->limit(10)->get(['action','version','created_at']),
         ] + app(BusinessController::class)->viewData($r) + $this->nfseData());
     }
     private function nfseData(): array
