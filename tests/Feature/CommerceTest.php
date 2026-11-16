@@ -1478,7 +1478,7 @@ class CommerceTest extends TestCase
         foreach(app('router')->getRoutes() as $route){
             if(!in_array(\App\Http\Middleware\TenantAuthenticated::class,$route->middleware(),true))continue;
             $uri=preg_replace('/\{[^}]+\}/','1',$route->uri());$uri=str_replace('app/1','app/a',$uri);
-            if(str_contains($route->uri(),'{kind}'))$uri=preg_replace('#catalog/1#','catalog/groups',$uri);
+            if(str_contains($route->uri(),'{kind}')){$uri=preg_replace('#catalog/1#','catalog/groups',$uri);$uri=preg_replace('#quick-create/1#','quick-create/customers',$uri);}
             $request=\Illuminate\Http\Request::create('/'.$uri,in_array('POST',$route->methods(),true)?'POST':'GET');
             $route=clone $route;$route->bind($request);$request->setRouteResolver(fn()=>$route);
             $permission=\App\Access\Permissions::request($request);
@@ -2878,6 +2878,56 @@ class CommerceTest extends TestCase
         $ids=$this->race(null,fn()=>app(Checkout::class)->complete($input,$this->user->id)->id);$this->assertSame($ids[0],$ids[1]);$this->assertSame(2,FinancialEntry::count());$this->assertSame(2,\App\Models\Payment::count());
         $sale=Sale::findOrFail($ids[0]);try{app(\App\Fiscal\NfcePayload::class)->build($this->a,$sale,new \App\Models\FiscalIssuer,[]);$this->fail('Surcharge omitted from fiscal total.');}catch(ValidationException $e){$this->assertStringContainsString('acréscimo',$e->errors()['fiscal'][0]);}
         app(Checkout::class)->cancel($sale->id,$this->user->id,true);$this->assertSame('3.09',FinancialEntry::where('direction','out')->firstOrFail()->paid_amount);
+    }
+
+    private function quickItem(array $changes=[]): array
+    {return array_replace(['request_key'=>(string)Str::uuid(),'name'=>'Item rápido QA','product_group_id'=>$this->product->product_group_id,'unit'=>'UN','sale_price'=>'75.00','controls_stock'=>0],$changes);}
+    public function test_quick_customer_is_saved_selected_by_id_and_retries_do_not_duplicate(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$data=['request_key'=>(string)Str::uuid(),'name'=>'Cliente rápido','document'=>'529.982.247-25','phone'=>'35999999999'];
+        $response=$this->postJson('/app/a/quick-create/customers',$data)->assertOk()->assertJsonPath('item.name','Cliente rápido');$id=$response->json('item.id');
+        $this->postJson('/app/a/quick-create/customers',$data)->assertOk()->assertJsonPath('item.id',$id);
+        $this->postJson('/app/a/quick-create/customers',array_replace($data,['name'=>'Outro nome']))->assertUnprocessable()->assertJsonValidationErrors('request_key');
+        $this->postJson('/app/a/quick-create/customers',array_replace($data,['request_key'=>(string)Str::uuid()]))->assertUnprocessable()->assertJsonValidationErrors('document');
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(1,\App\Models\Customer::count());$this->assertSame('52998224725',\App\Models\Customer::findOrFail($id)->document);$this->assertSame(0,Sale::count());
+    }
+    public function test_quick_product_stock_and_service_reuse_catalog_rules_without_creating_sale(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$input=$this->quickItem(['controls_stock'=>1,'initial_quantity'=>'2','initial_cost'=>'30']);
+        $response=$this->postJson('/app/a/quick-create/products',$input)->assertOk()->assertJsonPath('item.type','product')->assertJsonPath('item.quantity','2.000');$id=$response->json('item.id');
+        $this->postJson('/app/a/quick-create/products',$input)->assertOk()->assertJsonPath('item.id',$id);
+        app(TenantConnection::class)->connect($this->a);$this->assertSame('30.0000',Product::findOrFail($id)->average_cost);$this->assertSame(1,StockMovement::where('product_id',$id)->count());
+        $this->assertSame(0,Sale::count());$this->assertSame(0,FinancialEntry::count());
+        $service=$this->postJson('/app/a/quick-create/services',$this->quickItem(['name'=>'Análise técnica','sale_price'=>'0']))->assertOk()->assertJsonPath('item.type','service')->assertJsonPath('item.price','0.00');
+        app(TenantConnection::class)->connect($this->a);$this->assertFalse(Product::findOrFail($service->json('item.id'))->controls_stock);
+        $this->get('/app/a/desk')->assertOk()->assertSee('quick-create-dialog')->assertSee('Novo produto')->assertSee('Novo cliente');
+        $this->get('/app/a/documents/new?type=work_order')->assertOk()->assertSee('quick-create-dialog');
+    }
+    public function test_quick_permissions_do_not_grant_stock_or_update_existing_products(): void
+    {
+        $profile=$this->accessProfile(['products.manage','customers.manage','sales.create'],'Cadastro no atendimento');$operator=$this->profiledOperator($profile);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id]);
+        $this->postJson('/app/a/quick-create/products',$this->quickItem(['controls_stock'=>1,'initial_quantity'=>'1','initial_cost'=>'10']))->assertForbidden();
+        $created=$this->postJson('/app/a/quick-create/products',$this->quickItem(['id'=>$this->product->id,'name'=>'Novo sem substituir']))->assertOk();
+        app(TenantConnection::class)->connect($this->a);$this->assertNotSame($this->product->id,$created->json('item.id'));$this->assertSame('Produto teste',$this->product->fresh()->name);$this->assertSame(0,StockMovement::count());
+        $this->user->update(['role'=>'operator']);$this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->postJson('/app/a/quick-create/customers',['request_key'=>(string)Str::uuid(),'name'=>'Negado'])->assertForbidden();$this->postJson('/app/a/quick-create/services',$this->quickItem())->assertForbidden();
+        $this->get('/app/a/desk')->assertOk()->assertDontSee('data-quick-create=',false);
+    }
+    public function test_quick_validation_rolls_back_and_respects_catalog_modes_and_duplicates(): void
+    {
+        $quick=app(\App\Services\QuickCreate::class);
+        try{$quick->create('products',$this->quickItem(['sku'=>'SKU-1','controls_stock'=>1,'initial_quantity'=>'2','initial_cost'=>'5']),$this->user->id);$this->fail('Duplicate SKU accepted.');}catch(ValidationException){$this->assertSame(1,Product::count());$this->assertSame(0,StockMovement::count());}
+        foreach(['ABC','11111111111'] as $document){try{$quick->create('customers',['request_key'=>(string)Str::uuid(),'name'=>'Inválido','document'=>$document],$this->user->id);$this->fail('Invalid taxpayer document accepted.');}catch(ValidationException){$this->assertSame(0,\App\Models\Customer::count());}}
+        $this->product->update(['active'=>false]);
+        app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['catalog_mode'=>'services','inventory'=>false,'nfce'=>false,'nfe'=>false]),$this->user->id);
+        try{$quick->create('products',$this->quickItem(),$this->user->id);$this->fail('Disabled catalog type accepted.');}catch(ValidationException){$this->assertSame(1,Product::count());}
+    }
+    public function test_concurrent_quick_customer_and_product_retries_create_one_record(): void
+    {
+        $quick=app(\App\Services\QuickCreate::class);$input=['request_key'=>(string)Str::uuid(),'name'=>'Concorrente'];
+        $ids=$this->race(null,fn()=>$quick->create('customers',$input,$this->user->id)['id']);$this->assertSame($ids[0],$ids[1]);$this->assertSame(1,\App\Models\Customer::count());
+        $item=$this->quickItem(['controls_stock'=>1,'initial_quantity'=>'1','initial_cost'=>'10']);$ids=$this->race(null,fn()=>$quick->create('products',$item,$this->user->id)['id']);$this->assertSame($ids[0],$ids[1]);$this->assertSame(1,StockMovement::count());
     }
 
     private function operationPayload(array $changes=[]): array

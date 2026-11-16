@@ -437,6 +437,14 @@ class SharedDatabaseTest extends TestCase
         try{$fees->quote('50','credit',['card_brand'=>$brand,'card_installments'=>1,'fee_policy'=>'pass','rate_seen'=>'3','fee_reviewed'=>1,'charged_seen'=>'51.55']);$this->fail('Foreign card contract accepted.');}catch(\Illuminate\Validation\ValidationException){$this->assertSame(0,Payment::count());}
     }
 
+    public function test_shared_quick_customer_item_and_idempotency_are_scoped_to_store(): void
+    {
+        $a=$this->catalog($this->a);$quick=app(\App\Services\QuickCreate::class);$data=['request_key'=>(string)Str::uuid(),'name'=>'Cliente rápido privado','document'=>'11144477735'];
+        $customer=$quick->create('customers',$data,$a['owner']->id);$item=$quick->create('services',['request_key'=>(string)Str::uuid(),'name'=>'Serviço rápido privado','product_group_id'=>$a['group']->id,'unit'=>'UN','sale_price'=>'15','controls_stock'=>0],$a['owner']->id);
+        $owner=$this->connect($this->b);$this->assertNull(Customer::find($customer['id']));$this->assertNull(Product::find($item['id']));$b=$quick->create('customers',$data,$owner->id);$this->assertNotSame($customer['id'],$b['id']);$this->assertSame(1,Customer::where('name','Cliente rápido privado')->count());
+        $this->assertSame(0,Product::where('name','Serviço rápido privado')->count());
+    }
+
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
         $owner = $this->connect($this->a);
