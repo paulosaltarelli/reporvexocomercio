@@ -144,6 +144,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('finance', [OperationsController::class, 'createEntry']);
         Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
         Route::get('payment-methods',[\App\Http\Controllers\PaymentMethodController::class,'index'])->name('payment.methods');
+        Route::post('payment-methods/card-brands',[\App\Http\Controllers\PaymentMethodController::class,'saveBrand'])->name('payment.brands.save');
         Route::post('payment-methods',[\App\Http\Controllers\PaymentMethodController::class,'save'])->name('payment.methods.save');
         Route::get('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'index'])->name('access.profiles');
         Route::post('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'save'])->name('access.profiles.save');

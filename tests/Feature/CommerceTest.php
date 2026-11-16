@@ -2810,6 +2810,76 @@ class CommerceTest extends TestCase
         $this->assertSame(1,\App\Models\OperationRecord::where('action','cash_opened')->count());
     }
 
+    private function cardBrand(array $changes=[]): string
+    {
+        $service=app(\App\Services\CardFees::class);
+        $service->save(array_replace(['version'=>\App\Models\CompanyOperation::find(1)?->version??0,'name'=>'Visa · contrato QA','type'=>'credit','policy'=>'absorb','active'=>1,'rates'=>[1=>'3.00',2=>'4.00',3=>'5.00']],$changes),$this->user->id);
+        return array_key_last($service->all());
+    }
+    private function cardPayment(string $brand,array $changes=[]): array
+    {
+        return array_replace(['payment_option'=>'credit','amount'=>'100','paid'=>1,'card_brand'=>$brand,'card_installments'=>1,'fee_policy'=>'absorb','rate_seen'=>'3.00'],$changes);
+    }
+    public function test_card_fee_absorbed_and_passed_preserve_base_commission_and_net_receipts(): void
+    {
+        $brand=$this->cardBrand();$sale=$this->commissionSale('100',true,null,['payments'=>[$this->cardPayment($brand)]]);
+        $this->assertSame('100.00',$sale->total);$this->assertSame('10.00',$sale->commission_total);
+        $rows=app(\App\Services\SalePayments::class)->rows($sale->id);$this->assertSame('3.00',$rows[0]['fee']);$this->assertSame('97.00',$rows[0]['merchant_net']);
+        $this->assertSame('3.00',FinancialEntry::where('direction','out')->firstOrFail()->paid_amount);
+        $pass=$this->commissionSale('100',true,null,['payments'=>[$this->cardPayment($brand,['fee_policy'=>'pass','fee_reviewed'=>1,'charged_seen'=>'103.09'])]]);
+        $this->assertSame('103.09',$pass->total);$this->assertSame('100.00',$pass->items->first()->total);$this->assertSame('10.00',$pass->commission_total);
+        $row=app(\App\Services\SalePayments::class)->rows($pass->id)[0];$this->assertSame('3.09',$row['fee']);$this->assertSame('100.00',$row['merchant_net']);
+        $summary=app(\App\Services\CashService::class)->summary(now()->toDateString());$this->assertSame('197.00',$summary['totals_by_method']['credit']['net']);
+        $this->assertSame('10.00',app(\App\Services\CommissionSettlements::class)->preview($this->commissionInput($pass))['lines'][1]['eligible']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$this->get('/app/a/sales/'.$pass->id)->assertOk()->assertSee('Acréscimo do pagamento em cartão')->assertSee('103,09');
+    }
+    public function test_single_card_http_and_document_card_surcharge_are_server_authoritative(): void
+    {
+        $brand=$this->cardBrand();$this->product->update(['controls_stock'=>false]);$this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $input=['request_key'=>(string)Str::uuid(),'payment_option'=>'credit','payment_method'=>'cash','paid'=>1,'card_brand'=>$brand,'card_installments'=>3,'fee_policy'=>'pass','rate_seen'=>'5.00','charged_seen'=>'105.26','fee_reviewed'=>1,'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']]];
+        $this->post('/app/a/sales',$input)->assertRedirect()->assertSessionHasNoErrors();app(TenantConnection::class)->connect($this->a);
+        $sale=Sale::firstOrFail();$this->assertSame('105.26',$sale->total);$this->assertSame('credit',$sale->payment_method);$this->assertTrue($sale->paid);
+        $this->assertSame(3,app(\App\Services\SalePayments::class)->rows($sale->id)[0]['card_installments']);
+        $doc=app(Documents::class)->create(['request_key'=>(string)Str::uuid(),'type'=>'quote','items'=>$input['items']],$this->user->id);app(Documents::class)->transition($doc->id,'approved');
+        $converted=app(Documents::class)->invoice($doc->id,$input,$this->user->id);$this->assertSame('105.26',$converted->total);$this->assertSame('100.00',$doc->fresh()->total);
+        $this->assertSame($converted->id,app(Documents::class)->invoice($doc->id,$input,$this->user->id)->id);
+    }
+    public function test_card_rate_review_undefined_installments_wrong_brand_and_stale_rates_roll_back(): void
+    {
+        $brand=$this->cardBrand();
+        foreach([['fee_policy'=>'pass'],['fee_policy'=>'pass','fee_reviewed'=>1,'charged_seen'=>'103.00'],['card_installments'=>4],['rate_seen'=>'2.00'],['card_brand'=>'unknown'],['payment_option'=>'pix']] as $change){
+            try{$this->commissionSale('100',true,null,['payments'=>[$this->cardPayment($brand,$change)]]);$this->fail('Unreviewed or incompatible fee accepted.');}catch(ValidationException){$this->assertSame(0,Sale::count());$this->assertSame(0,FinancialEntry::count());}
+        }
+        $this->expectException(ValidationException::class);$this->commissionSale('100',true,null,['payment_method'=>'credit']);
+    }
+    public function test_card_fee_partial_sale_charges_only_card_part_and_keeps_historical_contract(): void
+    {
+        $brand=$this->cardBrand();$input=['payments'=>[['payment_option'=>'cash','amount'=>'50','paid'=>1],$this->cardPayment($brand,['amount'=>'50','paid'=>0,'card_installments'=>3,'rate_seen'=>'5.00','fee_policy'=>'pass','fee_reviewed'=>1,'charged_seen'=>'52.63','due_date'=>now()->addDay()->toDateString()])]];
+        $sale=$this->commissionSale('100',true,null,$input);$this->assertSame('102.63',$sale->total);$this->assertFalse($sale->paid);
+        $this->assertSame(['50.00','17.54','17.54','17.55'],$sale->entries()->orderBy('id')->pluck('amount')->all());
+        $rows=app(\App\Services\SalePayments::class)->rows($sale->id);$this->assertSame('2.63',$rows[1]['fee']);$this->assertSame('50.00',$rows[1]['merchant_net']);
+        $feeIds=$rows[1]['fee_entry_ids'];$this->assertSame('2.63',(string)FinancialEntry::whereIn('id',$feeIds)->sum('amount'));$this->assertSame('0.00',(string)FinancialEntry::whereIn('id',$feeIds)->sum('paid_amount'));
+        $this->cardBrand(['id'=>$brand,'name'=>'Contrato alterado','active'=>0,'rates'=>[1=>'10.00']]);
+        $this->assertSame('Visa · contrato QA',app(\App\Services\SalePayments::class)->rows($sale->id)[1]['brand_name']);
+        app(Checkout::class)->cancel($sale->id,$this->user->id,true);$this->assertSame(count($feeIds),FinancialEntry::whereIn('id',$feeIds)->whereNotNull('cancelled_at')->count());
+    }
+    public function test_card_brand_catalog_permissions_optimistic_version_and_debit_rate_validation(): void
+    {
+        $brand=$this->cardBrand();$version=\App\Models\CompanyOperation::find(1)->version;
+        try{app(\App\Services\CardFees::class)->save(['version'=>0,'name'=>'Stale','type'=>'credit','policy'=>'absorb','active'=>1,'rates'=>[1=>'2']],$this->user->id);$this->fail('Stale config accepted.');}catch(ValidationException){$this->assertCount(1,app(\App\Services\CardFees::class)->all());}
+        try{$this->cardBrand(['name'=>'Débito','type'=>'debit','rates'=>[2=>'1']]);$this->fail('Debit installment accepted.');}catch(ValidationException){$this->assertSame($version,\App\Models\CompanyOperation::find(1)->version);}
+        $debit=$this->cardBrand(['name'=>'Débito','type'=>'debit','rates'=>[1=>'0.00']]);$this->assertSame('0.00',app(\App\Services\CardFees::class)->all()[$debit]['rates'][1]);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$this->get('/app/a/payment-methods')->assertOk()->assertSee('Bandeiras e taxas por parcela');
+        app(TenantConnection::class)->connect($this->a);$this->user->update(['role'=>'operator']);$this->post('/app/a/payment-methods/card-brands',[])->assertForbidden();
+    }
+    public function test_concurrent_card_fee_sale_records_one_fee_expense_and_blocks_incomplete_fiscal_total(): void
+    {
+        $brand=$this->cardBrand();$this->product->update(['controls_stock'=>false]);$input=['request_key'=>(string)Str::uuid(),'payments'=>[$this->cardPayment($brand,['fee_policy'=>'pass','fee_reviewed'=>1,'charged_seen'=>'103.09'])],'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']]];
+        $ids=$this->race(null,fn()=>app(Checkout::class)->complete($input,$this->user->id)->id);$this->assertSame($ids[0],$ids[1]);$this->assertSame(2,FinancialEntry::count());$this->assertSame(2,\App\Models\Payment::count());
+        $sale=Sale::findOrFail($ids[0]);try{app(\App\Fiscal\NfcePayload::class)->build($this->a,$sale,new \App\Models\FiscalIssuer,[]);$this->fail('Surcharge omitted from fiscal total.');}catch(ValidationException $e){$this->assertStringContainsString('acréscimo',$e->errors()['fiscal'][0]);}
+        app(Checkout::class)->cancel($sale->id,$this->user->id,true);$this->assertSame('3.09',FinancialEntry::where('direction','out')->firstOrFail()->paid_amount);
+    }
+
     private function operationPayload(array $changes=[]): array
     {
         return array_replace(\App\Services\CompanyOperations::DEFAULTS,['version'=>0],$changes);

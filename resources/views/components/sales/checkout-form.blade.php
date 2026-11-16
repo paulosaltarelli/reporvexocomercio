@@ -17,8 +17,10 @@
             <div class="field"><label for="pos-paid">Recebimento</label><select id="pos-paid" name="paid"><option value="1" @selected($checkoutPaid==='1')>Recebido agora</option><option value="0" @selected($checkoutPaid==='0')>A receber</option></select></div>
             <div id="pos-credit-fields" @if($checkoutPaid!=='0') hidden @endif><div class="field"><label for="pos-due-date">Primeiro vencimento</label><input id="pos-due-date" type="date" name="due_date" value="{{ old('due_date') }}"></div><div class="field"><label for="pos-installments">Parcelas</label><input id="pos-installments" name="installments" type="number" min="1" max="24" step="1" value="{{ old('installments',1) }}" required></div></div>
             <div id="pos-cash-fields"><div class="field"><label for="pos-cash-received">Valor entregue (opcional)</label><input id="pos-cash-received" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal" placeholder="0,00"></div><div class="pos-change"><span>Troco</span><strong id="pos-change">—</strong></div></div>
+            @include('components.sales.card-fees')
             </div>
             @include('components.sales.split-payments')
+            <p class="card-sale-total notice" role="status" hidden></p>
             <details class="pos-optionals" @if(old('customer_id',$selectedCustomerId??null)||$errors->hasAny(['customer_id','salesperson_id','notes'])) open @endif><summary>Cliente e vendedor <span>opcional</span></summary><div class="pos-optionals-content">
                 <div class="field"><label for="pos-customer">Cliente</label><select id="pos-customer" name="customer_id"><option value="">Consumidor final</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" @selected((string)old('customer_id',$selectedCustomerId??null)===(string)$customer->id)>{{ $customer->name }}</option>@endforeach</select></div>
                 @include('components.sales.seller-field')

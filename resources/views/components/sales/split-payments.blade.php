@@ -16,5 +16,5 @@
 <div class="field split-due"><label>Primeiro vencimento</label><input data-field="due_date" type="date" min="{{ now()->toDateString() }}"></div>
 <div class="field split-due"><label>Parcelas mensais</label><input data-field="installments" type="number" min="1" max="24" value="1"></div>
 <div class="field split-cash"><label>Dinheiro entregue (opcional)</label><input data-field="cash_received" type="number" min="0" max="999999999999.99" step="0.01"><small class="split-change hint"></small></div>
-</div><button type="button" class="text-button split-remove">Remover forma</button></fieldset></template>
+</div>@include('components.sales.card-fees',['splitCardFields'=>true])<button type="button" class="text-button split-remove">Remover forma</button></fieldset></template>
 @push('scripts')<script>window.vendraSplitInitial=@json(array_values(old('payments',[])));</script><script src="/split-payments.js?v={{ filemtime(public_path('split-payments.js')) }}"></script>@endpush

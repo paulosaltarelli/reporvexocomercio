@@ -37,7 +37,7 @@ class Checkout
                 'customer_id' => $document->customer_id, 'items' => $document->items,
                 'notes' => 'Origem: documento #'.$document->id,
             ]), $userId, $document, $assignedSeller);
-            if (bccomp($sale->total, $document->total, 2) !== 0) {
+            if (bccomp(bcsub($sale->total,app(SalePayments::class)->passedTotal($sale->id),2), $document->total, 2) !== 0) {
                 throw ValidationException::withMessages(['items' => 'O valor da venda não corresponde ao documento aprovado.']);
             }
             $document->update(['sale_id' => $sale->id, 'status' => 'invoiced']);
@@ -110,6 +110,9 @@ class Checkout
                 Decimal::input($commissionTotal, 2, 'items');
                 $sale->update(['total' => $total, 'cost_total' => $cost, 'subtotal' => $subtotal,
                     'discount_total' => $discountTotal, 'commission_total' => $commissionTotal]);
+                if (!$split && (!empty($data['card_brand']) || (in_array($method,['credit','debit'],true)&&app(CardFees::class)->options($method)))){
+                    $data['payments']=[array_merge($data,['payment_option'=>$choice['id'],'amount'=>$total])];$split=true;
+                }
                 if ($split) {
                     app(SalePayments::class)->record($sale,$data['payments'],$userId);
                     return $sale->fresh();
@@ -160,6 +163,8 @@ class Checkout
                 return;
             }
             app(FinancialService::class)->cancelSale($sale->id, $userId, $refundConfirmed);
+            $feeIds=[];foreach(app(SalePayments::class)->rows($sale->id) as $part)$feeIds=array_merge($feeIds,$part['fee_entry_ids']??[]);
+            foreach(\App\Models\FinancialEntry::whereIn('id',$feeIds)->orderBy('id')->lockForUpdate()->get() as $expense){if(bccomp($expense->paid_amount,'0',2)===0)$expense->update(['cancelled_at'=>now()]);}
             foreach ($sale->items()->whereNotNull('product_id')->orderBy('product_id')->get() as $line) {
                 // Historical participation, not today's product type, determines a stock return.
                 $hadStock = StockMovement::where('sale_id', $sale->id)->where('product_id', $line->product_id)->where('type', 'sale')->exists();
