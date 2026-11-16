@@ -62,17 +62,17 @@ class ReportController extends Controller
                 };
                 if ($kind === 'stock') {
                     $write(['SKU', 'Produto', 'Grupo', 'Unidade', 'Saldo atual', 'Custo médio atual', 'Valor atual do estoque', 'Preço venda', 'Margem alvo']);
-                    foreach (Product::with('group')->where('type','product')->where('controls_stock',true)->orderBy('id')->cursor() as $p) {
+                    foreach (Product::with('group')->where('type','product')->where('controls_stock',true)->orderBy('id')->lazyById(500) as $p) {
                         $write([$p->sku, $p->name, $p->group->name, $p->unit, $p->quantity, $p->average_cost, bcmul($p->quantity, $p->average_cost, 4), $p->sale_price, $p->margin ?? $p->group->margin]);
                     }
                 } elseif ($kind === 'movements') {
                     $write(['Data', 'Produto', 'Tipo', 'Quantidade', 'Custo unitário', 'Saldo após', 'Custo médio após', 'Motivo', 'Usuário']);
-                    foreach (StockMovement::with('product')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('id')->cursor() as $m) {
+                    foreach (StockMovement::with('product')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('id')->lazyById(500) as $m) {
                         $write([$m->created_at, $m->product->name, $m->type, $m->quantity, $m->unit_cost, $m->balance, $m->average_cost, $m->reason, $m->user_id]);
                     }
                 } elseif ($kind === 'sales') {
                     $write(['Venda', 'Data venda', 'Cliente', 'Situação', 'Total', 'Custo histórico', 'Quitada']);
-                    foreach (Sale::with('customer')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('id')->cursor() as $s) {
+                    foreach (Sale::with('customer')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('id')->lazyById(500) as $s) {
                         $write([$s->id, $s->created_at, $s->customer?->name, $s->status, $s->total, $s->cost_total, $s->paid ? 'Sim' : 'Não']);
                     }
                 } elseif ($kind === 'payments') {

@@ -5,15 +5,16 @@
 @section('content')<form class="panel" method="post" action="{{ route('product.save',['company'=>$tenant->slug,'id'=>$product->id]) }}">
 @csrf
 @php($hasStockBalance=bccomp((string)($product->quantity??'0'),'0',3)>0)
-@php($itemType=old('type',$product->type??'product'))
-@php($stockEnabled=$hasStockBalance?true:(bool)old('controls_stock',$product->controls_stock??true))
+@php($itemType=old('type',$product->exists?$product->type:($operationConfig['catalog_mode']==='services'?'service':'product')))
+@php($stockEnabled=$hasStockBalance?true:($operationConfig['inventory'] && (bool)old('controls_stock',$product->controls_stock??true)))
 @if($groups->isEmpty())
 <div class="form-note" role="status">Antes do primeiro cadastro, <a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>'groups']) }}">cadastre um grupo</a> para definir a margem padrão.</div>
 @endif
+@if(!$operationConfig['commissions'] || !$operationConfig['discounts'])<p class="form-note">As configurações da empresa prevalecem sobre os percentuais abaixo: comissões {{ $operationConfig['commissions']?'habilitadas':'desabilitadas' }}; descontos {{ $operationConfig['discounts']?'habilitados':'desabilitados' }}.</p>@endif
 <div class="form-note">A margem é calculada sobre o preço final: <strong>custo ÷ (1 − margem/100)</strong>. Exemplo: custo de R$ 60,00 e margem de 40% resultam em R$ 100,00. Essa sugestão não inclui impostos e despesas.</div>
 <div class="form-grid">
-<div class="field"><label for="item-type">Tipo do cadastro</label><select id="item-type" name="type" required><option value="product" @selected($itemType==='product')>Produto</option><option value="service" @selected($itemType==='service') @disabled($hasStockBalance)>Serviço</option></select><small class="hint">Serviços não movimentam estoque.</small></div>
-<div class="field"><input id="controls-stock-hidden" type="hidden" name="controls_stock" value="{{ $hasStockBalance?'1':'0' }}"><label class="checkbox-line"><input id="controls_stock" type="checkbox" name="controls_stock" value="1" @checked($stockEnabled && $itemType==='product') @disabled($hasStockBalance)> Controlar estoque deste produto</label><small class="hint" id="stock-control-note">@if($hasStockBalance)Há saldo de {{ number_format($product->quantity,3,',','.') }} {{ $product->unit }}. A opção permanece ativa enquanto houver saldo.@else
+<div class="field"><label for="item-type">Tipo do cadastro</label><select id="item-type" name="type" required><option value="product" @selected($itemType==='product') @disabled(!$product->exists && $operationConfig['catalog_mode']==='services')>Produto</option><option value="service" @selected($itemType==='service') @disabled($hasStockBalance || (!$product->exists && $operationConfig['catalog_mode']==='products'))>Serviço</option></select><small class="hint">Serviços não movimentam estoque.</small></div>
+<div class="field"><input id="controls-stock-hidden" type="hidden" name="controls_stock" value="{{ $hasStockBalance?'1':'0' }}"><label class="checkbox-line"><input id="controls_stock" type="checkbox" name="controls_stock" value="1" @checked($stockEnabled && $itemType==='product') @disabled($hasStockBalance || !$operationConfig['inventory'])> Controlar estoque deste produto</label><small class="hint" id="stock-control-note">@if($hasStockBalance)Há saldo de {{ number_format($product->quantity,3,',','.') }} {{ $product->unit }}. A opção permanece ativa enquanto houver saldo.@else
 Desmarque para vender sem controlar quantidade. Informe o custo de referência para a precificação.@endif</small></div>
 <div class="field" id="reference-cost-field"><label for="reference_cost">Custo de referência (R$)</label><input id="reference_cost" name="reference_cost" type="number" min="0" max="999999999.9999" step="0.0001" value="{{ old('reference_cost',$product->reference_cost??'0') }}"><small class="hint">Estimativa do custo unitário para serviços ou produtos sem estoque. Não gera movimentação de estoque.</small></div>
 @foreach(['name'=>'Nome do produto ou serviço','sku'=>'SKU / código interno','barcode'=>'Código de barras'] as $field=>$label)<div class="field"><label for="{{ $field }}">{{ $label }}</label><input id="{{ $field }}" name="{{ $field }}" value="{{ old($field,$product->$field) }}"
@@ -64,6 +65,7 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     const averageCost = @json((string)($product->average_cost ?? '0'));
     const hasStockBalance = @json($hasStockBalance);
     const typeField=document.querySelector('#item-type');
+    const companyInventory=@json($operationConfig['inventory']);
     const stockField=document.querySelector('#controls_stock');
     const stockHidden=document.querySelector('#controls-stock-hidden');
     const referenceCost=document.querySelector('#reference_cost');
@@ -81,7 +83,8 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     function controlsStock(){return typeField.value==='product' && stockField.checked;}
     function asValue(cents){return (cents/100n).toString()+'.'+(cents%100n).toString().padStart(2,'0');}
     function syncItemType(){
-        if(hasStockBalance){typeField.value='product';stockField.checked=true;stockField.disabled=true;stockHidden.value='1';}
+        if(!companyInventory){stockField.checked=false;stockField.disabled=true;stockHidden.value='0';}
+        else if(hasStockBalance){typeField.value='product';stockField.checked=true;stockField.disabled=true;stockHidden.value='1';}
         else{
             if(typeField.value==='service'){
                 if(previousType==='product')productStockChoice=stockField.checked;

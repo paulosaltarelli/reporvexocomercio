@@ -17,12 +17,14 @@ final class QueueNfe
 {
     public function enqueue(Tenant $tenant, int $saleId, int $userId, array $operation): FiscalDocument
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
 
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $operation) {
+            app(\App\Services\CompanyOperations::class)->lock();
+            app(\App\Services\CompanyOperations::class)->requireModule('nfe');
             $sale = Sale::whereKey($saleId)->lockForUpdate()->firstOrFail();
             $cnpj = TaxpayerDocument::normalize((string) BusinessProfile::findOrFail(1)->document);
             $issuer = FiscalIssuer::where('document', $cnpj)->where('environment', 'homologation')->lockForUpdate()->first();
@@ -63,7 +65,7 @@ final class QueueNfe
 
     public function cancel(Tenant $tenant, int $documentId, string $reason): void
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId, $reason) {
@@ -87,7 +89,7 @@ final class QueueNfe
 
     public function consult(Tenant $tenant, int $documentId): void
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId) {
@@ -105,7 +107,7 @@ final class QueueNfe
 
     public function resend(Tenant $tenant, int $documentId, int $userId): void
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);

@@ -24,6 +24,7 @@ class Checkout
     public function completeFromDocument(int $documentId, array $payment, int $userId): Sale
     {
         return DB::connection('tenant')->transaction(function () use ($documentId, $payment, $userId) {
+            app(CompanyOperations::class)->lock();
             $document = Document::lockForUpdate()->findOrFail($documentId);
             if ($document->sale_id) return Sale::findOrFail($document->sale_id);
             $approved = ($document->type === 'quote' && $document->status === 'approved')
@@ -49,6 +50,7 @@ class Checkout
     {
         try {
             return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller) {
+                $configuration = app(CompanyOperations::class)->lock();
                 $existing = Sale::where('request_key', $data['request_key'])->first();
                 if ($existing) {
                     if ($document && (int) $existing->document_id !== $document->id) {
@@ -62,7 +64,7 @@ class Checkout
                     isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null);
                 if (! $seller) throw new \LogicException('O vendedor do documento não foi resolvido pelo fluxo autorizado.');
                 $method = FinancialService::paymentMethod((string) $data['payment_method']);
-                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
+                $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'commission_basis'=>$configuration['commission_basis'], 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);
@@ -80,9 +82,10 @@ class Checkout
                     $product = $line['kind'] === 'product';
                     $item = $product ? Product::where('active', true)->lockForUpdate()->findOrFail($line['id'])
                         : Product::resolveLegacyService((int) $line['id'], true);
+                    app(CompanyOperations::class)->assertItem($item instanceof Product ? $item->type : 'service', $configuration);
                     $terms = $document ? $rules->fromDocument($item, $line, (int) $document->commercial_version) : $rules->quote($item, $line);
                     $qty = $terms['quantity'];
-                    $unitCost = $item instanceof Product ? $item->pricingCost() : $item->cost;
+                    $unitCost = $item instanceof Product ? ($configuration['inventory'] ? $item->pricingCost() : (string)$item->reference_cost) : $item->cost;
                     $amount = $terms['total'];
                     SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
@@ -90,7 +93,7 @@ class Checkout
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
                     $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
                     $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);
-                    if ($product && $item->controlsStock()) {
+                    if ($configuration['inventory'] && $product && $item->controlsStock()) {
                         app(Inventory::class)->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, 'sale-'.$sale->id.'-'.$i, $sale->id);
                     }
                     $total = bcadd($total, $amount, 2);
@@ -144,6 +147,7 @@ class Checkout
     public function cancel(int $id, int $userId, bool $refundConfirmed = false): void
     {
         DB::connection('tenant')->transaction(function () use ($id, $userId, $refundConfirmed) {
+            app(CompanyOperations::class)->lock();
             $sale = Sale::lockForUpdate()->findOrFail($id);
             if ($sale->status === 'cancelled') {
                 return;

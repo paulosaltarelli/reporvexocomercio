@@ -18,7 +18,7 @@ final class FiscalReadiness
 
     public function inspect(Tenant $tenant, ?Sale $sale = null): array
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             throw ValidationException::withMessages(['fiscal' => 'Contexto da empresa inválido.']);
         }
         $profile = BusinessProfile::find(1);
@@ -76,7 +76,7 @@ final class FiscalReadiness
         if (! $configuredIssuer?->enabled) {
             $add('transport.disabled', 'A emissão depende da configuração de homologação em Minha empresa. Registrar conferência não emite nota.');
         }
-        if ($tenant->fiscal_demonstration ?? true) {
+        if (($tenant->fiscal_demonstration ?? true) || $tenant->is_demonstration) {
             $add('production.demonstration', 'Empresa classificada como demonstração: produção fiscal bloqueada.');
         }
 

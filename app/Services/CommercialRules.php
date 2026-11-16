@@ -72,7 +72,11 @@ class CommercialRules
 
     public function quote(Product|Service $item, array $line): array
     {
+        $configuration=app(CompanyOperations::class)->current();
+        app(CompanyOperations::class)->assertItem($item instanceof Product ? $item->type : 'service',$configuration);
         $policy = $this->policy($item);
+        if (!$configuration['discounts']) { $policy['enabled']=false; $policy['limit']='0.00'; }
+        if (!$configuration['commissions']) $policy['commission']='0.00';
         $catalog = Decimal::input((string) ($item instanceof Product ? $item->sale_price : $item->price), 2, 'items');
         if (isset($line['catalog_price_seen']) && bccomp(Decimal::input((string) $line['catalog_price_seen'], 2, 'items'), $catalog, 2) !== 0) {
             throw ValidationException::withMessages(['items' => 'O preço de cadastro mudou. Atualize a seleção e confira o item antes de concluir.']);
@@ -85,7 +89,11 @@ class CommercialRules
     /** Server-only approved document snapshot; this method is never selected by request flags. */
     public function fromDocument(Product|Service $item, array $line, int $version): array
     {
+        $configuration=app(CompanyOperations::class)->current();
+        app(CompanyOperations::class)->assertItem($item instanceof Product ? $item->type : 'service',$configuration);
         $policy = $this->policy($item);
+        if (!$configuration['discounts']) { $policy['enabled']=false; $policy['limit']='0.00'; }
+        if (!$configuration['commissions']) $policy['commission']='0.00';
         if ($version === 0) {
             // Legacy agreed prices are historical baselines, not newly inferred discounts.
             $terms = $this->calculate((string) $line['unit_price'], (string) $line['unit_price'],

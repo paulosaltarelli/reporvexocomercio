@@ -68,8 +68,16 @@ class CommerceController extends Controller
 
     public function products(Request $r)
     {
-        $r->validate(['type'=>'nullable|in:product,service']);
-        return view('products.index', ['products' => Product::with('group','priceReview')->when($r->query('type'),fn($q)=>$q->where('type',$r->query('type')))->when($r->q, fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('sku', 'like', '%'.$r->q.'%')->orWhere('barcode', 'like', '%'.$r->q.'%')))->orderBy('name')->paginate(20)->withQueryString()]);
+        $data = $r->validate(['type' => 'nullable|in:product,service', 'q' => 'nullable|string|max:100']);
+        $search = trim($data['q'] ?? '');
+        $typeFilter = $data['type'] ?? null;
+        $products = Product::with('group', 'priceReview')
+            ->when($typeFilter, fn ($q) => $q->where('type', $typeFilter))
+            ->when($search !== '', function ($q) use ($search) {
+                $needle = '%'.addcslashes($search, '\\%_').'%';
+                $q->where(fn ($query) => $query->where('name', 'like', $needle)->orWhere('sku', 'like', $needle)->orWhere('barcode', 'like', $needle));
+            })->orderBy('name')->orderBy('id')->paginate(20)->withQueryString();
+        return view('products.index', compact('products', 'search', 'typeFilter'));
     }
 
     public function productForm(Request $r, string $company, ?int $id = null)
@@ -90,6 +98,9 @@ class CommerceController extends Controller
         if(!$d['controls_stock'])$d['minimum_stock']='0.000';
         $d['reference_cost']=$d['reference_cost']??$p->reference_cost??'0.0000';
         DB::connection('tenant')->transaction(function()use($r,$p,$d){
+            $configuration=app(\App\Services\CompanyOperations::class)->lock();
+            if($d['active']) app(\App\Services\CompanyOperations::class)->assertItem($d['type'],$configuration);
+            if(!$configuration['inventory'] && $d['controls_stock']) throw ValidationException::withMessages(['controls_stock'=>'Desmarque o controle de estoque ou habilite a gestão de estoque da empresa.']);
             if($p->exists){$locked=Product::lockForUpdate()->findOrFail($p->id);$previous=(string)$locked->sale_price;}else{$locked=$p;$previous=null;}
             if($locked->exists&&bccomp((string)$locked->quantity,'0',3)!==0&&(!$d['controls_stock']||$d['type']==='service'))throw ValidationException::withMessages(['controls_stock'=>'Zere o saldo com uma movimentação identificada antes de desativar o estoque ou trocar o tipo para serviço.']);
             $locked->fill($d)->save();
@@ -131,6 +142,7 @@ class CommerceController extends Controller
         };
         $data=$r->validate($rules);
         DB::connection('tenant')->transaction(function()use($row,$data,$kind,$r){
+            app(\App\Services\CompanyOperations::class)->lock();
             if($kind==='groups'&&$row->exists)$row=ProductGroup::lockForUpdate()->findOrFail($row->id);
             $row->fill($data)->save();
             if($kind==='groups')app(PricingService::class)->syncGroup($row->id,$r->attributes->get('currentUser')->id);
@@ -155,10 +167,31 @@ class CommerceController extends Controller
 
     public function sales(Request $request)
     {
-        $data = $request->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $data = $request->validate([
+            'salesperson_id' => 'nullable|integer|exists:tenant.sellers,id', 'q' => 'nullable|string|max:100',
+            'status' => 'nullable|in:completed,cancelled', 'payment_status' => 'nullable|in:paid,pending',
+            'from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d'.($request->filled('from') ? '|after_or_equal:from' : ''),
+        ]);
         $sellerId = isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null;
-        return view('sales.index', ['sales'=>Sale::with('customer')->when($sellerId,fn($q)=>$q->where('salesperson_id',$sellerId))->latest()->paginate(20)->withQueryString(),
-            'sellers'=>Seller::orderBy('name')->get(),'sellerId'=>$sellerId]);
+        $search = trim($data['q'] ?? '');
+        $statusFilter = $data['status'] ?? null;
+        $paymentStatus = $data['payment_status'] ?? null;
+        $from = $data['from'] ?? null;
+        $to = $data['to'] ?? null;
+        $sales = Sale::with('customer')
+            ->when($sellerId, fn ($q) => $q->where('salesperson_id', $sellerId))
+            ->when($statusFilter, fn ($q) => $q->where('status', $statusFilter))
+            ->when($paymentStatus, fn ($q) => $q->where('paid', $paymentStatus === 'paid'))
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from.' 00:00:00'))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to.' 23:59:59.999999'))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $needle = '%'.addcslashes($search, '\\%_').'%';
+                    $q->where('notes', 'like', $needle)->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', $needle)->orWhere('document', 'like', $needle)->orWhere('phone', 'like', $needle));
+                    if (ctype_digit($search) && strlen($search) <= 18) { $q->orWhere('id', (int) $search); }
+                });
+            })->latest('created_at')->latest('id')->paginate(20)->withQueryString();
+        return view('sales.index', compact('sales', 'sellerId', 'search', 'statusFilter', 'paymentStatus', 'from', 'to') + ['sellers' => Seller::orderBy('name')->get()]);
     }
 
     public function saleForm(Request $r)
@@ -166,7 +199,7 @@ class CommerceController extends Controller
         $data=$r->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','customer_id'=>'nullable|integer|exists:tenant.customers,id']);
         $context=app(SellerFormContext::class)->forUser($r->attributes->get('currentUser'),isset($data['salesperson_id'])?(int)$data['salesperson_id']:null);
         return view('sales.form',array_merge($context,['customers'=>Customer::orderBy('name')->get(),
-            'products'=>Product::with('group')->where('active',true)->orderBy('name')->get(),'services'=>collect(),
+            'products'=>Product::with('group')->where('active',true)->when(app(\App\Services\CompanyOperations::class)->current()['catalog_mode']!=='mixed',fn($q)=>$q->where('type',app(\App\Services\CompanyOperations::class)->current()['catalog_mode']==='services'?'service':'product'))->orderBy('name')->get(),'services'=>collect(),
             'selectedCustomerId'=>$data['customer_id']??null]));
     }
 
@@ -229,6 +262,8 @@ class CommerceController extends Controller
     private function saveLegacyService(Request $r,string $company){
         $d=$r->validate(['name'=>'required|string|max:180','price'=>'required|numeric|min:0|max:999999999999.99|decimal:0,2','cost'=>'required|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2']);
         DB::connection('tenant')->transaction(function()use($r,$d){
+            app(\App\Services\CompanyOperations::class)->lock();
+            app(\App\Services\CompanyOperations::class)->assertItem('service');
             $group=ProductGroup::firstOrCreate(['name'=>'Serviços'],['margin'=>'30.00','price_policy'=>'alert']);
             if($r->integer('id')){$legacy=Service::findOrFail($r->integer('id'));$p=Product::where('legacy_service_id',$legacy->id)->lockForUpdate()->firstOrFail();}
             else{$p=new Product(['sku'=>'SERV-'.strtoupper(bin2hex(random_bytes(5))),'product_group_id'=>$group->id,'unit'=>'UN','active'=>true,'price_policy'=>'alert']);}

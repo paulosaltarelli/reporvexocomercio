@@ -12,7 +12,9 @@
         <input name="q" value="{{ request('q') }}" placeholder="Buscar por nome, SKU ou código de barras" aria-label="Buscar produto ou serviço">
         <select name="type" class="catalog-type-filter" aria-label="Filtrar tipo do cadastro"><option value="">Todos os tipos</option><option value="product" @selected(request('type')==='product')>Produtos</option><option value="service" @selected(request('type')==='service')>Serviços</option></select>
         <button class="primary">Buscar</button>
+        @if(request()->filled('q') || request()->filled('type'))<a href="{{ route('products',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
     </form>
+    <p class="hint">{{ $products->total() }} {{ $products->total()===1?'cadastro encontrado':'cadastros encontrados' }} · Serviços e itens sem controle de estoque não exibem saldo físico.</p>
     <div class="scroll"><table>
         <thead><tr><th>Cadastro / SKU</th><th>Grupo</th><th>Controle de estoque</th><th class="num">Saldo</th>@if($currentUser->role==='admin')<th class="num">Custo base (R$)</th><th class="num">Margem alvo</th><th class="num">Sugerido (R$)</th>@endif<th class="num">Preço de venda</th><th></th></tr></thead>
         <tbody>

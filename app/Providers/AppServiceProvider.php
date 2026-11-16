@@ -11,7 +11,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        if (PHP_SAPI==='cli' && function_exists('posix_geteuid') && posix_geteuid()===0) {
+            $this->app->bind(\App\Platform\TenantStorageProvisioner::class, fn()=>new \App\Tenancy\MysqlTenantStorageProvisioner(
+                \App\Tenancy\ControlPlane::pdo(),\App\Tenancy\SharedManifestFile::load()
+            ));
+        }
     }
 
     /**

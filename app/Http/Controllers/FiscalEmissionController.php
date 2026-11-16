@@ -69,7 +69,7 @@ class FiscalEmissionController extends Controller
         ]);
         $data = array_intersect_key($data, array_flip(['series', 'next_number', 'timezone', 'crt', 'natureza_operacao', 'identification_limit', 'cancellation_minutes', 'uf_validation_reference', 'csc_required']));
         $tenant = $r->attributes->get('tenant');
-        abort_unless($tenant->active && DB::connection('tenant')->getDatabaseName() === $tenant->db_name, 403);
+        abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403);
         DB::connection('tenant')->transaction(function () use ($r, $data) {
             $profile = BusinessProfile::whereKey(1)->lockForUpdate()->first();
             $document = TaxpayerDocument::normalize((string) $profile?->document);

@@ -170,7 +170,7 @@ final class SimulationFiscal
 
     private function context(Tenant $tenant, int $userId, ?string $key = null): void
     {
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) { abort(403); }
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) { abort(403); }
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
         if ($key !== null && ! Str::isUuid($key)) { $this->invalid('request_key', 'Chave da operação inválida.'); }
     }

@@ -69,6 +69,13 @@ window.Vendra = (() => {
                 menu.hidden = !menu.hidden;
                 toggle.setAttribute('aria-expanded', String(!menu.hidden));
             });
+            menu.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && small.matches && !menu.hidden) {
+                    menu.hidden = true;
+                    toggle.setAttribute('aria-expanded', 'false');
+                    toggle.focus();
+                }
+            });
             small.addEventListener('change', updateMenu);
             updateMenu();
         }

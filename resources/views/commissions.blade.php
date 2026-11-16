@@ -13,17 +13,17 @@
 <div class="cards">
     <div class="card"><small>Vendas líquidas com comissão</small><strong>R$ {{ number_format($totals['net_sales'],2,',','.') }}</strong><small>Descontos nessas vendas: R$ {{ number_format($totals['discounts'],2,',','.') }}</small></div>
     <div class="card"><small>Comissão apurada nas vendas</small><strong>R$ {{ number_format($totals['commission'],2,',','.') }}</strong><small>Regras registradas em cada venda</small></div>
-    <div class="card featured"><small>Parcela proporcional recebida</small><strong>R$ {{ number_format($totals['eligible'],2,',','.') }}</strong><small>Considera o recebido acumulado</small></div>
-    <div class="card"><small>Parcela sobre saldo a receber</small><strong>R$ {{ number_format($totals['awaiting'],2,',','.') }}</strong><small>Ainda depende do recebimento das vendas</small></div>
+    <div class="card featured"><small>Comissão elegível pelo regime</small><strong>R$ {{ number_format($totals['eligible'],2,',','.') }}</strong><small>Caixa: proporcional recebido · competência: integral</small></div>
+    <div class="card"><small>Comissão ainda não elegível</small><strong>R$ {{ number_format($totals['awaiting'],2,',','.') }}</strong><small>Ainda depende do recebimento das vendas</small></div>
 </div>
-<div class="form-note">O período filtra a <strong>data da venda</strong>, apenas em vendas com comissão positiva. A parcela proporcional usa os recebimentos acumulados dessas vendas até agora, inclusive baixas fora do período selecionado. Nenhum valor abaixo significa comissão já paga ao vendedor.</div>
+<div class="form-note">O período filtra a <strong>data da venda</strong>, apenas em vendas com comissão positiva. O regime é o registrado na venda: caixa usa os recebimentos acumulados até agora, inclusive baixas fora do período; competência considera a comissão integral. Nenhum valor abaixo significa comissão já paga ao vendedor.</div>
 <section class="panel">
     <div class="section-heading"><h2>Vendas que compõem a apuração</h2><span class="hint">{{ $rows->total() }} {{ $rows->total()===1?'venda encontrada':'vendas encontradas' }}</span></div>
     <div class="scroll" role="region" aria-label="Apuração de comissões por venda" tabindex="0"><table>
-        <thead><tr><th>Venda / data</th><th>Vendedor</th><th class="num">Venda líquida (R$)</th><th class="num">Descontos (R$)</th><th class="num">Comissão apurada (R$)</th><th class="num">Recebido acumulado (R$)</th><th class="num">Comissão proporcional recebida (R$)</th></tr></thead>
+        <thead><tr><th>Venda / data</th><th>Vendedor / regime</th><th class="num">Venda líquida (R$)</th><th class="num">Descontos (R$)</th><th class="num">Comissão apurada (R$)</th><th class="num">Recebido acumulado (R$)</th><th class="num">Comissão elegível (R$)</th></tr></thead>
         <tbody>
         @forelse($rows as $sale)
-            <tr><td><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}">#{{ $sale->id }}</a><small class="hint">{{ $sale->created_at->format('d/m/Y') }}</small></td><td class="product-name">{{ $sale->seller_name??'Não informado' }}</td><td class="num">{{ number_format($sale->total,2,',','.') }}</td><td class="num">{{ number_format($sale->discount_total??0,2,',','.') }}</td><td class="num">{{ number_format($sale->commission_total,2,',','.') }}</td><td class="num">{{ number_format($sale->settled_amount??0,2,',','.') }}</td><td class="num"><strong>{{ number_format($sale->eligible_commission,2,',','.') }}</strong></td></tr>
+            <tr><td><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}">#{{ $sale->id }}</a><small class="hint">{{ $sale->created_at->format('d/m/Y') }}</small></td><td class="product-name">{{ $sale->seller_name??'Não informado' }}<small class="hint">{{ $sale->commission_basis==='accrual'?'Competência':'Caixa' }}</small></td><td class="num">{{ number_format($sale->total,2,',','.') }}</td><td class="num">{{ number_format($sale->discount_total??0,2,',','.') }}</td><td class="num">{{ number_format($sale->commission_total,2,',','.') }}</td><td class="num">{{ number_format($sale->settled_amount??0,2,',','.') }}</td><td class="num"><strong>{{ number_format($sale->eligible_commission,2,',','.') }}</strong></td></tr>
         @empty
             <tr><td colspan="7" class="empty">Nenhuma venda com comissão positiva encontrada para este período e vendedor.</td></tr>
         @endforelse

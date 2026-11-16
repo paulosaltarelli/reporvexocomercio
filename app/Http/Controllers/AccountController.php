@@ -43,7 +43,11 @@ class AccountController extends Controller
         $r->session()->regenerateToken();
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
-        return redirect()->route($user->role==='admin'?'dashboard':'desk', ['company' => $company])->with('success', 'Senha alterada. Outras sessões deste usuário foram encerradas.');
+        $start=$user->role==='admin'?'dashboard':'desk';
+        if ($user->role==='admin' && $r->attributes->get('tenant')->storage_mode==='shared'
+            && ! \App\Models\CompanyOperation::find(1)?->completed_at
+            && !($r->attributes->get('tenant')->is_demonstration && \App\Models\DemoRun::where('code','computer-store-v1')->whereNotNull('completed_at')->exists())) $start='setup';
+        return redirect()->route($start, ['company' => $company])->with('success', 'Senha alterada. Outras sessões deste usuário foram encerradas.');
     }
 
     public function updateUser(Request $r, string $company, int $id)

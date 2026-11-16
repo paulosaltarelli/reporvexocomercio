@@ -21,6 +21,8 @@ class PurchaseService
         }
         try {
             return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+                $configuration=app(CompanyOperations::class)->lock();
+                app(CompanyOperations::class)->assertItem('product',$configuration);
                 if ($existing = Purchase::where('request_key', $data['request_key'])->first()) {
                     return $existing;
                 }
@@ -52,7 +54,7 @@ class PurchaseService
                         'purchase_id' => $purchase->id, 'product_id' => $product->id, 'description' => $product->name,
                         'quantity' => $quantity, 'unit_cost' => $cost, 'total' => $lineTotal,
                     ]);
-                    if ($product->controlsStock()) {
+                    if ($configuration['inventory'] && $product->controlsStock()) {
                         app(Inventory::class)->move($product->id, 'in', $quantity, $cost,
                             'Compra #'.$purchase->id.' · item #'.$item->id, $userId, 'purchase-'.$purchase->id.'-'.$item->id);
                     } else {

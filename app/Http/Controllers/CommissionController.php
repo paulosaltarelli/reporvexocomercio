@@ -59,6 +59,7 @@ class CommissionController extends Controller
     /** Cumulative reconciliation avoids rounding once for each partial receipt. */
     private function eligible(Sale $sale): string
     {
+        if ($sale->commission_basis === 'accrual') return (string)$sale->commission_total;
         if (bccomp($sale->total, '0', 2) <= 0) return '0.00';
         $received = (string) ($sale->settled_amount ?? '0.00');
         if (bccomp($received, '0', 2) < 0) $received = '0.00';
