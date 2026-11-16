@@ -84,3 +84,13 @@ Não alterar apache2 global, firewall, SSH, TLS, PHP global ou outros sistemas. 
 ## Próximos testes comerciais
 
 Depois de publicar e configurar medição consentida: testar headline focada em estoque versus atendimento, mantendo o restante estável; comparar CTAs hero/fixo por segmento; acompanhar conversas recebidas, leads qualificados e demonstrações agendadas, sem confundir cliques com leads. Validar primeiro o HTTPS público antes de direcionar tráfego pago. Nenhuma campanha ou despesa foi autorizada por este trabalho.
+
+## Quatro demonstrações do produto — 16/11/2026
+
+Base: main `5a1a239` (PR #9 integrado). A seção visual agora reúne quatro demonstrações: custo/margem/preço; etapas de OS; venda com produtos, serviços e recebimento parcial; contas e previsão. Cada bloco inclui exemplo fictício verificável aritmeticamente e explicação do recurso. Não são depoimentos, casos de clientes ou provas sociais.
+
+Nova imagem `public/brand/vendra-vendas.jpg`, 1200×760, reconstrução estática baseada em `resources/views/sales/show.blade.php` e no estilo do sistema, com empresa/cliente/usuário fictícios. Venda R$180, recebido R$60, saldo R$120; o registro não movimenta dinheiro. Não houve sessão autenticada ou acesso a base de dados. A identidade fictícia está na própria imagem e no texto da página.
+
+Testes locais Chromium/Playwright em 320/390/768/1024/1440: quatro imagens decodificadas, quatro exemplos, âncoras, sete CTAs, teclado/FAQ/menu/impressão, ausência de overflow e erros JS. Sem envio de mensagens ou rastreadores. `git diff --check` aprovado. PHP/Laravel e VPS permanecem fora da validação local.
+
+Overlay desta entrega: `resources/views/welcome.blade.php`, `public/marketing.css`, `public/brand/vendra-vendas.jpg`. Os três JPEG anteriores já pertencem ao main e devem estar disponíveis na VPS; conferir sua integridade, sem sobrescrevê-los se divergirem do baseline. Assets da página versionados como `20261116`. `public/marketing.js` não foi alterado. Não incluir documentação/testes ou arquivos do ERP no overlay. Publicação continua dependente de acesso seguro à VPS no chat executor, com o procedimento de lock, baseline, backup e smoke acima.
