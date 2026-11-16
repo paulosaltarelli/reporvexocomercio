@@ -509,6 +509,28 @@ class FiscalTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_split_cash_pix_nfce_has_two_signed_payment_groups_and_validates_authorization(): void
+    {
+        [, $cert]=$this->configuredFiscal();
+        $this->sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'payments'=>[['payment_option'=>'cash','amount'=>'4.00','paid'=>1],['payment_option'=>'pix','amount'=>'6.01','paid'=>1]],'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'10.01']]],$this->user->id);
+        try{app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,array_diff_key($this->operation(),['pix_mode'=>true]));$this->fail('Unknown Pix accepted.');}catch(ValidationException){$this->assertSame(0,FiscalDocument::count());}
+        $doc=app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,$this->operation());
+        $this->assertSame([['forma_pagamento'=>'01','valor_pagamento'=>'4.00'],['forma_pagamento'=>'17','valor_pagamento'=>'6.01']],$doc->snapshot['payload']['formas_pagamento']);
+        $dom=new \DOMDocument;$dom->loadXML($doc->signed_xml,LIBXML_NONET);$this->assertSame(2,$dom->getElementsByTagName('detPag')->length);
+        $this->fakeAuthorization($doc,$cert);$this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));$this->assertSame('authorized',$doc->fresh()->state);
+    }
+
+    public function test_split_cash_transfer_nfe55_preserves_each_group_without_double_receipt(): void
+    {
+        [, $cert,$customer]=$this->configuredNfe55();
+        $this->sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'customer_id'=>$customer->id,'payments'=>[['payment_option'=>'cash','amount'=>'4.00','paid'=>1],['payment_option'=>'transfer','amount'=>'6.01','paid'=>1]],'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'10.01']]],$this->user->id);
+        $before=DB::connection('tenant')->table('payments')->count();
+        $doc=app(\App\Fiscal\QueueNfe::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,$this->operation());
+        $this->assertSame([['forma_pagamento'=>'01','valor_pagamento'=>'4.00'],['forma_pagamento'=>'18','valor_pagamento'=>'6.01']],$doc->snapshot['payload']['formas_pagamento']);
+        $dom=new \DOMDocument;$dom->loadXML($doc->signed_xml,LIBXML_NONET);$this->assertSame(2,$dom->getElementsByTagName('detPag')->length);
+        $this->fakeAuthorization($doc,$cert);$this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));$this->assertSame('authorized',$doc->fresh()->state);$this->assertSame($before,DB::connection('tenant')->table('payments')->count());
+    }
+
     public function test_signed_xml_with_changed_item_or_tax_is_rejected_even_with_same_total(): void
     {
         [, $cert] = $this->configuredFiscal();

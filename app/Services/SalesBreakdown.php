@@ -7,10 +7,12 @@ final class SalesBreakdown
     {
         $sales=Sale::where('status','completed')->whereYear('created_at',$year)->get(['id','total','payment_method','document_id']);
         $labels=app(PaymentMethods::class)->labels('sale_payment_method',$sales->pluck('id')->all());$documents=Document::whereIn('id',$sales->pluck('document_id')->filter())->get(['id','type'])->keyBy('id');
+        $plans=\App\Models\OperationRecord::where('action','sale_payment_plan')->whereIn('after->target_id',$sales->pluck('id')->all())->get()->keyBy(fn($r)=>$r->after['target_id']);
         $methods=[];$origins=[];$total='0.00';
         foreach($sales as $sale){
-            $name=$labels[$sale->id]??PaymentMethods::TYPES[$sale->payment_method]??$sale->payment_method;$key=$sale->payment_method.'|'.$name;
-            $methods[$key]??=['label'=>$name,'type'=>$sale->payment_method,'total'=>'0.00','count'=>0];$methods[$key]['total']=bcadd($methods[$key]['total'],$sale->total,2);$methods[$key]['count']++;
+            $rows=$plans->get($sale->id)?->after['rows']??[['label'=>$labels[$sale->id]??PaymentMethods::TYPES[$sale->payment_method]??$sale->payment_method,'type'=>$sale->payment_method,'amount'=>$sale->total]];
+            $seen=[];
+            foreach($rows as $row){$key=$row['type'].'|'.$row['label'];$methods[$key]??=['label'=>$row['label'],'type'=>$row['type'],'total'=>'0.00','count'=>0];$methods[$key]['total']=bcadd($methods[$key]['total'],$row['amount'],2);if(!isset($seen[$key]))$methods[$key]['count']++;$seen[$key]=true;}
             $origin=$sale->document_id?($documents->get($sale->document_id)?->type==='work_order'?'Ordem de serviço':'Orçamento aprovado'):'PDV';
             $origins[$origin]??=['label'=>$origin,'total'=>'0.00','count'=>0];$origins[$origin]['total']=bcadd($origins[$origin]['total'],$sale->total,2);$origins[$origin]['count']++;$total=bcadd($total,$sale->total,2);
         }

@@ -14,6 +14,14 @@ class DeskController extends Controller
 {
     public function index(Request $request)
     {
+        if($request->filled('document_number')){
+            abort_unless($request->attributes->get('currentUser')->allows('documents.invoice'),403);
+            $lookup=$request->validate(['document_number'=>'required|integer|min:1']);
+            $document=Document::findOrFail($lookup['document_number']);
+            if($document->sale_id)return redirect()->route('sale.show',['company'=>$request->route('company'),'id'=>$document->sale_id]);
+            if(!in_array($document->status,['approved','completed'],true))throw \Illuminate\Validation\ValidationException::withMessages(['document_number'=>'Aprove o orçamento ou conclua a OS antes de receber no caixa.']);
+            return redirect()->to(route('document.show',['company'=>$request->route('company'),'id'=>$document->id]).'#document-checkout');
+        }
         $data=$request->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id',
             'customer_id'=>'nullable|integer|exists:tenant.customers,id','q'=>'nullable|string|max:100']);
         $actor=$request->attributes->get('currentUser');
@@ -34,6 +42,7 @@ class DeskController extends Controller
             'customerMatches'=>$matches,'search'=>$search,'myQuotes'=>(clone $quotes)->orderByRaw("status = 'approved' DESC")->latest()->limit(8)->get(),
             'recentSales'=>(clone $sales)->latest()->limit(8)->get(),
             'metrics'=>['sales_count'=>(clone $completed)->count(),'sales_total'=>(string)(clone $completed)->sum('total'),'quotes_count'=>(clone $quotes)->count()],
+            'readyDocuments'=>Document::with('customer')->whereNull('sale_id')->where(fn($q)=>$q->where(fn($q)=>$q->where('type','quote')->where('status','approved'))->orWhere(fn($q)=>$q->where('type','work_order')->where('status','completed')))->latest()->limit(10)->get(),
             'canOperate'=>(bool)$salesperson->active,
             'products'=>Product::with('group')->where('active',true)->when(app(\App\Services\CompanyOperations::class)->current()['catalog_mode']!=='mixed',fn($q)=>$q->where('type',app(\App\Services\CompanyOperations::class)->current()['catalog_mode']==='services'?'service':'product'))->orderBy('name')->get(),
             'customers'=>Customer::orderBy('name')->get(),

@@ -115,7 +115,7 @@ final class NfcePayload
             'cnpj_emitente' => $issuer->document, 'data_emissao' => now()->setTimezone($c['timezone'])->toIso8601String(),
             'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1',
             'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items,
-            'formas_pagamento' => [['forma_pagamento' => $payment['fiscal_code'], 'valor_pagamento' => $payment['total']]],
+            'formas_pagamento' => $payment['methods'],
             'valor_total' => $goods, 'valor_produtos' => $goodsGross, 'valor_desconto' => $goodsDiscount,
         ];
         // Required legal homologation label; business/issuer data are never fixtures.
@@ -170,8 +170,9 @@ final class NfcePayload
     public function paymentEvidence(Sale $sale, array $operation): array
     {
         $fail = fn (string $message) => throw ValidationException::withMessages(['fiscal' => $message]);
-        if (! $sale->paid || ! in_array($sale->payment_method, ['cash', 'pix', 'transfer'], true)) {
-            $fail('Este fluxo exige quitação comprovada em dinheiro, Pix ou transferência, sem mistura de meios.');
+        $split=app(\App\Services\SalePayments::class)->rows($sale->id)!==[];
+        if (! $sale->paid || (!$split && ! in_array($sale->payment_method, ['cash', 'pix', 'transfer'], true))) {
+            $fail('Este fluxo exige quitação comprovada em dinheiro, Pix ou transferência, com baixas financeiras conferidas.');
         }
         $entries = $sale->entries()->orderBy('id')->lockForUpdate()->get();
         if ($entries->isEmpty()) {
@@ -202,7 +203,7 @@ final class NfcePayload
         $receipts = [];
         foreach ($payments as $payment) {
             if ($payment->kind !== 'payment' || $payment->direction !== 'in' || $payment->reversal_of !== null
-                || $payment->method !== $sale->payment_method || bccomp((string) $payment->amount, '0', 2) <= 0
+                || !in_array($payment->method,['cash','pix','transfer'],true) || (!$split && $payment->method !== $sale->payment_method) || bccomp((string) $payment->amount, '0', 2) <= 0
                 || ! $payment->paid_on || $payment->paid_on->toDateString() > now()->toDateString()) {
                 $fail('Baixas mistas, futuras, estornadas ou incompatíveis com o meio declarado não são suportadas neste fluxo.');
             }
@@ -223,16 +224,17 @@ final class NfcePayload
         if (bccomp($received, (string) $sale->total, 2) !== 0) {
             $fail('As baixas não comprovam o total da venda; troco e recebimento excedente exigem modelagem específica.');
         }
-        $code = ['cash' => '01', 'transfer' => '18'][$sale->payment_method] ?? null;
-        if ($sale->payment_method === 'pix') {
-            $code = ['dynamic' => '17', 'static' => '20'][$operation['pix_mode'] ?? ''] ?? null;
-            if ($code === null) {
-                $fail('Informe explicitamente se o Pix recebido foi dinâmico ou estático antes da emissão.');
-            }
+        $methodTotals=[];
+        foreach($receipts as $receipt)$methodTotals[$receipt['method']]=bcadd($methodTotals[$receipt['method']]??'0.00',$receipt['amount'],2);
+        $methods=[];
+        foreach($methodTotals as $method=>$amount){
+            $fiscalCode=['cash'=>'01','transfer'=>'18'][$method]??(['dynamic'=>'17','static'=>'20'][$operation['pix_mode']??'']??null);
+            if($fiscalCode===null)$fail('Informe explicitamente se o Pix recebido foi dinâmico ou estático antes da emissão.');
+            $methods[]=['forma_pagamento'=>$fiscalCode,'valor_pagamento'=>$amount];
         }
 
-        return ['basis' => 'recorded_sale_payments', 'method' => $sale->payment_method,
-            'pix_mode' => $sale->payment_method === 'pix' ? $operation['pix_mode'] : null,
-            'fiscal_code' => $code, 'total' => $received, 'entries' => $entrySnapshots, 'receipts' => $receipts];
+        return ['methods'=>$methods,'basis' => 'recorded_sale_payments', 'method' => count($methods)>1?'mixed':$receipts[0]['method'],
+            'pix_mode' => isset($methodTotals['pix']) ? $operation['pix_mode'] : null,
+            'fiscal_code' => count($methods)>1?null:$methods[0]['forma_pagamento'], 'total' => $received, 'entries' => $entrySnapshots, 'receipts' => $receipts];
     }
 }

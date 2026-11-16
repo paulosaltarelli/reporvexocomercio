@@ -10,6 +10,7 @@
     let totals={gross:form.dataset.cartGross||'0',discount:form.dataset.cartDiscount||'0',net:form.dataset.cartNet||'0'};
     function cashPreview(){
         cash.setCustomValidity('');
+        if(form.dataset.splitPayment==='1')return;
         const received=Vendra.decimalUnits(cash.value,2),net=BigInt(totals.net);
         let text='—';
         if(!cashFields.hidden&&cash.value!==''){

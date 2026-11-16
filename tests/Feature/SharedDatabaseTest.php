@@ -417,6 +417,16 @@ class SharedDatabaseTest extends TestCase
         $this->sessionFor($this->a);$this->get('/app/shared-a/my-commissions/'.$closure->id)->assertOk()->assertSee('5,00');
     }
 
+    public function test_shared_split_payment_plan_cash_opening_and_os_are_tenant_scoped(): void
+    {
+        $shop=$this->catalog($this->a);$cash=app(\App\Services\CashService::class);
+        $cash->open(['date'=>now()->toDateString(),'opening_balance'=>'20'],$shop['owner']->id);
+        $sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'payments'=>[['payment_option'=>'cash','amount'=>'20','paid'=>1],['payment_option'=>'pix','amount'=>'30','paid'=>1]],'items'=>[['kind'=>'product','id'=>$shop['service']->id,'quantity'=>'1','unit_price'=>'50']]],$shop['owner']->id);
+        $this->assertTrue($sale->paid);$this->assertSame('40.00',$cash->summary(now()->toDateString())['expected_balance']);$this->assertCount(2,app(\App\Services\SalePayments::class)->rows($sale->id));
+        $this->connect($this->b);$this->assertSame([],app(\App\Services\SalePayments::class)->rows($sale->id));$this->assertNull($cash->opening(now()->toDateString()));$this->assertSame(0,FinancialEntry::count());$this->assertSame(0,Payment::count());
+        $this->sessionFor($this->b);$this->get('/app/shared-b/sales/'.$sale->id)->assertNotFound();
+    }
+
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
         $owner = $this->connect($this->a);

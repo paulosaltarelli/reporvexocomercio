@@ -37,6 +37,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('prices/refresh',[PricingController::class,'refresh'])->name('price.refresh');
         Route::post('prices/{id}/apply',[PricingController::class,'apply'])->whereNumber('id')->name('price.apply');
         Route::get('cash', [CashController::class, 'index'])->name('cash');
+        Route::post('cash/open', [CashController::class, 'open'])->name('cash.open');
+        Route::post('cash/movement', [CashController::class, 'movement'])->name('cash.movement');
         Route::post('cash/close', [CashController::class, 'close'])->name('cash.close');
         Route::get('cashflow', [CashflowController::class, 'index'])->name('cashflow');
         Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');

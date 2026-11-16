@@ -4,7 +4,9 @@
 @section('subtitle','Comprovante interno. Este documento não é uma nota fiscal.')
 @section('actions')@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button class="button secondary no-print" onclick="window.print()">Imprimir</button>
 @endsection
-@section('content')<section class="panel"><div class="split"><div><h2>{{ $tenant->name }}</h2><p>{{ $sale->customer?->name??'Consumidor final' }}</p><p class="muted">{{ $sale->created_at->format('d/m/Y H:i') }} · {{ app(\App\Services\PaymentMethods::class)->labels('sale_payment_method',[$sale->id])[$sale->id]??\App\Services\PaymentMethods::TYPES[$sale->payment_method] }}</p></div><div><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span>
+@section('content')
+@php($paymentPlan=app(\App\Services\SalePayments::class)->rows($sale->id))
+<section class="panel"><div class="split"><div><h2>{{ $tenant->name }}</h2><p>{{ $sale->customer?->name??'Consumidor final' }}</p><p class="muted">{{ $sale->created_at->format('d/m/Y H:i') }} · {{ $paymentPlan?'Pagamento composto':app(\App\Services\PaymentMethods::class)->labels('sale_payment_method',[$sale->id])[$sale->id]??\App\Services\PaymentMethods::TYPES[$sale->payment_method] }}</p></div><div><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span>
 @if($sale->due_date)<p>Vencimento: {{ \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y') }}</p>
 @endif</div></div><p class="hint"><strong>Vendedor creditado:</strong> {{ $sale->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $sale->creator?->name??'Não informado' }}</p>
 <div class="scroll"><table><thead><tr><th>Descrição</th><th class="num">Quantidade</th><th class="num">Preço bruto unitário (R$)</th><th class="num">Bruto (R$)</th><th class="num">Desconto (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>
@@ -14,6 +16,8 @@
 </tbody></table></div>
 <div class="receipt-totals"><span>Subtotal bruto</span><strong>R$ {{ number_format($sale->subtotal??bcadd((string)$sale->total,(string)($sale->discount_total??'0'),2),2,',','.') }}</strong><span>Descontos</span><strong>R$ {{ number_format($sale->discount_total??0,2,',','.') }}</strong><span class="receipt-net">Total líquido</span><strong class="receipt-net">R$ {{ number_format($sale->total,2,',','.') }}</strong></div>
 <p>{{ $sale->notes }}</p>
+@if($paymentPlan)<h2>Composição do pagamento</h2><div class="scroll"><table><thead><tr><th>Forma</th><th>Condição na venda</th><th class="num">Valor (R$)</th><th class="num">Troco (R$)</th></tr></thead><tbody>@foreach($paymentPlan as $part)<tr><td>{{ $part['label'] }}</td><td>{{ $part['paid']?'Recebido na venda':$part['installments'].' parcela(s), a partir de '.\Carbon\Carbon::parse($part['due_date'])->format('d/m/Y') }}</td><td class="num">{{ number_format($part['amount'],2,',','.') }}</td><td class="num">{{ number_format($part['change'],2,',','.') }}</td></tr>@endforeach</tbody></table></div><p class="hint">Condições registradas na venda. Baixas posteriores constam no financeiro.</p>@endif
+
 @if($currentUser->allows('commissions.view'))
 <details class="disclosure compact no-print" style="margin-top:24px"><summary>Comissão interna desta venda</summary><div class="disclosure-content"><p><strong>Apurada:</strong> R$ {{ number_format($sale->commission_total??0,2,',','.') }} · <strong>Vendedor:</strong> {{ $sale->seller_name??'Não informado' }}</p><div class="scroll"><table><thead><tr><th>Item</th><th class="num">Alíquota de comissão</th><th class="num">Comissão apurada (R$)</th></tr></thead><tbody>@foreach($sale->items as $item)<tr><td>{{ $item->description }}</td><td class="num">{{ number_format($item->commission_rate??0,2,',','.') }}%</td><td class="num">{{ number_format($item->commission_amount??0,2,',','.') }}</td></tr>@endforeach</tbody></table></div><p class="hint">Informação interna, excluída da impressão do comprovante. Apuração não significa pagamento ao vendedor; vendas canceladas não compõem o relatório de comissões.</p><a href="{{ route('commissions',['company'=>$tenant->slug,'salesperson_id'=>$sale->salesperson_id,'from'=>$sale->created_at->toDateString(),'to'=>$sale->created_at->toDateString()]) }}">Conferir relatório de comissões</a></div></details>
 @endif
@@ -25,7 +29,7 @@
         <a class="button" href="{{ route('finance',['company'=>$tenant->slug,'sale'=>$sale->id]) }}">Registrar recebimento</a>
     @endif
 @if(!$sale->paid && $currentUser->allows('sales.receive'))
-    <form method="post" action="{{ route('sale.receive',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf<button class="button secondary">Receber saldo integral desta venda</button></form>
+    <form method="post" action="{{ route('sale.receive',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf @include('components.payment-method-select',['paymentSelectId'=>'balance-method'])<button class="button secondary">Receber saldo integral desta venda</button></form>
 @endif
 </div>
 @if($currentUser->allows('sales.cancel'))

@@ -207,7 +207,7 @@ class CommerceController extends Controller
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
+        $d = $r->validate(array_merge(\App\Services\SalePayments::rules(), ['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required_without:payments|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required_without:payments|boolean', 'due_date' => ($r->has('payments')?'nullable|date_format:Y-m-d':'nullable|required_if:paid,0|date_format:Y-m-d'), 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']));
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 
@@ -230,13 +230,16 @@ class CommerceController extends Controller
     public function receive(Request $r, string $company, int $id)
     {
         $this->admin($r);
+        $r->validate(['payment_option'=>'nullable|string|max:60']);
         DB::connection('tenant')->transaction(function () use ($r, $id) {
             $sale = Sale::lockForUpdate()->findOrFail($id);
             abort_unless($sale->status === 'completed', 422);
+            if(app(\App\Services\SalePayments::class)->rows($id) && !$r->filled('payment_option'))throw \Illuminate\Validation\ValidationException::withMessages(['payment_option'=>'Escolha o meio efetivamente recebido para quitar o saldo.']);
+            $choice=app(\App\Services\PaymentMethods::class)->resolve($r->input('payment_option'),$sale->payment_method);
             foreach (FinancialEntry::where('sale_id', $id)->whereNull('cancelled_at')->orderBy('id')->get() as $entry) {
                 $balance = bcsub($entry->amount, $entry->paid_amount, 2);
                 if (bccomp($balance, '0', 2) > 0) {
-                    app(FinancialService::class)->pay($entry->id, $balance, now()->toDateString(), $sale->payment_method, $r->attributes->get('currentUser')->id, (string) Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:full-receipt:'.$id.':'.$entry->id));
+                    app(FinancialService::class)->pay($entry->id, $balance, now()->toDateString(), $choice['type'], $r->attributes->get('currentUser')->id, (string) Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:full-receipt:'.$id.':'.$entry->id),$choice['id']);
                 }
             }
         }, 3);
