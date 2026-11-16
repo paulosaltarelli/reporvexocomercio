@@ -1,5 +1,6 @@
 <section class="panel {{ ($isPos??false)?'pos-items-panel':'' }}">
     <h2>{{ $itemsHeading??'Itens da venda' }}</h2>
+    @if($currentUser->allows('products.manage'))<div class="quick-create-buttons">@if($operationConfig['catalog_mode']!=='services')<button type="button" class="button secondary" data-quick-create="products" hidden>+ Novo produto</button>@endif @if($operationConfig['catalog_mode']!=='products')<button type="button" class="button secondary" data-quick-create="services" hidden>+ Novo serviço</button>@endif</div>@endif
     @if($isPos??false)
     <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Enter adiciona o item encontrado.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
     <p id="pos-empty-cart" class="pos-empty-cart">Busque ou leia o primeiro item para começar a venda.</p>
@@ -106,11 +107,20 @@
         else choose(true);
         return block;
     }
+    document.addEventListener('vendra:catalog-created',event=>{
+        if(event.detail.targetForm!==container.closest('form'))return;
+        const item=event.detail.item,value='product:'+item.id,template=document.querySelector('#row').content.querySelector('.choice');
+        let option=[...template.options].find(o=>o.value===value);
+        if(!option){option=new Option((item.type==='service'?'Serviço':'Produto')+' · '+item.sku+' · '+item.name+(item.controls_stock?' (saldo '+item.quantity+')':''),value);Object.assign(option.dataset,{sku:item.sku,barcode:item.barcode||'',name:item.name,price:item.price,discountEnabled:item.discount_enabled?'1':'0',discountLimit:item.discount_limit});template.add(option);container.querySelectorAll('.choice').forEach(choice=>choice.add(option.cloneNode(true)));}
+        const empty=[...container.querySelectorAll('.sale-line-block')].find(block=>!block.querySelector('.choice').value);
+        if(!empty&&container.children.length>=50)return;
+        const block=empty||add();const choice=block.querySelector('.choice');choice.value=value;choice.dispatchEvent(new Event('change'));event.detail.used=true;
+    });
     if(isPos){
         const search=document.querySelector('#pos-search'),results=document.querySelector('#pos-results'),status=document.querySelector('#pos-search-status');
-        const catalog=[...document.querySelector('#row').content.querySelectorAll('.choice option')].filter(option=>option.value);
+        const catalog=()=>[...document.querySelector('#row').content.querySelectorAll('.choice option')].filter(option=>option.value);
         const normalize=value=>String(value||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
-        function matches(){const term=normalize(search.value);return term?catalog.filter(option=>[option.dataset.name,option.dataset.sku,option.dataset.barcode].some(value=>normalize(value).includes(term))):[];}
+        function matches(){const term=normalize(search.value);return term?catalog().filter(option=>[option.dataset.name,option.dataset.sku,option.dataset.barcode].some(value=>normalize(value).includes(term))):[];}
         function insert(option){
             const existing=[...container.querySelectorAll('.sale-line-block')].find(block=>block.querySelector('.choice').value===option.value);
             if(existing){
@@ -131,7 +141,7 @@
         search.addEventListener('keydown',event=>{
             if(event.key==='ArrowDown'){const first=results.querySelector('button');if(first){event.preventDefault();first.focus();}return;}
             if(event.key!=='Enter')return;event.preventDefault();const term=normalize(search.value);
-            const exact=term?catalog.filter(option=>[option.dataset.sku,option.dataset.barcode].some(value=>value&&normalize(value)===term)):[];
+            const exact=term?catalog().filter(option=>[option.dataset.sku,option.dataset.barcode].some(value=>value&&normalize(value)===term)):[];
             const found=exact.length?exact:matches();if(found.length===1)insert(found[0]);else status.textContent=found.length?'Selecione um dos itens encontrados.':'Nenhum item encontrado.';
         });
         results.addEventListener('keydown',event=>{if(event.key==='Escape'){results.replaceChildren();search.focus();}});

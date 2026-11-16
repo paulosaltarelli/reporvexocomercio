@@ -104,6 +104,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('purchases/new', [PurchaseController::class, 'form'])->name('purchase.new');
         Route::post('purchases', [PurchaseController::class, 'create']);
         Route::get('purchases/{id}', [PurchaseController::class, 'show'])->whereNumber('id')->name('purchase.show');
+        Route::post('quick-create/{kind}',[\App\Http\Controllers\QuickCreateController::class,'store'])->whereIn('kind',['customers','products','services'])->name('quick.create');
         Route::get('desk',[DeskController::class,'index'])->name('desk');
         Route::get('sellers',[SellerController::class,'index'])->name('sellers');
         Route::post('sellers',[SellerController::class,'save'])->name('seller.save');

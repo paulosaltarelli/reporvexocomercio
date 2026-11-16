@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    @if(request()->routeIs('desk','sale.new','document.new','document.edit'))<link rel="stylesheet" href="/quick-create.css?v={{ filemtime(public_path('quick-create.css')) }}">@endif
     <title>@yield('title','Visão geral') · Vendra</title>
     <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     <link rel="stylesheet" href="/navigation.css?v={{ filemtime(public_path('navigation.css')) }}">

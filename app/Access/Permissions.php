@@ -54,6 +54,7 @@ final class Permissions
             'BusinessController'=>match($action){'logo'=>'account.self','fiscal'=>'fiscal.manage',default=>'administration'},
             'CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',
             'DeskController'=>'desk.use',
+            'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},
             'CommerceController'=>match($action) {
                 'dashboard'=>'home', 'products'=>'products.view', 'productForm','saveProduct'=>'products.manage',
                 'catalog','saveCatalog'=>match($kind) { 'customers'=>'customers.', 'suppliers'=>'suppliers.', 'groups'=>'groups.', 'services'=>'products.', default=>'denied.' }.($action==='catalog'?'view':'manage'),

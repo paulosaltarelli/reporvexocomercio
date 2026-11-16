@@ -12,11 +12,12 @@
 @if(isset($document))<div class="field"><label for="os-seller">Vendedor creditado</label><input id="os-seller" value="{{ $document->seller_name??'Não informado' }}" readonly><small class="hint">A edição preserva o vínculo do vendedor. Alterações de responsabilidade são feitas na tela da OS.</small></div>@else
 @include('components.sales.seller-field')
 @endif
-<div class="field"><label>Cliente</label><select name="customer_id"><option value="">Não informado</option>
+<div class="field"><label>Cliente</label>@if($currentUser->allows('customers.manage'))<button type="button" class="text-button" data-quick-create="customers" hidden>+ Novo cliente</button>@endif<select name="customer_id"><option value="">Não informado</option>
 @foreach($customers as $c)<option value="{{ $c->id }}" 
 @selected(old('customer_id',$selectedCustomerId??null)==$c->id)>{{ $c->name }}</option>
 @endforeach</select></div><div class="field"><label>{{ $type==='quote'?'Validade do orçamento':'Previsão de conclusão / entrega' }}</label><input type="date" name="valid_until" value="{{ old('valid_until',$document->valid_until??null) }}"></div><div class="field"><label>Equipamento ou veículo · série ou placa</label><input name="asset" maxlength="255" value="{{ old('asset',$document->asset??null) }}"></div><div class="field"><label>Responsável técnico</label><input name="technician" maxlength="255" value="{{ old('technician',$document->technician??null) }}"></div><div class="field full"><label>{{ $type==='quote'?'Descrição e observações':'Relato do cliente, diagnóstico e observações' }}</label><textarea name="notes" maxlength="2000">{{ old('notes',$document->notes??null) }}</textarea></div></div></section>@if($type==='work_order')<div class="notice">Abra a OS sem vincular produto ou serviço. Registre o equipamento e o relato do cliente; acrescente diagnóstico, itens e valores depois, enquanto a OS estiver aberta. Para aprovar ou gerar venda, informe os produtos e serviços. Não há reserva ou baixa de estoque nesta etapa.</div>@endif
 @include('components.sales.entry-items',['itemsHeading'=>'Produtos e serviços previstos','initialItems'=>$initialItems??[],'allowEmptyItems'=>$type==='work_order'])
 <div class="actions"><button class="primary" @disabled(!isset($document) && !$currentUser->allows('sales.seller') && (!$currentSalesperson || !$currentSalesperson->active))>{{ isset($document)?'Salvar alterações da OS':($type==='quote'?'Salvar orçamento':'Salvar ordem de serviço') }}</button><a href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$selectedSalespersonId??($currentSalesperson??null)?->id,'customer_id'=>$selectedCustomerId??null]) }}">Voltar ao painel</a></div></form>
 
+@include('components.quick-create')
 @endsection

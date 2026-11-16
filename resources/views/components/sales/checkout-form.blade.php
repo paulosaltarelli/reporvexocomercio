@@ -22,7 +22,7 @@
             @include('components.sales.split-payments')
             <p class="card-sale-total notice" role="status" hidden></p>
             <details class="pos-optionals" @if(old('customer_id',$selectedCustomerId??null)||$errors->hasAny(['customer_id','salesperson_id','notes'])) open @endif><summary>Cliente e vendedor <span>opcional</span></summary><div class="pos-optionals-content">
-                <div class="field"><label for="pos-customer">Cliente</label><select id="pos-customer" name="customer_id"><option value="">Consumidor final</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" @selected((string)old('customer_id',$selectedCustomerId??null)===(string)$customer->id)>{{ $customer->name }}</option>@endforeach</select></div>
+                <div class="field"><label for="pos-customer">Cliente</label>@if($currentUser->allows('customers.manage'))<button type="button" class="text-button" data-quick-create="customers" hidden>+ Novo cliente</button>@endif<select id="pos-customer" name="customer_id"><option value="">Consumidor final</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" @selected((string)old('customer_id',$selectedCustomerId??null)===(string)$customer->id)>{{ $customer->name }}</option>@endforeach</select></div>
                 @include('components.sales.seller-field')
                 <div class="field"><label for="pos-notes">Observações</label><input id="pos-notes" name="notes" maxlength="1000" value="{{ old('notes') }}"></div>
             </div></details>
@@ -32,4 +32,5 @@
         </section>
     </div>
 </form>
+@include('components.quick-create')
 @push('scripts')<script src="/pos.js?v={{ filemtime(public_path('pos.js')) }}"></script>@endpush
