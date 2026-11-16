@@ -16,8 +16,10 @@ Peça ao administrador para conferir o perfil vinculado ao seu acesso.@endif</di
 @if($currentUser->role==='admin' && ($unassignedQuotesCount??0)>0)
 <div class="notice no-print" role="status">Há {{ $unassignedQuotesCount }} orçamentos sem vendedor. Vincule um responsável para organizá-los no painel. <a href="{{ route('documents',['company'=>$tenant->slug]) }}">Conferir documentos</a>.</div>
 @endif
+<div class="desk-metrics" aria-label="Resumo do vendedor selecionado"><div><span>Vendas de hoje</span><strong>{{ $metrics['sales_count'] }}</strong></div><div><span>Valor vendido hoje</span><strong>R$ {{ number_format($metrics['sales_total'],2,',','.') }}</strong></div><div><span>Orçamentos em andamento</span><strong>{{ $metrics['quotes_count'] }}</strong></div></div>
+<p class="hint desk-metrics-note">Hoje: {{ now()->format('d/m/Y') }} · vendas do vendedor selecionado; orçamentos em andamento não se limitam a hoje. Valores vendidos não representam dinheiro já recebido.</p>
 <section class="panel desk-customer-panel" aria-labelledby="desk-customer-title">
-    <div class="section-heading"><div><h2 id="desk-customer-title">Quem será atendido?</h2><p class="hint">Selecione um cliente ou comece sem identificação para consumidor final.</p></div>@if($selectedCustomer)<span class="badge">Cliente selecionado</span>@endif</div>
+    <div class="section-heading"><div><span class="eyebrow">1 · CLIENTE DO ATENDIMENTO</span><h2 id="desk-customer-title">Quem será atendido?</h2><p class="hint">Selecione um cliente ou comece sem identificação para consumidor final.</p></div>@if($selectedCustomer)<span class="badge">Cliente selecionado</span>@endif</div>
     @if($selectedCustomer)
         <div class="desk-selected-customer"><div><strong>{{ $selectedCustomer->name }}</strong><span>{{ $selectedCustomer->phone??$selectedCustomer->email??'Sem contato informado' }}</span></div><a href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$salesperson?->id]) }}">Limpar seleção</a></div>
     @endif
@@ -28,14 +30,13 @@ Peça ao administrador para conferir o perfil vinculado ao seu acesso.@endif</di
         </div>
     @endif
 </section>
+<div class="section-heading"><div><span class="eyebrow">2 · PRÓXIMO PASSO</span><h2>Inicie o atendimento</h2><p class="hint">O cliente e o vendedor selecionados acompanham a operação escolhida.</p></div></div>
 <div class="desk-primary-grid">
 @if($operationConfig['quotes'])    <section class="panel desk-action-card"><div class="desk-action-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18l-4-2-3 2-3-2-4 2V3Zm4 5h6m-6 4h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><h2>Novo orçamento</h2><p>Prepare os itens e valores para aprovação. O estoque só é baixado quando o orçamento gera a venda.</p></div>@if($canOperate)@if($operationConfig['quotes'])<a class="button secondary" href="{{ route('document.new',array_merge($deskContext,['type'=>'quote'])) }}">Criar orçamento</a>@endif@else<span class="button secondary desk-disabled" role="link" aria-disabled="true">Criar orçamento</span>@endif</section>@endif
     <section class="panel desk-action-card desk-sale-action"><div class="desk-action-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v15H4V6Zm4-3v6m8-6v6m-8 5h8m-8 4h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><h2>Nova venda</h2><p>Registre produtos e serviços, confira descontos e informe o pagamento para concluir o atendimento.</p></div>@if($canOperate)<a class="button" href="{{ route('sale.new',$deskContext) }}">Registrar venda</a>@else<span class="button desk-disabled" role="link" aria-disabled="true">Registrar venda</span>@endif</section>
 </div>
 @if($operationConfig['work_orders'])<section class="panel desk-action-card" aria-labelledby="desk-os-title"><div class="desk-action-symbol" aria-hidden="true">OS</div><div><h2 id="desk-os-title">Nova ordem de serviço</h2><p>Registre o equipamento ou veículo, o relato do cliente, o técnico e a previsão. Acompanhe a aprovação, a execução e a conclusão antes de gerar a venda.</p></div>@if($canOperate)@if($operationConfig['work_orders'])<a class="button" href="{{ route('document.new',array_merge($deskContext,['type'=>'work_order'])) }}">Abrir nova OS</a>@endif@else<span class="button desk-disabled" role="link" aria-disabled="true">Abrir nova OS</span>@endif</section>@endif
 <div class="actions"><a href="{{ route('documents',['company'=>$tenant->slug,'type'=>'work_order','salesperson_id'=>$salesperson?->id]) }}">Acompanhar ordens de serviço</a></div>
-<div class="desk-metrics" aria-label="Resumo do vendedor selecionado"><div><span>Vendas de hoje</span><strong>{{ $metrics['sales_count'] }}</strong></div><div><span>Valor vendido hoje</span><strong>R$ {{ number_format($metrics['sales_total'],2,',','.') }}</strong></div><div><span>Orçamentos em andamento</span><strong>{{ $metrics['quotes_count'] }}</strong></div></div>
-<p class="hint desk-metrics-note">Resumo exclusivo do vendedor selecionado. Valores vendidos não representam dinheiro já recebido.</p>
 <section class="panel">
     <div class="section-heading"><h2>Orçamentos para continuar</h2><a href="{{ route('documents',['company'=>$tenant->slug,'salesperson_id'=>$salesperson?->id,'type'=>'quote']) }}">Ver orçamentos</a></div>
     <div class="scroll"><table><thead><tr><th>Orçamento</th><th>Cliente</th><th>Etapa</th><th class="num">Total</th><th></th></tr></thead><tbody>

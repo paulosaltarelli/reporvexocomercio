@@ -147,3 +147,5 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware([
     Route::post('nfse/documents/{id}/issue', [\App\Http\Controllers\NfseController::class, 'unavailable'])->whereNumber('id')->name('nfse.issue');
     Route::post('nfse/documents/{id}/consult', [\App\Http\Controllers\NfseController::class, 'unavailable'])->whereNumber('id')->name('nfse.consult');
 });
+
+require __DIR__.'/platform.php';

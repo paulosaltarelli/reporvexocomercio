@@ -1,5 +1,12 @@
 # Operação por empresa e implantação
 
+> Evolução recuperada em 16/11/2026: o pacote também contém administração central,
+> isolamento SQL no banco compartilhado, provisionamento vazio e importador com
+> reconciliação. A descrição histórica abaixo documenta a primeira etapa; consulte
+> `ARQUITETURA_SAAS.md` para os componentes e o procedimento atual. A existência do
+> código não comprova publicação nem corte da produção: conferir journals e estado
+> efetivo dos tenants antes de qualquer aplicação.
+
 Primeira etapa da evolução SaaS, em branch própria baseada em main pós-PR #9. A landing não é modificada.
 
 ## Implementado nesta etapa

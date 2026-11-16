@@ -68,8 +68,16 @@ class CommerceController extends Controller
 
     public function products(Request $r)
     {
-        $r->validate(['type'=>'nullable|in:product,service']);
-        return view('products.index', ['products' => Product::with('group','priceReview')->when($r->query('type'),fn($q)=>$q->where('type',$r->query('type')))->when($r->q, fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$r->q.'%')->orWhere('sku', 'like', '%'.$r->q.'%')->orWhere('barcode', 'like', '%'.$r->q.'%')))->orderBy('name')->paginate(20)->withQueryString()]);
+        $data = $r->validate(['type' => 'nullable|in:product,service', 'q' => 'nullable|string|max:100']);
+        $search = trim($data['q'] ?? '');
+        $typeFilter = $data['type'] ?? null;
+        $products = Product::with('group', 'priceReview')
+            ->when($typeFilter, fn ($q) => $q->where('type', $typeFilter))
+            ->when($search !== '', function ($q) use ($search) {
+                $needle = '%'.addcslashes($search, '\\%_').'%';
+                $q->where(fn ($query) => $query->where('name', 'like', $needle)->orWhere('sku', 'like', $needle)->orWhere('barcode', 'like', $needle));
+            })->orderBy('name')->orderBy('id')->paginate(20)->withQueryString();
+        return view('products.index', compact('products', 'search', 'typeFilter'));
     }
 
     public function productForm(Request $r, string $company, ?int $id = null)
@@ -159,10 +167,31 @@ class CommerceController extends Controller
 
     public function sales(Request $request)
     {
-        $data = $request->validate(['salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $data = $request->validate([
+            'salesperson_id' => 'nullable|integer|exists:tenant.sellers,id', 'q' => 'nullable|string|max:100',
+            'status' => 'nullable|in:completed,cancelled', 'payment_status' => 'nullable|in:paid,pending',
+            'from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d'.($request->filled('from') ? '|after_or_equal:from' : ''),
+        ]);
         $sellerId = isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null;
-        return view('sales.index', ['sales'=>Sale::with('customer')->when($sellerId,fn($q)=>$q->where('salesperson_id',$sellerId))->latest()->paginate(20)->withQueryString(),
-            'sellers'=>Seller::orderBy('name')->get(),'sellerId'=>$sellerId]);
+        $search = trim($data['q'] ?? '');
+        $statusFilter = $data['status'] ?? null;
+        $paymentStatus = $data['payment_status'] ?? null;
+        $from = $data['from'] ?? null;
+        $to = $data['to'] ?? null;
+        $sales = Sale::with('customer')
+            ->when($sellerId, fn ($q) => $q->where('salesperson_id', $sellerId))
+            ->when($statusFilter, fn ($q) => $q->where('status', $statusFilter))
+            ->when($paymentStatus, fn ($q) => $q->where('paid', $paymentStatus === 'paid'))
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from.' 00:00:00'))
+            ->when($to, fn ($q) => $q->where('created_at', '<=', $to.' 23:59:59.999999'))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $needle = '%'.addcslashes($search, '\\%_').'%';
+                    $q->where('notes', 'like', $needle)->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', $needle)->orWhere('document', 'like', $needle)->orWhere('phone', 'like', $needle));
+                    if (ctype_digit($search) && strlen($search) <= 18) { $q->orWhere('id', (int) $search); }
+                });
+            })->latest('created_at')->latest('id')->paginate(20)->withQueryString();
+        return view('sales.index', compact('sales', 'sellerId', 'search', 'statusFilter', 'paymentStatus', 'from', 'to') + ['sellers' => Seller::orderBy('name')->get()]);
     }
 
     public function saleForm(Request $r)

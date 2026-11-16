@@ -19,7 +19,7 @@ final class PrepareFiscalReview
             throw ValidationException::withMessages(['request_key' => 'Chave de conferência inválida.']);
         }
         // No tenant/model from client input; connection is resolved by middleware.
-        if (! $tenant->active || DB::connection('tenant')->getDatabaseName() !== $tenant->db_name) {
+        if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             throw ValidationException::withMessages(['fiscal' => 'Contexto da empresa inválido.']);
         }
         abort_unless(User::where('active', true)->where('role', 'admin')->whereKey($userId)->exists(), 403);

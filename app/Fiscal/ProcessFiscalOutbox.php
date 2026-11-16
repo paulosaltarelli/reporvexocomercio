@@ -60,7 +60,7 @@ final class ProcessFiscalOutbox
             }
             try {
                 $issuer = FiscalIssuer::findOrFail($doc->issuer_id);
-                app(ProductionGate::class)->assertAllowed(Environment::from($issuer->environment), $tenant->fiscal_demonstration || DemoRun::whereNotNull('completed_at')->exists(), $tenant->fiscal_production_approved_at !== null);
+                app(ProductionGate::class)->assertAllowed(Environment::from($issuer->environment), $tenant->fiscal_demonstration || $tenant->is_demonstration || DemoRun::whereNotNull('completed_at')->exists(), $tenant->fiscal_production_approved_at !== null);
                 if ($issuer->environment !== 'homologation' || $issuer->provider !== 'sefaz_direct') {
                     throw new FiscalTransportException('production_disabled');
                 }

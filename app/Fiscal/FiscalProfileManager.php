@@ -18,7 +18,7 @@ final class FiscalProfileManager
 {
     public function authorize(Tenant $tenant, int $userId): void
     {
-        abort_unless($tenant->active && DB::connection('tenant')->getDatabaseName() === $tenant->db_name, 403);
+        abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403);
         abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
     }
 

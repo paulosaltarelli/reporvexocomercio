@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>@yield('title','Visão geral') · Vendra</title>
-    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css">@endif
 </head>
 <body>
@@ -17,10 +17,12 @@
     <div class="company">{{ $tenant->name }}</div>
     <div id="company-navigation" class="sidebar-menu">
         @php($registrationNavigation=request()->routeIs('products','product.*','catalog','sellers'))
-        @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*','stock','prices','price.*','purchases','purchase.*'))
+        @php($operationNavigation=request()->routeIs('sales','sale.*','documents','document.*'))
+        @php($stockNavigation=request()->routeIs('stock','prices','price.*','purchases','purchase.*'))
+        @php($fiscalNavigation=request()->routeIs('fiscal','fiscal.*','nfe.*','nfse.*'))
         @php($financeNavigation=request()->routeIs('finance','finance.*','cashflow','cash','cash.*'))
         @php($reportNavigation=request()->routeIs('reports','report.*','commissions'))
-        @php($settingsNavigation=request()->routeIs('business','setup*','users','account.password','fiscal','fiscal.*'))
+        @php($settingsNavigation=request()->routeIs('business','setup*','users','account.password'))
         <nav aria-label="Menu da empresa" class="grouped-navigation">
             <a class="nav {{ request()->routeIs('desk')?'selected':'' }}" href="{{ route('desk',['company'=>$tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif>Painel de operação</a>
             @if($currentUser?->role==='admin')
@@ -37,19 +39,25 @@
                 </div>
             </details>
             <details class="nav-group {{ $operationNavigation?'current-group':'' }}" @if($operationNavigation) open @endif>
-                <summary>Operações</summary>
+                <summary>Atendimento</summary>
                 <div class="nav-group-links">
-                    @foreach(['sales'=>'Vendas','documents'=>'Orçamentos e OS','stock'=>'Movimentações de estoque'] as $route=>$label)
-                        @continue($route==='stock' && !$operationConfig['inventory'])
+                    @foreach(['sales'=>'Vendas','documents'=>'Orçamentos e OS'] as $route=>$label)
                         @php($active=match($route){'sales'=>request()->routeIs('sales','sale.*'),'documents'=>request()->routeIs('documents','document.*'),default=>request()->routeIs($route)})
                         <a class="nav {{ $active?'selected':'' }}" href="{{ route($route,['company'=>$tenant->slug]) }}" @if($active) aria-current="page" @endif>{{ $label }}</a>
                     @endforeach
-                    @if($currentUser?->role==='admin')
-                        <a class="nav {{ request()->routeIs('purchases','purchase.*')?'selected':'' }}" href="{{ route('purchases',['company'=>$tenant->slug]) }}" @if(request()->routeIs('purchases','purchase.*')) aria-current="page" @endif>Compras</a>
-                        <a class="nav {{ request()->routeIs('prices','price.*')?'selected':'' }}" href="{{ route('prices',['company'=>$tenant->slug]) }}" @if(request()->routeIs('prices','price.*')) aria-current="page" @endif>Preços e alertas</a>
-                    @endif
+                    @if($operationConfig['work_orders'])<a class="nav nav-shortcut" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'work_order']) }}">+ Nova ordem de serviço</a>@endif
+                    @if($operationConfig['quotes'])<a class="nav nav-shortcut" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'quote']) }}">+ Novo orçamento</a>@endif
                 </div>
             </details>
+            <details class="nav-group {{ $stockNavigation?'current-group':'' }}" @if($stockNavigation) open @endif><summary>Estoque e compras</summary><div class="nav-group-links">
+                @if($operationConfig['inventory'])<a class="nav {{ request()->routeIs('stock')?'selected':'' }}" href="{{ route('stock',['company'=>$tenant->slug]) }}" @if(request()->routeIs('stock')) aria-current="page" @endif>Movimentações de estoque</a>@endif
+                @if($currentUser?->role==='admin')
+                @foreach(['purchases'=>'Compras','prices'=>'Preços e alertas'] as $route=>$label)
+                @php($active=$route==='purchases'?request()->routeIs('purchases','purchase.*'):request()->routeIs('prices','price.*'))
+                <a class="nav {{ $active?'selected':'' }}" href="{{ route($route,['company'=>$tenant->slug]) }}" @if($active) aria-current="page" @endif>{{ $label }}</a>
+                @endforeach
+                @endif
+            </div></details>
             @if($currentUser?->role==='admin')
                 <details class="nav-group {{ $financeNavigation?'current-group':'' }}" @if($financeNavigation) open @endif>
                     <summary>Financeiro</summary>
@@ -60,6 +68,13 @@
                         @endforeach
                     </div>
                 </details>
+                <details class="nav-group {{ $fiscalNavigation?'current-group':'' }}" @if($fiscalNavigation) open @endif><summary>Fiscal</summary><div class="nav-group-links">
+                @php($sefazActive=request()->routeIs('fiscal','nfe.*','fiscal.document','fiscal.sale','fiscal.preparation','fiscal.product'))
+                <a class="nav {{ $sefazActive?'selected':'' }}" href="{{ route('fiscal',['company'=>$tenant->slug]) }}" @if($sefazActive) aria-current="page" @endif>Documentos e configuração</a>
+                <a class="nav {{ request()->routeIs('nfse.*')?'selected':'' }}" href="{{ route('nfse.index',['company'=>$tenant->slug]) }}" @if(request()->routeIs('nfse.*')) aria-current="page" @endif>NFS-e nacional</a>
+                <a class="nav {{ request()->routeIs('fiscal.profiles.*')?'selected':'' }}" href="{{ route('fiscal.profiles.index',['company'=>$tenant->slug]) }}" @if(request()->routeIs('fiscal.profiles.*')) aria-current="page" @endif>Perfis tributários</a>
+                <a class="nav {{ request()->routeIs('fiscal.simulations.*')?'selected':'' }}" href="{{ route('fiscal.simulations.index',['company'=>$tenant->slug]) }}" @if(request()->routeIs('fiscal.simulations.*')) aria-current="page" @endif>Simulações internas</a>
+                </div></details>
                 <details class="nav-group {{ $reportNavigation?'current-group':'' }}" @if($reportNavigation) open @endif>
                     <summary>Relatórios</summary>
                     <div class="nav-group-links"><a class="nav {{ request()->routeIs('reports','report.*')?'selected':'' }}" href="{{ route('reports',['company'=>$tenant->slug]) }}" @if(request()->routeIs('reports','report.*')) aria-current="page" @endif>Visão gerencial e exportações</a>@if($operationConfig['commissions'])<a class="nav {{ request()->routeIs('commissions')?'selected':'' }}" href="{{ route('commissions',['company'=>$tenant->slug]) }}" @if(request()->routeIs('commissions')) aria-current="page" @endif>Comissões por vendedor</a>@endif</div>
@@ -69,7 +84,6 @@
                     <div class="nav-group-links">
                         <a class="nav {{ request()->routeIs('setup*')?'selected':'' }}" href="{{ route('setup',['company'=>$tenant->slug]) }}" @if(request()->routeIs('setup*')) aria-current="page" @endif>Operação e implantação</a>
                         <a class="nav {{ request()->routeIs('business')?'selected':'' }}" href="{{ route('business',['company'=>$tenant->slug]) }}" @if(request()->routeIs('business')) aria-current="page" @endif>Minha empresa</a>
-                        <a class="nav {{ request()->routeIs('fiscal','fiscal.*')?'selected':'' }}" href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Fiscal</a>
                         <a class="nav {{ request()->routeIs('users')?'selected':'' }}" href="{{ route('users',['company'=>$tenant->slug]) }}" @if(request()->routeIs('users')) aria-current="page" @endif>Usuários e acesso</a>
                     </div>
                 </details>
@@ -77,7 +91,7 @@
         </nav>
 
     </div>
-    <div class="aside-bottom">Gestão que acontece.<br><span>Vendra · primeira versão</span></div>
+    <div class="aside-bottom">Gestão que acontece.<br><span>Vendra por Vexo</span></div>
 </aside>
 <div class="workspace">
     <header>
@@ -99,9 +113,9 @@
         @endif
         @yield('content')
     </main>
-    <footer>Um produto Vexo · NFS-e ainda não disponível</footer>
+    <footer>Vendra · um produto Vexo</footer>
 </div>
-<script src="/ui.js"></script>
+<script src="/ui.js?v={{ filemtime(public_path('ui.js')) }}"></script>
 @stack('scripts')
 </body>
 </html>

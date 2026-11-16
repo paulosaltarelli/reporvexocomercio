@@ -10,6 +10,7 @@ final class PrivateFiscalFiles
 {
     public function put(int $tenantId, int $documentId, string $kind, #[\SensitiveParameter] string $bytes): void
     {
+        abort_unless(app(\App\Services\TenantConnection::class)->matchesId($tenantId),403);
         $sha = hash('sha256', $bytes);
         $table = DB::connection('tenant')->table('fiscal_files');
         if ((clone $table)->where('document_id', $documentId)->where('kind', $kind)->where('sha256', $sha)->exists()) {
@@ -22,6 +23,7 @@ final class PrivateFiscalFiles
 
     public function get(int $tenantId, int $documentId, string $kind): string
     {
+        abort_unless(app(\App\Services\TenantConnection::class)->matchesId($tenantId),403);
         $file = DB::connection('tenant')->table('fiscal_files')->where('document_id', $documentId)->where('kind', $kind)->latest('id')->first();
         abort_unless($file && preg_match('#^tenants/'.$tenantId.'/homologation/'.$documentId.'/[a-f0-9]{32}\.enc$#D', $file->private_path), 404);
         $bytes = base64_decode(Crypt::decryptString(Storage::disk('fiscal')->get($file->private_path)), true);

@@ -127,11 +127,48 @@ class OperationsController extends Controller
     public function finance(Request $r)
     {
         $this->admin($r);
-        $entries = FinancialEntry::with('payments', 'sale', 'purchase', 'supplier')->when($r->integer('sale'), fn ($q) => $q->where('sale_id', $r->integer('sale')))->orderByRaw('cancelled_at IS NOT NULL')->orderByRaw('paid_at IS NOT NULL')->orderBy('due_date')->paginate(20)->withQueryString();
+        $data = $r->validate([
+            'sale' => 'nullable|integer|min:1|exists:tenant.sales,id', 'q' => 'nullable|string|max:100',
+            'direction' => 'nullable|in:in,out', 'status' => 'nullable|in:pending,paid,overdue,cancelled',
+            'from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d'.($r->filled('from') ? '|after_or_equal:from' : ''),
+        ]);
+        $saleFilter = isset($data['sale']) ? (int) $data['sale'] : null;
+        $search = trim($data['q'] ?? '');
+        $directionFilter = $data['direction'] ?? null;
+        $statusFilter = $data['status'] ?? null;
+        $from = $data['from'] ?? null;
+        $to = $data['to'] ?? null;
+        $entries = FinancialEntry::with('supplier')
+            ->when($saleFilter, fn ($q) => $q->where('sale_id', $saleFilter))
+            ->when($directionFilter, fn ($q) => $q->where('direction', $directionFilter))
+            ->when($statusFilter, function ($q) use ($statusFilter) {
+                if ($statusFilter === 'cancelled') { $q->whereNotNull('cancelled_at'); return; }
+                $q->whereNull('cancelled_at');
+                if ($statusFilter === 'paid') { $q->whereColumn('paid_amount', '>=', 'amount'); }
+                else {
+                    $q->whereColumn('paid_amount', '<', 'amount');
+                    if ($statusFilter === 'overdue') { $q->where('due_date', '<', now()->toDateString()); }
+                }
+            })
+            ->when($from, fn ($q) => $q->where('due_date', '>=', $from))
+            ->when($to, fn ($q) => $q->where('due_date', '<=', $to))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $needle = '%'.addcslashes($search, '\\%_').'%';
+                    $q->where('description', 'like', $needle)->orWhere('category', 'like', $needle)
+                        ->orWhereHas('supplier', fn ($supplier) => $supplier->where('name', 'like', $needle)->orWhere('document', 'like', $needle))
+                        ->orWhereHas('sale.customer', fn ($customer) => $customer->where('name', 'like', $needle)->orWhere('document', 'like', $needle));
+                    if (ctype_digit($search) && strlen($search) <= 18) { $q->orWhere('id', (int) $search)->orWhere('sale_id', (int) $search); }
+                });
+            })->orderByRaw('cancelled_at IS NOT NULL')->orderByRaw('paid_at IS NOT NULL')->orderBy('due_date')->orderBy('id')->paginate(20)->withQueryString();
+        // Summary cards retain their original global scope; filters affect only the title list.
         $balance = fn (string $direction) => FinancialEntry::where('direction', $direction)->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total');
         $month = Payment::whereBetween('paid_on', [now()->startOfMonth()->toDateString(), now()->toDateString()]);
-
-        return view('finance', ['entries' => $entries, 'suppliers' => Supplier::orderBy('name')->get(), 'payable' => $balance('out'), 'receivable' => $balance('in'), 'payments' => Payment::latest('paid_on')->latest('id')->limit(50)->get(), 'cashIn' => (clone $month)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $month)->where('direction', 'out')->sum('amount')]);
+        return view('finance', compact('entries', 'saleFilter', 'search', 'directionFilter', 'statusFilter', 'from', 'to') + [
+            'suppliers' => Supplier::orderBy('name')->get(), 'payable' => $balance('out'), 'receivable' => $balance('in'),
+            'payments' => Payment::latest('paid_on')->latest('id')->limit(50)->get(),
+            'cashIn' => (clone $month)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $month)->where('direction', 'out')->sum('amount'),
+        ]);
     }
 
     public function createEntry(Request $r)

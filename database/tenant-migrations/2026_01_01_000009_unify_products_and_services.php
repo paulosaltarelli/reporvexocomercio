@@ -43,6 +43,7 @@ return new class extends Migration
                     $sku = 'LEGACY-SERVICE-'.$service->id.($suffix === 0 ? '' : '-'.$suffix);
                     if (DB::table('products')->where('sku', $sku)->exists()) {
                         $suffix++;
+
                         continue;
                     }
                     try {
@@ -90,6 +91,6 @@ return new class extends Migration
     {
         // Imported rows may already have been sold through product_id. Removing
         // them or forgetting their type would rewrite history; rollback is unsafe.
-        throw new \RuntimeException('A unificação de serviços não possui rollback destrutivo. Restaure um backup verificado ou aplique uma migração corretiva.');
+        throw new RuntimeException('A unificação de serviços não possui rollback destrutivo. Restaure um backup verificado ou aplique uma migração corretiva.');
     }
 };

@@ -24,6 +24,10 @@ class MigrateTenants extends Command
 
             return self::FAILURE;
         }
+        if ($tenants->contains(fn($tenant)=>$tenant->storage_mode==='shared')) {
+            $this->error('Há empresas na base compartilhada. Use uma atualização de schema compartilhado revisada; migrações tenant legadas não são executadas em views.');
+            return self::FAILURE;
+        }
         foreach ($tenants as $tenant) {
             try {
                 $connection->connect($tenant);
