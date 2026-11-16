@@ -70,7 +70,7 @@
             @if($isAdmin)
                 <a class="nav nav-primary {{ request()->routeIs('dashboard') ? 'selected' : '' }}" href="{{ route('dashboard', ['company' => $tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif><x-navigation-icon name="grid"/><span>Visão geral</span></a>
             @endif
-            <a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Painel de operação</span></a>
+            <a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Frente de caixa</span></a>
             <span class="navigation-caption navigation-section-caption">GESTÃO</span>
             @foreach($groups as $group)
                 @if(count($group['links']))

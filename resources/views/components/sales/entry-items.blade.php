@@ -1,6 +1,11 @@
-<section class="panel">
+<section class="panel {{ ($isPos??false)?'pos-items-panel':'' }}">
     <h2>{{ $itemsHeading??'Itens da venda' }}</h2>
+    @if($isPos??false)
+    <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Enter adiciona o item encontrado.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
+    <p id="pos-empty-cart" class="pos-empty-cart">Busque ou leia o primeiro item para começar a venda.</p>
+    @else
     <p class="hint">Reduzir o preço unitário também conta como desconto. O limite é conferido pelo servidor contra o preço de cadastro.</p>
+    @endif
     <input type="hidden" name="items_present" value="1">
     <div id="items"></div>
     <button type="button" id="add" class="button secondary">+ Adicionar item</button>
@@ -14,7 +19,7 @@
                 @foreach($products as $product)
                     @php($isService=($product->type??'product')==='service')
                     @php($stockControlled=!$isService && ($product->controls_stock??true))
-                    <option value="product:{{ $product->id }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
+                    <option value="product:{{ $product->id }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
                 @endforeach
             </select><input type="hidden" class="kind"><input type="hidden" class="item-id"><input type="hidden" class="catalog-seen"></div>
             <div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div>
@@ -30,6 +35,7 @@
 <script>
 (() => {
     let sequence=0;
+    const isPos=@json((bool)($isPos??false));
     const previous=Object.values(@json(session()->hasOldInput('items_present')?old('items',[]):old('items',$initialItems??[])));
     const allowEmptyItems=@json((bool)($allowEmptyItems??false));
     const container=document.querySelector('#items');
@@ -64,6 +70,7 @@
         document.querySelector('#gross-total').textContent=Vendra.centsText(gross);
         document.querySelector('#discount-total').textContent=Vendra.centsText(discount);
         document.querySelector('#total').textContent=Vendra.centsText(net);
+        if(isPos){document.querySelector('#pos-empty-cart').hidden=container.children.length>0;const totals={gross:String(gross),discount:String(discount),net:String(net)};const form=container.closest('form');form.dataset.cartGross=totals.gross;form.dataset.cartDiscount=totals.discount;form.dataset.cartNet=totals.net;document.dispatchEvent(new CustomEvent('vendra:cart-updated',{detail:totals}));}
     }
     function add(data){
         const block=document.querySelector('#row').content.firstElementChild.cloneNode(true);
@@ -97,9 +104,40 @@
             row.querySelector('.qty').value=data.quantity;row.querySelector('.price').value=data.offered_unit_price??data.unit_price;discount.value=data.explicit_discount_percent??data.discount_percent??'0';choose(false);
         }
         else choose(true);
+        return block;
     }
-    addButton.addEventListener('click',()=>add());
-    if(previous.length)previous.forEach(add);else if(!allowEmptyItems)add();
+    if(isPos){
+        const search=document.querySelector('#pos-search'),results=document.querySelector('#pos-results'),status=document.querySelector('#pos-search-status');
+        const catalog=[...document.querySelector('#row').content.querySelectorAll('.choice option')].filter(option=>option.value);
+        const normalize=value=>String(value||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+        function matches(){const term=normalize(search.value);return term?catalog.filter(option=>[option.dataset.name,option.dataset.sku,option.dataset.barcode].some(value=>normalize(value).includes(term))):[];}
+        function insert(option){
+            const existing=[...container.querySelectorAll('.sale-line-block')].find(block=>block.querySelector('.choice').value===option.value);
+            if(existing){
+                const input=existing.querySelector('.qty'),units=Vendra.decimalUnits(input.value,3);
+                if(units===null||units+1000n>999999000n){status.textContent='Confira a quantidade deste item antes de adicionar.';input.focus();return;}
+                const next=units+1000n;input.value=String(next/1000n)+'.'+String(next%1000n).padStart(3,'0');input.dispatchEvent(new Event('input'));
+            }else{
+                const empty=[...container.querySelectorAll('.sale-line-block')].find(block=>!block.querySelector('.choice').value);
+                if(!empty&&container.children.length>=50){status.textContent='Limite de 50 itens por venda.';return;}
+                const block=empty||add();const choice=block.querySelector('.choice');choice.value=option.value;choice.dispatchEvent(new Event('change'));
+            }
+            search.value='';results.replaceChildren();status.textContent='Adicionado: '+option.dataset.name;search.focus();
+        }
+        search.addEventListener('input',()=>{
+            results.replaceChildren();const found=matches();status.textContent=search.value.trim()?(found.length?'Selecione um item ou pressione Enter para um código exato.':'Nenhum item encontrado.'):'Enter adiciona o item encontrado.';
+            found.slice(0,8).forEach(option=>{const button=document.createElement('button');button.type='button';button.className='pos-result';button.textContent=option.dataset.name+' · '+option.dataset.sku+' · '+Vendra.centsText(Vendra.decimalUnits(option.dataset.price,2)??0n);button.addEventListener('click',()=>insert(option));results.append(button);});
+        });
+        search.addEventListener('keydown',event=>{
+            if(event.key==='ArrowDown'){const first=results.querySelector('button');if(first){event.preventDefault();first.focus();}return;}
+            if(event.key!=='Enter')return;event.preventDefault();const term=normalize(search.value);
+            const exact=term?catalog.filter(option=>[option.dataset.sku,option.dataset.barcode].some(value=>value&&normalize(value)===term)):[];
+            const found=exact.length?exact:matches();if(found.length===1)insert(found[0]);else status.textContent=found.length?'Selecione um dos itens encontrados.':'Nenhum item encontrado.';
+        });
+        results.addEventListener('keydown',event=>{if(event.key==='Escape'){results.replaceChildren();search.focus();}});
+    }
+    addButton.addEventListener('click',()=>{if(container.children.length<50){const block=add();block.querySelector('.choice').focus();}});
+    if(previous.length)previous.forEach(add);else if(!allowEmptyItems&&!isPos)add();
     updateTotals();
 })();
 </script>

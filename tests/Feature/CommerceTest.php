@@ -1334,6 +1334,44 @@ class CommerceTest extends TestCase
         }
     }
 
+    public function test_pos_starts_with_items_and_accepts_anonymous_sale_with_idempotency(): void
+    {
+        $this->product->update(['controls_stock' => false, 'barcode' => '7891234567890']);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $response = $this->get('/app/a/desk')->assertOk()
+            ->assertSee('pos-search')->assertSee('checkout-form')->assertSee('pos-net-total')
+            ->assertDontSee('Quem será atendido?')->assertDontSee('Inicie o atendimento');
+        $dom = new \DOMDocument(); @$dom->loadHTML($response->getContent()); $xpath = new \DOMXPath($dom);
+        $this->assertCount(1, $xpath->query('//form[@id="checkout-form"]'));
+        $this->assertCount(1, $xpath->query('//details[contains(@class,"pos-optionals") and not(@open)]//select[@name="customer_id"]'));
+        $this->assertCount(1, $xpath->query('//input[@id="pos-search"][@autofocus]'));
+        $this->assertCount(1, $xpath->query('//option[@data-barcode="7891234567890"]'));
+        $data = $this->saleData();
+        $this->post('/app/a/sales', $data)->assertRedirect();
+        $this->post('/app/a/sales', $data)->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(1, Sale::count());
+        $this->assertNull(Sale::first()->customer_id);
+        $this->assertSame('100.00', Sale::first()->total);
+    }
+
+    public function test_pos_restores_cart_after_validation_error_and_filters_service_only_catalog(): void
+    {
+        $this->product->update(['active' => false]);
+        $service = Product::create(['name' => 'Serviço balcão', 'sku' => 'PDV-SRV', 'type' => 'service', 'controls_stock' => false, 'sale_price' => '80.00', 'product_group_id' => $this->product->product_group_id]);
+        app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['catalog_mode' => 'services', 'inventory' => false, 'nfce' => false, 'nfe' => false]), $this->user->id);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a/desk')->assertOk()->assertViewHas('products', fn ($items) => $items->modelKeys() === [$service->id]);
+        $data = $this->saleData(); $data['items'] = [['kind' => 'product', 'id' => $service->id, 'quantity' => '2', 'unit_price' => '80.00']];
+        $data['items_present'] = '1'; $data['paid'] = false; unset($data['due_date']);
+        $this->from('/app/a/desk')->post('/app/a/sales', $data)->assertRedirect('/app/a/desk')->assertSessionHasErrors('due_date')->assertSessionHasInput('request_key', $data['request_key']);
+        $response = $this->get('/app/a/desk')->assertOk()->assertSee($data['request_key']);
+        $dom = new \DOMDocument(); @$dom->loadHTML($response->getContent());
+        $this->assertCount(1, (new \DOMXPath($dom))->query('//select[@name="paid"]/option[@value="0"][@selected]'));
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(0, Sale::count());
+    }
+
     public function test_http_outstanding_metrics_sum_partial_balances_and_exclude_cancelled_entries(): void
     {
         $finance = app(\App\Services\FinancialService::class);
