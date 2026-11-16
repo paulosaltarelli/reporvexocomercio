@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     <link rel="stylesheet" href="/navigation.css?v={{ filemtime(public_path('navigation.css')) }}">
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css">@endif
-</head>
+<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>
 <body>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 @include('partials.company-navigation')
@@ -31,7 +31,7 @@
         @endif
         @yield('content')
     </main>
-    <footer>Vendra · um produto Vexo</footer>
+    <footer class="product-owner">Vendra · um produto <img src="/brand/vexo-logo-dark.png" width="2172" height="724" alt="Vexo"></footer>
 </div>
 <script src="/ui.js?v={{ filemtime(public_path('ui.js')) }}"></script>
 @stack('scripts')

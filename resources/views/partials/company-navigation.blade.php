@@ -60,7 +60,7 @@
 @section('navigation-section', $navigationSection)
 <aside class="app-sidebar" aria-label="Navegação da empresa">
     <div class="sidebar-heading">
-        <a class="brand" href="{{ route($isAdmin ? 'dashboard' : 'desk', ['company' => $tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span>por Vexo</span></a>
+        <a class="brand" href="{{ route($isAdmin ? 'dashboard' : 'desk', ['company' => $tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span class="brand-endorsement">por <img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></span></a>
         <button type="button" class="sidebar-close" aria-label="Fechar menu"><x-navigation-icon name="close"/></button>
     </div>
     <div class="company"><span class="company-symbol"><x-navigation-icon name="building"/></span><div><span class="company-caption">SUA EMPRESA</span><strong>{{ $tenant->name }}</strong></div></div>

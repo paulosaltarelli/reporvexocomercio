@@ -160,3 +160,5 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline
 @media(max-width:900px) { .showcase-row { gap: 28px; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); }.showcase-copy h3 { font-size: 26px; }.showcase-copy>p { font-size: 13px; }.showcase-copy li { font-size: 12px; } }
 @media(max-width:680px) { .showcase-row { grid-template-columns: 1fr; gap: 23px; padding-top: 30px; margin-top: 30px; }.showcase-copy { grid-row: 1; }.showcase-copy h3 { font-size: 28px; margin-block: 12px 15px; }.showcase-copy>p { font-size: 14px; }.showcase-copy li { font-size: 13px; }.showcase-copy ul { margin-top: 14px; }.showcase-image figcaption { font-size: 10px; } }
 @media print { .showcase-row { break-inside: avoid; grid-template-columns: 1.3fr 1fr; gap: 20px; }.showcase-copy h3 { font-size: 22px; }.image-expand { display: none; }.showcase-image img { max-height: 230px; object-fit: contain; } }
+
+.showcase-example { margin-top: 18px; padding: 14px 16px; border-left: 3px solid #25a3cc; border-radius: 0 7px 7px 0; background: #edf3fa; color: #365575; font-size: 12px !important; line-height: 1.75 !important; }
