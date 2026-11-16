@@ -24,6 +24,13 @@ final class FiscalFixtures
         }
     }
 
+    public static function legacyCertificate(array $fixture): string
+    {
+        $keys=[];if(!openssl_pkcs12_read($fixture['pfx'],$keys,$fixture['password']))throw new \RuntimeException('Synthetic fixture unavailable.');
+        $process=new \Symfony\Component\Process\Process(['/usr/bin/openssl','pkcs12','-export','-legacy','-passout','pass:'.$fixture['password']],null,null,$keys['pkey'].$keys['cert'],10);
+        $process->run();if(!$process->isSuccessful())throw new \RuntimeException('Synthetic legacy fixture unavailable.');return $process->getOutput();
+    }
+
     public static function rule(): array
     {
         return ['cfop' => '5102', 'icms_code' => '102', 'pis_code' => '07', 'cofins_code' => '07', 'gtin' => 'SEM GTIN', 'rtc_mode' => 'standard', 'rtc_cst' => '000', 'rtc_class' => '000001', 'ibs_uf_rate' => '0.1', 'ibs_municipal_rate' => '0', 'cbs_rate' => '0.9', 'transparency_rate' => '0'];

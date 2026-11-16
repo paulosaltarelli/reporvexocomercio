@@ -1,0 +1,11 @@
+# Used only by the short-lived PFX conversion worker. No web/worker TLS changes.
+openssl_conf = pfx_init
+[pfx_init]
+providers = pfx_providers
+[pfx_providers]
+default = pfx_default
+legacy = pfx_legacy
+[pfx_default]
+activate = 1
+[pfx_legacy]
+activate = 1

@@ -11,6 +11,7 @@ final class CertificateInspector
     public function inspect(#[\SensitiveParameter] string $pfx, #[\SensitiveParameter] string $password, string $cnpj): array
     {
         try {
+            $pfx=app(PfxCompatibility::class)->normalize($pfx,$password);
             $certificate = @Certificate::readPfx($pfx, $password);
             $keys = [];
             if (! @openssl_pkcs12_read($pfx, $keys, $password) || ! @openssl_x509_check_private_key($keys['cert'], $keys['pkey'])) {
@@ -31,7 +32,7 @@ final class CertificateInspector
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable) {
-            throw ValidationException::withMessages(['certificate' => 'Não foi possível abrir o A1/PFX. Confira arquivo e senha. Arquivos com algoritmo legado precisam ser reexportados com criptografia atual.']);
+            throw ValidationException::withMessages(['certificate' => 'Não foi possível abrir o A1/PFX. Confira o arquivo e a senha.']);
         } finally {
             while (openssl_error_string() !== false) {
             }
