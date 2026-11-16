@@ -1,0 +1,86 @@
+/* Application shell and company navigation. */
+:root{--sidebar-width:252px;--sidebar-bg:#0b1830;--sidebar-muted:#99abc4}
+.skip-link{z-index:60}
+.navigation-icon{width:19px;height:19px;flex:none;display:block}
+.app-sidebar{width:var(--sidebar-width);padding:27px 15px 18px;background:var(--sidebar-bg);gap:0;z-index:40;height:100dvh;overflow:hidden}
+.app-sidebar .sidebar-heading{padding:0 13px;min-height:52px;flex-shrink:0}
+.app-sidebar .brand{font-size:34px;letter-spacing:-1.6px;font-weight:750}
+.app-sidebar .brand span{font-size:9px;letter-spacing:2px;margin-top:8px;color:#91b7d7}
+.app-sidebar .company{display:flex;align-items:center;gap:11px;border:1px solid #26354c;border-radius:9px;padding:12px;margin:25px 4px 23px;font-size:12px;flex-shrink:0;background:#ffffff04}
+.company-symbol{display:grid;place-items:center;width:33px;height:33px;border-radius:7px;background:#1c2e49;color:#b2cae7;flex:none}
+.company-caption{display:block;color:#91a4c1;font-size:9px;letter-spacing:1px;font-weight:500;margin-bottom:3px}
+.app-sidebar .company strong{font-weight:550;display:block;line-height:1.45;color:#e3ecf8;overflow-wrap:anywhere}
+.app-sidebar .sidebar-menu{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 3px 12px;max-height:none;scrollbar-width:thin;scrollbar-color:#34435a transparent}
+.app-sidebar .grouped-navigation{display:block;padding:0}
+.navigation-caption{display:block;font-size:9px;letter-spacing:1.4px;font-weight:600;color:#8396b1;padding:0 12px 10px}
+.navigation-section-caption{padding-top:25px}
+.app-sidebar .nav{display:flex;align-items:center;gap:11px;min-height:42px;padding:10px 12px;margin:2px 0;border-radius:7px;font-size:12.5px;line-height:1.5;color:#b9c8dd;font-weight:450;white-space:normal;transition:background .15s,color .15s;box-shadow:none}
+.app-sidebar .nav:hover{background:#ffffff09;color:#fff}
+.app-sidebar .nav.selected{background:#173659;color:#fff;box-shadow:none;font-weight:600}
+.app-sidebar .nav-primary.selected .navigation-icon{color:#63d4f0}
+.app-sidebar .grouped-navigation>.nav{margin-bottom:3px}
+.app-sidebar .nav-group{border:0;padding:0;margin:3px 0;width:100%}
+.app-sidebar .nav-group>summary{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:11px;min-height:44px;padding:10px 12px;font-size:12.5px;font-weight:500;letter-spacing:0;line-height:1.5;color:#b9c8dd;list-style:none;border-radius:7px;cursor:pointer;transition:background .15s,color .15s}
+.app-sidebar .nav-group>summary:hover{background:#ffffff09;color:#fff}
+.app-sidebar .nav-group>summary::-webkit-details-marker{display:none}
+.app-sidebar .nav-group>summary::after{content:none}
+.app-sidebar .nav-group>summary>span{flex:1}
+.app-sidebar .navigation-chevron{width:14px;height:14px;color:#7e92af;transition:transform .15s}
+.app-sidebar .nav-group[open]>summary .navigation-chevron{transform:rotate(90deg)}
+.app-sidebar .nav-group.current-group>summary{color:#eff5ff}
+.app-sidebar .nav-group.current-group>summary>.navigation-icon:first-child{color:#63d4f0}
+.app-sidebar .nav-group-links{display:block;border-left:1px solid #2b3b53;margin:2px 10px 10px 21px;padding:2px 0 2px 10px}
+.app-sidebar .nav-group-links .nav{font-size:12px;padding:9px 10px;min-height:38px;margin:2px 0}
+.app-sidebar .nav-group-links .nav.selected{background:#173659;position:relative}
+.app-sidebar .nav-group-links .nav.selected::before{content:'';position:absolute;width:3px;height:14px;left:-12px;border-radius:3px;background:#5bd0f1}
+.app-sidebar .aside-bottom{display:flex;gap:10px;align-items:center;margin:12px 12px 0;padding:16px 0 0;border-top:1px solid #24324a;color:#ccd7e7;font-size:11px;flex-shrink:0}
+.app-sidebar .aside-bottom span:not(.sidebar-product-dot){display:block;font-size:10px;color:#8194ae;margin-top:2px}
+.sidebar-user{min-width:0}.sidebar-user strong{display:block;font-size:11px;font-weight:500;overflow-wrap:anywhere}.sidebar-user a{display:inline-flex;align-items:center;min-height:30px;color:#91b7d7;font-size:10px}.sidebar-user a[aria-current=page]{color:#fff;text-decoration:underline}
+.sidebar-product-dot{width:7px;height:7px;border-radius:50%;background:#4dbeda;flex:none}
+.sidebar-close,.sidebar-backdrop{display:none}
+.workspace{margin-left:var(--sidebar-width);min-width:0}
+.workspace>header{height:72px;padding:0 34px;gap:20px}
+.workspace>header .workspace-location{display:flex;gap:12px;align-items:center;min-width:0;font-size:12px}
+.workspace-location>.navigation-icon{height:12px;width:12px;color:#b2bed0}
+.workspace-section{color:#8290a4;white-space:nowrap}
+.workspace-page{color:#34445c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw;font-weight:550}
+.workspace>header .workspace-account{gap:14px;font-size:12px;flex-shrink:0}
+.user-avatar{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#eaf0fa;color:#315c99;font-size:12px;font-weight:650;text-transform:uppercase}
+.workspace-account .current-user{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workspace-account .account-link{color:#64748b;padding-left:14px;border-left:1px solid #e2e8f0}
+.workspace-account .text-button{font-size:12px;min-height:40px}
+.workspace>main{min-height:calc(100dvh - 128px)}
+.app-sidebar :focus-visible{outline:2px solid #6ed6f4;outline-offset:2px}
+@media(min-width:761px){.menu-toggle{display:none}.sidebar-backdrop{display:none!important}}
+@media(max-width:1050px) and (min-width:761px){:root{--sidebar-width:232px}.workspace>header{padding:0 24px}.workspace-account .current-user{max-width:100px}.workspace-page{max-width:22vw}}
+@media(max-width:760px){
+    .app-sidebar{position:fixed;inset:0 auto 0 0;display:flex;width:min(296px,calc(100vw - 48px));height:100dvh;padding:22px 14px 16px;visibility:visible;transform:translateX(0);box-shadow:12px 0 45px #06132930}
+    .vendra-ui-ready .app-sidebar:not(.is-open){visibility:hidden;transform:translateX(-100%);box-shadow:none}
+    .app-sidebar .sidebar-heading{padding:0 12px;min-height:50px}
+    .app-sidebar .brand{font-size:32px}
+    .sidebar-close{display:grid;place-items:center;width:36px;height:36px;border:1px solid #33445f;background:transparent;color:#c4d3e7;border-radius:7px;cursor:pointer;padding:7px}
+    .app-sidebar .company{margin:22px 4px 22px}
+    .app-sidebar .sidebar-menu{padding-top:0;max-height:none}
+    .app-sidebar .nav-group>summary{min-height:46px;font-size:13px;padding:10px 12px}
+    .app-sidebar .nav-group-links .nav{display:flex;width:100%;min-height:44px;padding:10px;font-size:12.5px}
+    .app-sidebar .nav-primary{min-height:44px}
+    .app-sidebar .aside-bottom{display:flex}
+    .sidebar-user a{min-height:44px}
+    .sidebar-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:35;background:#06132980;border:0;border-radius:0;padding:0;width:100%;height:100%;cursor:default}
+    body.navigation-open{overflow:hidden}
+    .workspace{margin-left:0}
+    .workspace>header{position:sticky;top:0;z-index:30;height:62px;padding:0 16px;gap:10px}
+    .workspace>header .workspace-location{width:auto;justify-content:flex-start;gap:11px;flex:1}
+    .menu-toggle{display:grid;place-items:center;min-width:36px;min-height:36px;padding:7px;border:1px solid #dfe7f1;background:#fff;color:#34445c;border-radius:7px;cursor:pointer}
+    .workspace-location>.navigation-icon,.workspace-section{display:none}
+    .workspace-page{max-width:none;font-size:12px;flex:1;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .workspace>header .workspace-account{width:auto;gap:10px;justify-content:flex-end}
+    .workspace-account .current-user,.workspace-account .account-link{display:none}
+    .user-avatar{display:none}
+    .workspace-account .text-button{min-height:40px}
+    .workspace>main{min-height:calc(100dvh - 118px)}
+    body:not(.vendra-ui-ready) .app-sidebar{position:relative;width:100%;height:auto;box-shadow:none}
+    body:not(.vendra-ui-ready) .sidebar-close,body:not(.vendra-ui-ready) .menu-toggle{display:none}
+}
+@media(prefers-reduced-motion:reduce){.app-sidebar *{transition:none!important}}
+@media print{.app-sidebar,.sidebar-backdrop,.workspace>header{display:none!important}.workspace{margin:0!important}.workspace>main{min-height:0}body.navigation-open{overflow:visible}}

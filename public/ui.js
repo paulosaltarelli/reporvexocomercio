@@ -59,25 +59,66 @@ window.Vendra = (() => {
         observer.observe(document.body, {childList: true, subtree: true});
         const toggle = document.querySelector('.menu-toggle');
         const menu = document.querySelector('#company-navigation');
-        if (toggle && menu) {
+        const sidebar = document.querySelector('.app-sidebar');
+        const backdrop = document.querySelector('.sidebar-backdrop');
+        if (toggle && menu && sidebar && backdrop) {
             const small = window.matchMedia('(max-width: 760px)');
-            const updateMenu = () => {
-                menu.hidden = small.matches;
-                toggle.setAttribute('aria-expanded', String(!menu.hidden));
-            };
-            toggle.addEventListener('click', () => {
-                menu.hidden = !menu.hidden;
-                toggle.setAttribute('aria-expanded', String(!menu.hidden));
-            });
-            menu.addEventListener('keydown', event => {
-                if (event.key === 'Escape' && small.matches && !menu.hidden) {
-                    menu.hidden = true;
-                    toggle.setAttribute('aria-expanded', 'false');
-                    toggle.focus();
+            const workspace = document.querySelector('.workspace');
+            const close = sidebar.querySelector('.sidebar-close');
+            function setMenu(open, restoreFocus = false) {
+                const modal = small.matches && open;
+                sidebar.classList.toggle('is-open', modal);
+                sidebar.inert = small.matches && !open;
+                menu.hidden = small.matches && !open;
+                backdrop.hidden = !modal;
+                document.body.classList.toggle('navigation-open', modal);
+                toggle.setAttribute('aria-expanded', String(open || !small.matches));
+                toggle.setAttribute('aria-label', modal ? 'Fechar menu' : 'Abrir menu');
+                if (workspace) workspace.inert = modal;
+                if (modal) {
+                    sidebar.setAttribute('role', 'dialog');
+                    sidebar.setAttribute('aria-modal', 'true');
+                    close?.focus();
+                } else {
+                    sidebar.removeAttribute('role');
+                    sidebar.removeAttribute('aria-modal');
+                    if (restoreFocus) toggle.focus();
+                }
+            }
+            toggle.addEventListener('click', () => setMenu(!sidebar.classList.contains('is-open')));
+            close?.addEventListener('click', () => setMenu(false, true));
+            backdrop.addEventListener('click', () => setMenu(false, true));
+            sidebar.addEventListener('keydown', event => {
+                if (!small.matches || !sidebar.classList.contains('is-open')) return;
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setMenu(false, true);
+                }
+                if (event.key === 'Tab') {
+                    const focusable = [...sidebar.querySelectorAll('a[href],button,summary')]
+                        .filter(element => element.getClientRects().length && !element.disabled);
+                    const first = focusable[0], last = focusable[focusable.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault(); last?.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault(); first?.focus();
+                    }
                 }
             });
-            small.addEventListener('change', updateMenu);
-            updateMenu();
+            small.addEventListener('change', () => {
+                // Release focus from a drawer that becomes hidden after a resize.
+                const restoreFocus = small.matches && sidebar.contains(document.activeElement);
+                setMenu(!small.matches, restoreFocus);
+            });
+            setMenu(!small.matches);
+            menu.querySelectorAll('.nav-group').forEach(group => {
+                group.addEventListener('toggle', () => {
+                    if (!group.open) return;
+                    menu.querySelectorAll('.nav-group[open]').forEach(other => {
+                        if (other !== group) other.open = false;
+                    });
+                });
+            });
         }
         document.querySelectorAll('[data-open-disclosure]').forEach(link => {
             link.addEventListener('click', event => {

@@ -54,3 +54,8 @@ aside{padding:24px 16px}.sidebar-heading{padding:0 8px}.company{overflow-wrap:an
 @media(max-width:1050px){.page-top{flex-wrap:wrap}.page-top>.actions{justify-content:flex-start}.toolbar>*{min-width:0}}
 @media(max-width:760px){aside{padding:18px 16px}.sidebar-heading{padding:0}.company{padding:12px 0;margin:12px 0 0}.sidebar-menu .grouped-navigation{display:block}.sidebar-menu .grouped-navigation>.nav{display:flex;min-height:44px}.nav-group{width:100%;margin:5px 0}.nav-group>summary{min-height:46px;font-size:12px;padding-left:10px}.sidebar-menu .nav-group-links .nav{display:flex;width:100%;min-height:44px;padding-left:18px}.sidebar-menu{max-height:65vh;overflow-y:auto}.aside-bottom{display:none}.page-top{gap:12px;margin-bottom:22px}.page-top h1{font-size:26px}.page-top>.actions{width:100%}.page-top>.actions .button{min-height:44px}.panel:not(.annual-sales-chart){padding:20px 17px}.toolbar{align-items:stretch}.toolbar label{line-height:1.5}.toolbar button,.toolbar .button{min-height:44px}.section-heading>a{font-size:12px}.scroll{margin-top:8px}footer{padding:18px!important;font-size:11px}}
 @media print{.nav-shortcut{display:none!important}.page-top{display:block}.page-top .muted{max-width:none}.panel{box-shadow:none!important}.scroll{overscroll-behavior:auto}.section-heading{display:block}}
+
+/* Layout follows the company's enabled operation modules. */
+.split.without-inventory,.desk-primary-grid.without-quotes{grid-template-columns:minmax(0,1fr)}
+@media(min-width:1051px){.cards.without-inventory{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:761px){.desk-metrics.without-quotes{grid-template-columns:repeat(2,minmax(0,1fr))}}
