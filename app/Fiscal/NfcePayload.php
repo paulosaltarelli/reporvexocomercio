@@ -18,6 +18,7 @@ final class NfcePayload
     public function build(Tenant $tenant, Sale $sale, FiscalIssuer $issuer, array $operation): array
     {
         $fail = fn (string $message) => throw ValidationException::withMessages(['fiscal' => $message]);
+        if(bccomp(app(\App\Services\SalePayments::class)->passedTotal($sale->id),'0',2)>0)$fail('Venda com acréscimo de cartão exige tratamento fiscal específico; não será emitida omitindo o acréscimo.');
         if ($issuer->environment !== 'homologation' || $issuer->provider !== 'sefaz_direct') {
             $fail('Este fluxo atende somente SEFAZ direta em homologação. Produção não habilitada.');
         }

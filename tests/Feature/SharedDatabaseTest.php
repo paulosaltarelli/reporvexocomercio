@@ -427,6 +427,16 @@ class SharedDatabaseTest extends TestCase
         $this->sessionFor($this->b);$this->get('/app/shared-b/sales/'.$sale->id)->assertNotFound();
     }
 
+    public function test_shared_card_brands_fees_and_payables_do_not_leak_between_stores(): void
+    {
+        $shop=$this->catalog($this->a);$fees=app(\App\Services\CardFees::class);
+        $fees->save(['version'=>CompanyOperation::find(1)->version,'name'=>'Contrato privado A','type'=>'credit','policy'=>'pass','active'=>1,'rates'=>[1=>'3']],$shop['owner']->id);$brand=array_key_last($fees->all());
+        $sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'payments'=>[['payment_option'=>'credit','amount'=>'50','paid'=>1,'card_brand'=>$brand,'card_installments'=>1,'fee_policy'=>'pass','rate_seen'=>'3','fee_reviewed'=>1,'charged_seen'=>'51.55']],'items'=>[['kind'=>'product','id'=>$shop['service']->id,'quantity'=>'1','unit_price'=>'50']]],$shop['owner']->id);
+        $this->assertSame('51.55',$sale->total);$this->assertSame('1.55',FinancialEntry::where('category','Taxas de cartão')->firstOrFail()->amount);
+        $this->connect($this->b);$this->assertSame([],$fees->all());$this->assertSame(0,FinancialEntry::where('category','Taxas de cartão')->count());$this->assertSame([],app(\App\Services\SalePayments::class)->rows($sale->id));
+        try{$fees->quote('50','credit',['card_brand'=>$brand,'card_installments'=>1,'fee_policy'=>'pass','rate_seen'=>'3','fee_reviewed'=>1,'charged_seen'=>'51.55']);$this->fail('Foreign card contract accepted.');}catch(\Illuminate\Validation\ValidationException){$this->assertSame(0,Payment::count());}
+    }
+
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
         $owner = $this->connect($this->a);

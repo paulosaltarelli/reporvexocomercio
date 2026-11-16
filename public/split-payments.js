@@ -3,7 +3,7 @@
  const form=box.closest('form'),enabled=box.querySelector('.split-enabled'),container=box.querySelector('.split-payment-rows'),add=box.querySelector('.split-add'),balance=box.querySelector('.split-payment-balance');
  let sequence=0,total=BigInt(form.dataset.cartNet||form.dataset.paymentTotal||'0');
  const single=[...form.querySelectorAll('[name="payment_option"],[name="payment_method"],[name="paid"],[name="due_date"],[name="installments"]')];
- function update(){
+ function update(event){
   let sum=0n,parts=0,invalid=false;
   for(const row of container.children){
    const field=n=>row.querySelector(`[data-field="${n}"]`),type=field('payment_option').selectedOptions[0]?.dataset.type,paid=field('paid').value==='1';
@@ -12,6 +12,7 @@
    row.querySelectorAll('.split-due').forEach(e=>e.hidden=paid);field('due_date').disabled=!enabled.checked||paid;field('due_date').required=!paid;
    field('installments').disabled=!enabled.checked||paid;
    const cash=paid&&type==='cash';row.querySelector('.split-cash').hidden=!cash;field('cash_received').disabled=!enabled.checked||!cash;
+   window.VendraCardFees?.refresh(row.querySelector('.card-fee-fields'),!!event&&event.target?.dataset.field!=='fee_reviewed');
    const amount=Vendra.decimalUnits(field('amount').value,2);sum+=amount||0n;invalid ||= amount===null||amount<=0n;
    parts+=paid?1:Number(field('installments').value);
    field('cash_received').setCustomValidity('');const received=Vendra.decimalUnits(field('cash_received').value,2);
@@ -24,6 +25,7 @@
   add.disabled=!enabled.checked||container.children.length>=10;
   single.forEach(e=>{e.disabled=enabled.checked;});
   form.dataset.splitPayment=enabled.checked?'1':'0';
+  form.querySelectorAll('.single-card-fee').forEach(b=>window.VendraCardFees?.refresh(b));
   const legacyCash=form.querySelector('#pos-cash-received');if(enabled.checked&&legacyCash){legacyCash.disabled=true;legacyCash.setCustomValidity('');}else if(legacyCash)legacyCash.disabled=form.querySelector('#pos-cash-fields').hidden;
  }
  function insert(data={}){
@@ -32,7 +34,7 @@
   row.querySelectorAll('[data-field]').forEach(e=>{e.name=`payments[${index}][${e.dataset.field}]`;if(data[e.dataset.field]!==undefined&&data[e.dataset.field]!==null)e.value=data[e.dataset.field];});
   row.querySelector('[data-field="payment_option"]').addEventListener('change',()=>{if(row.querySelector('[data-field="payment_option"]').selectedOptions[0]?.dataset.type==='invoice')row.querySelector('[data-field="paid"]').value='0';update();});
   row.querySelector('[data-field="paid"]').addEventListener('change',()=>{if(row.querySelector('[data-field="payment_option"]').selectedOptions[0]?.dataset.type==='invoice')row.querySelector('[data-field="paid"]').value='0';});
-  row.addEventListener('input',update);row.addEventListener('change',update);row.querySelector('.split-remove').addEventListener('click',()=>{row.remove();update();});container.append(row);Vendra.associateLabels(row);update();
+  row.addEventListener('input',update);row.addEventListener('change',update);row.querySelector('.split-remove').addEventListener('click',()=>{row.remove();update();});container.append(row);Vendra.associateLabels(row);window.VendraCardFees?.init(row.querySelector('.card-fee-fields'));update();
  }
  enabled.addEventListener('change',()=>{if(enabled.checked&&!container.children.length)insert();update();});add.addEventListener('click',()=>insert());
  document.addEventListener('vendra:cart-updated',event=>{total=BigInt(event.detail.net);update();});
