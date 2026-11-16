@@ -1,7 +1,7 @@
 @extends('layout')
 @section('title','Preços e alertas')
 @section('subtitle','Escolha quando a base de custo deve atualizar o preço e confira as sugestões que precisam da sua decisão.')
-@section('actions')<a class="button secondary" href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>'groups']) }}">Configurar regras por grupo</a>@endsection
+@section('actions')@if($currentUser->allows('groups.manage'))<a class="button secondary" href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>'groups']) }}">Configurar regras por grupo</a>@endif @endsection
 @section('content')
 <div class="cards two">
     <div class="card featured"><small>Alertas que precisam de atenção</small><strong>{{ $pendingCount }}</strong><small>Confira a diferença ou revise a configuração indicada.</small></div>
@@ -33,15 +33,17 @@
                     @endif
                 </td>
                 <td>
-                    @if($canApply)
-                        <form method="post" action="{{ route('price.apply',['company'=>$tenant->slug,'id'=>$product->id]) }}" onsubmit="return confirm('Alterar o preço de R$ {{ number_format($product->sale_price,2,',','.') }} para R$ {{ number_format($review->suggested_price,2,',','.') }}?');">
+                    @if($canApply && $currentUser->allows('prices.manage'))
+                        @if($currentUser->allows('prices.manage'))
+<form method="post" action="{{ route('price.apply',['company'=>$tenant->slug,'id'=>$product->id]) }}" onsubmit="return confirm('Alterar o preço de R$ {{ number_format($product->sale_price,2,',','.') }} para R$ {{ number_format($review->suggested_price,2,',','.') }}?');">
                             @csrf
                             <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
                             <input type="hidden" name="expected_price" value="{{ $review->suggested_price }}">
                             <button class="primary price-apply">Aplicar sugerido</button>
                         </form>
+@endif
                     @else
-                        <a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">Revisar produto</a>
+                        @if($currentUser->allows('products.manage'))<a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">Revisar produto</a>@endif
                     @endif
                 </td>
             </tr>

@@ -21,6 +21,7 @@ class TenantAuthenticated
         $r->attributes->set('currentUser', $user);
         view()->share('currentUser', $user);
 
+        app(\App\Access\AccessProfiles::class)->authorize($r);
         return $next($r);
     }
 }

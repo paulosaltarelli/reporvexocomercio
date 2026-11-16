@@ -4,7 +4,7 @@ use App\Models\{PriceReview,PriceChange,Product};
 use App\Services\PricingService;
 use Illuminate\Http\Request;
 class PricingController extends Controller {
- private function admin(Request $r):void{abort_unless($r->attributes->get('currentUser')->role==='admin',403);}
+ private function admin(Request $r):void{app(\App\Access\AccessProfiles::class)->authorize($r);}
  public function index(Request $r){
   $this->admin($r);$filter=$r->query('filter','pending');abort_unless(in_array($filter,['pending','all']),422);
   $reviews=PriceReview::with('product.group')->when($filter==='pending',fn($q)=>$q->where('needs_attention',true))->orderByDesc('needs_attention')->latest('updated_at')->paginate(20)->withQueryString();

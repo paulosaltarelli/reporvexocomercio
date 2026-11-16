@@ -28,7 +28,7 @@ class CommerceController extends Controller
 {
     private function admin(Request $r): void
     {
-        abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
+        app(\App\Access\AccessProfiles::class)->authorize($r);
     }
 
     public function dashboard(Request $request)
@@ -246,16 +246,20 @@ class CommerceController extends Controller
     {
         $this->admin($r);
 
-        return view('users', ['users' => User::orderBy('name')->get()]);
+        return view('users', ['users' => User::orderBy('name')->get(), 'accessState'=>app(\App\Access\AccessProfiles::class)->state(), 'profileService'=>app(\App\Access\AccessProfiles::class)]);
     }
 
     public function saveUser(Request $r)
     {
         $this->admin($r);
-        $d = $r->validate(['name' => 'required|string|max:180', 'email' => 'required|email|max:180|unique:tenant.users,email', 'password' => 'required|string|min:12|max:128|confirmed', 'role' => 'required|in:admin,operator']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'email' => 'required|email|max:180|unique:tenant.users,email', 'password' => 'required|string|min:12|max:128|confirmed', 'role' => 'required|in:admin,operator','access_profile'=>'nullable|string|max:60']);
         unset($d['password_confirmation']);
         $d['must_change_password'] = true;
-        User::create($d);
+        $profile=$d['access_profile']??'operator';unset($d['access_profile']);
+        DB::connection('tenant')->transaction(function()use($r,$d,$profile){
+            $user=User::create($d);
+            app(\App\Access\AccessProfiles::class)->assign($user->id,$user->role,$profile,(int)$r->attributes->get('currentUser')->id);
+        },3);
 
         return back()->with('success', 'Usuário criado.');
     }

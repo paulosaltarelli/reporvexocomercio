@@ -4,10 +4,10 @@
 @section('subtitle','Cadastros compartilhados pelos fluxos de venda e atendimento da sua empresa.')
 @section('content')
 @php($catalogFields=$kind==='groups'?array_merge($fields,['price_policy'=>'Atualização do preço']):$fields)
-@php($visibleFields=array_filter($catalogFields,fn($label,$field)=>$currentUser->role==='admin'||!in_array($field,['cost','margin','price_policy','discount_enabled','max_discount_percent','commission_percent'],true),ARRAY_FILTER_USE_BOTH))
+@php($visibleFields=array_filter($catalogFields,fn($label,$field)=>$currentUser->allows('costs.view')||!in_array($field,['cost','margin','price_policy','discount_enabled','max_discount_percent','commission_percent'],true),ARRAY_FILTER_USE_BOTH))
 @php($commercialKeys=['discount_enabled','max_discount_percent','commission_percent'])
 @php($mainFields=array_diff_key($visibleFields,array_flip($commercialKeys)))
-@if($currentUser->role==='admin')<form class="panel" method="post">
+@if($currentUser->allows($kind.'.manage'))<form class="panel" method="post">
 @csrf<h2>{{ $editing?'Editar cadastro':'Novo cadastro' }}</h2><input type="hidden" name="id" value="{{ $editing?->id }}"><div class="form-grid">
 @foreach($mainFields as $field=>$label)
 @if($field==='price_policy')
@@ -49,7 +49,7 @@
 @else{{ $row->$field??'—' }}
 @endif</td>
 @endforeach<td>
-@if($currentUser->role==='admin')<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind,'edit'=>$row->id]) }}">Editar</a>
+@if($currentUser->allows($kind.'.manage'))<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind,'edit'=>$row->id]) }}">Editar</a>
 @endif</td></tr>
 @empty<tr><td colspan="{{ count($visibleFields)+1 }}" class="empty">Nenhum cadastro ainda.</td></tr>
 @endforelse</tbody></table></div>{{ $rows->links() }}</section>

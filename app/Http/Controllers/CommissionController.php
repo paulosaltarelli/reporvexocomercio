@@ -15,7 +15,7 @@ class CommissionController extends Controller
 {
     public function index(Request $request)
     {
-        abort_unless($request->attributes->get('currentUser')->role === 'admin', 403);
+        app(\App\Access\AccessProfiles::class)->authorize($request);
         $data = Validator::make([
             'from' => $request->query('from', now()->startOfMonth()->toDateString()),
             'to' => $request->query('to', now()->toDateString()),

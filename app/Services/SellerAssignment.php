@@ -40,7 +40,7 @@ class SellerAssignment
                 throw ValidationException::withMessages(['salesperson_id' => 'O documento não está disponível para faturamento.']);
             }
             if (! $document->salesperson_id) {
-                if ($actor->role !== 'admin') {
+                if (!$actor->allows('documents.seller')) {
                     throw ValidationException::withMessages(['salesperson_id' => 'Um administrador precisa vincular o vendedor deste documento legado antes de faturar.']);
                 }
                 if (! isset($payment['salesperson_id']) && ! isset($payment['seller_id'])) {
@@ -70,7 +70,7 @@ class SellerAssignment
     {
         return DB::connection('tenant')->transaction(function () use ($documentId, $actorId, $salespersonId, $reason, $source) {
             $actor = $this->actor($actorId);
-            if ($actor->role !== 'admin') throw ValidationException::withMessages(['salesperson_id' => 'Somente administradores podem reatribuir vendedores.']);
+            if (!$actor->allows('documents.seller')) throw ValidationException::withMessages(['salesperson_id' => 'Somente administradores podem reatribuir vendedores.']);
             $document = Document::lockForUpdate()->findOrFail($documentId);
             if ((int) $document->salesperson_id === $salespersonId) return $document;
             if ($document->sale_id || ! in_array($document->status, ['draft', 'approved', 'in_progress', 'completed'], true)) {

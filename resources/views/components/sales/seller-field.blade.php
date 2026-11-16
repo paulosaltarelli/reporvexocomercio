@@ -1,6 +1,6 @@
 <div class="field">
     <label for="salesperson_id">Vendedor creditado</label>
-    @if($currentUser->role==='admin')
+    @if($currentUser->allows('sales.seller'))
         <select id="salesperson_id" name="salesperson_id" required>
             <option value="">Selecione o vendedor</option>
             @foreach($sellers as $seller)<option value="{{ $seller->id }}" @selected((string)old('salesperson_id',$selectedSalespersonId??$currentSalesperson?->id)===(string)$seller->id)>{{ $seller->name }}</option>@endforeach

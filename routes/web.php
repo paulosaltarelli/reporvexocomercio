@@ -46,6 +46,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('setup/complete', [\App\Http\Controllers\CompanySetupController::class,'complete'])->name('setup.complete');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
+        Route::get('fiscal/company', [BusinessController::class, 'fiscal'])->name('fiscal.company');
         Route::post('business/fiscal/nfe', [NfeEmissionController::class, 'configure'])->name('nfe.configure');
         Route::post('business/fiscal/nfe/validate', [NfeEmissionController::class, 'validateLocal'])->name('nfe.validate');
         Route::get('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'customer'])->whereNumber('id')->name('nfe.customer');
@@ -131,6 +132,9 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('finance', [OperationsController::class, 'finance'])->name('finance');
         Route::post('finance', [OperationsController::class, 'createEntry']);
         Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
+        Route::get('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'index'])->name('access.profiles');
+        Route::post('access-profiles', [\App\Http\Controllers\AccessProfileController::class, 'save'])->name('access.profiles.save');
+        Route::post('access-profiles/delete', [\App\Http\Controllers\AccessProfileController::class, 'delete'])->name('access.profiles.delete');
         Route::get('users', [CommerceController::class, 'users'])->name('users');
         Route::post('users', [CommerceController::class, 'saveUser']);
     });

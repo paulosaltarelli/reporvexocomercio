@@ -17,7 +17,7 @@ class FiscalController extends Controller
 {
     private function admin(Request $request): void
     {
-        abort_unless($request->attributes->get('currentUser')->role === 'admin', 403);
+        abort_unless($request->attributes->get('currentUser')->allows('fiscal.manage'), 403);
     }
 
     public function index(Request $request, FiscalReadiness $readiness)

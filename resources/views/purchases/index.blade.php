@@ -2,7 +2,7 @@
 @section('title','Compras')
 @section('subtitle','Registre o recebimento e atualize estoque, custo médio e contas a pagar de uma só vez.')
 @section('actions')
-<a class="button" href="{{ route('purchase.new',['company'=>$tenant->slug]) }}">+ Receber compra</a>
+@if($currentUser->allows('purchases.manage'))<a class="button" href="{{ route('purchase.new',['company'=>$tenant->slug]) }}">+ Receber compra</a>@endif
 @endsection
 @section('content')
 <section class="panel">

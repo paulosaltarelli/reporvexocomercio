@@ -20,7 +20,7 @@ final class QueueNfce
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
-        abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
+        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
 
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $operation) {
             app(\App\Services\CompanyOperations::class)->lock();
@@ -109,7 +109,7 @@ final class QueueNfce
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
-        abort_unless(User::whereKey($userId)->where('active', true)->where('role', 'admin')->exists(), 403);
+        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
         DB::connection('tenant')->transaction(function () use ($documentId, $userId) {
             $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
             abort_unless((int) $doc->model === 65, 404);

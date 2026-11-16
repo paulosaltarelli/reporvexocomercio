@@ -10,9 +10,11 @@
     <div class="card"><small>Saídas registradas · mês atual</small><strong>R$ {{ number_format($cashOut,2,',','.') }}</strong></div>
 </div>
 <p class="hint">Os indicadores mostram a posição geral da empresa. Os filtros abaixo refinam apenas a lista de contas e parcelas.</p>
+@if($currentUser->allows('finance.manage'))
 <details class="panel disclosure" @if(old('direction') || ($entries->isEmpty() && !request()->hasAny(['q','direction','status','from','to','sale']))) open @endif>
     <summary><span>+ Nova conta manual</span><small>Despesas e outras receitas</small></summary>
-    <form method="post" class="disclosure-content">
+    @if($currentUser->allows('finance.manage'))
+<form method="post" class="disclosure-content">
         @csrf
         <input type="hidden" name="request_key" value="{{ old('direction')?old('request_key',\Illuminate\Support\Str::uuid()):\Illuminate\Support\Str::uuid() }}">
         <div class="form-grid">
@@ -27,7 +29,9 @@
         <div class="actions"><button class="primary">Registrar conta</button></div>
         <p class="hint">Compras e vendas geram suas próprias contas. Não cadastre novamente o mesmo compromisso aqui.</p>
     </form>
+@endif
 </details>
+@endif
 <section class="panel">
     <div class="section-heading"><h2>Contas e parcelas</h2>@if(request('sale'))<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtro da venda #{{ request('sale') }}</a>@endif</div>
     <form class="filter-bar no-print" method="get" aria-label="Filtrar contas e parcelas">
@@ -51,8 +55,8 @@
             @php($editingEntry = (string)old('entry_id')===(string)$entry->id)
             <tr>
                 <td class="product-name"><strong>{{ $entry->description }}</strong><small class="hint">{{ $entry->category }}@if(($entry->installments_count??1)>1) · parcela {{ $entry->installment_no }}/{{ $entry->installments_count }}@endif</small>
-                    @if($entry->sale_id)<a class="hint" href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$entry->sale_id]) }}">Venda #{{ $entry->sale_id }}</a>@endif
-                    @if($entry->purchase_id)<a class="hint" href="{{ route('purchase.show',['company'=>$tenant->slug,'id'=>$entry->purchase_id]) }}">Compra #{{ $entry->purchase_id }}</a>@endif
+                    @if($entry->sale_id && $currentUser->allows('sales.view'))<a class="hint" href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$entry->sale_id]) }}">Venda #{{ $entry->sale_id }}</a>@endif
+                    @if($entry->purchase_id && $currentUser->allows('purchases.view'))<a class="hint" href="{{ route('purchase.show',['company'=>$tenant->slug,'id'=>$entry->purchase_id]) }}">Compra #{{ $entry->purchase_id }}</a>@endif
                     @if($entry->supplier)<small class="hint">{{ $entry->supplier->name }}</small>@endif
                 </td>
                 <td>{{ $entry->direction==='out'?'A pagar':'A receber' }}</td>
@@ -61,13 +65,14 @@
                 <td class="num">{{ number_format($entry->paid_amount??0,2,',','.') }}</td>
                 <td class="num">{{ $entry->cancelled_at?'—':number_format($balance,2,',','.') }}</td>
                 <td><span class="badge {{ $entry->cancelled_at?'bad':($isPending?'warn':'') }}">{{ $entry->cancelled_at?'Cancelada':($isPending?(bccomp((string)($entry->paid_amount??'0'),'0',2)>0?'Parcial':'Pendente'):'Liquidada') }}</span></td>
-                <td>@if($isPending)<a href="#entry-{{ $entry->id }}" class="text-button" data-open-disclosure="entry-{{ $entry->id }}">{{ $entry->direction==='out'?'Registrar pagamento':'Registrar recebimento' }}</a>@endif</td>
+                <td>@if($isPending && $currentUser->allows('finance.manage'))<a href="#entry-{{ $entry->id }}" class="text-button" data-open-disclosure="entry-{{ $entry->id }}">{{ $entry->direction==='out'?'Registrar pagamento':'Registrar recebimento' }}</a>@endif</td>
             </tr>
-            @if($isPending)
+            @if($isPending && $currentUser->allows('finance.manage'))
                 <tr class="entry-payment-row"><td colspan="8">
                     <details id="entry-{{ $entry->id }}" class="disclosure compact payment-disclosure" @if($editingEntry) open @endif>
                         <summary>Baixa da conta #{{ $entry->id }} · saldo R$ {{ number_format($balance,2,',','.') }}</summary>
-                        <form method="post" action="{{ route('finance.pay',['company'=>$tenant->slug,'id'=>$entry->id]) }}" class="disclosure-content">
+                        @if($currentUser->allows('finance.manage'))
+<form method="post" action="{{ route('finance.pay',['company'=>$tenant->slug,'id'=>$entry->id]) }}" class="disclosure-content">
                             @csrf
                             <input type="hidden" name="entry_id" value="{{ $entry->id }}">
                             <input type="hidden" name="request_key" value="{{ $editingEntry?old('request_key',\Illuminate\Support\Str::uuid()):\Illuminate\Support\Str::uuid() }}">
@@ -79,6 +84,7 @@
                             <div class="actions"><button class="primary">Confirmar baixa registrada</button></div>
                             <p class="hint">Confirme somente valores já movimentados fora do sistema. Esta ação não transfere dinheiro nem cobra o cliente.</p>
                         </form>
+@endif
                     </details>
                 </td></tr>
             @endif

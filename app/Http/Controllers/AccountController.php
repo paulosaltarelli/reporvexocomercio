@@ -43,7 +43,7 @@ class AccountController extends Controller
         $r->session()->regenerateToken();
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
-        $start=$user->role==='admin'?'dashboard':'desk';
+        $start=$user->role==='admin'?'dashboard':app(\App\Access\AccessProfiles::class)->landing($user);
         if ($user->role==='admin' && $r->attributes->get('tenant')->storage_mode==='shared'
             && ! \App\Models\CompanyOperation::find(1)?->completed_at
             && !($r->attributes->get('tenant')->is_demonstration && \App\Models\DemoRun::where('code','computer-store-v1')->whereNotNull('completed_at')->exists())) $start='setup';
@@ -54,8 +54,8 @@ class AccountController extends Controller
     {
         abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
         $user = User::findOrFail($id);
-        $d = $r->validate(['name' => 'required|string|max:180', 'email' => ['required', 'email', 'max:180', Rule::unique('tenant.users', 'email')->ignore($id)], 'role' => 'required|in:admin,operator', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128|confirmed']);
-        DB::connection('tenant')->transaction(function () use ($d, $id) {
+        $d = $r->validate(['name' => 'required|string|max:180', 'email' => ['required', 'email', 'max:180', Rule::unique('tenant.users', 'email')->ignore($id)], 'role' => 'required|in:admin,operator', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128|confirmed','access_profile'=>'nullable|string|max:60']);
+        DB::connection('tenant')->transaction(function () use ($d, $id, $r) {
             // Lock in stable order to protect the last active administrator.
             $users = User::orderBy('id')->lockForUpdate()->get();
             $u = $users->firstWhere('id', $id);
@@ -71,6 +71,8 @@ class AccountController extends Controller
                 $changes['must_change_password'] = true;
                 $securityChanged = true;
             }
+            $profileChanged=app(\App\Access\AccessProfiles::class)->assign($id,$d['role'],$d['access_profile']??app(\App\Access\AccessProfiles::class)->profileId($id),(int)$r->attributes->get('currentUser')->id);
+            $securityChanged=$securityChanged||$profileChanged;
             if ($securityChanged) {
                 $changes['auth_version'] = $u->auth_version + 1;
             }

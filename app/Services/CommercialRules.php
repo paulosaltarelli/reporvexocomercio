@@ -17,7 +17,7 @@ class CommercialRules
     {
         $actor = User::where('active', true)->sharedLock()->find($actorId);
         if (! $actor) throw ValidationException::withMessages(['salesperson_id' => 'O usuário responsável precisa estar ativo.']);
-        if ($actor->role !== 'admin') {
+        if (!$actor->allows('sales.seller')) {
             if ($legacyUserId !== null && $legacyUserId !== $actorId) {
                 throw ValidationException::withMessages(['salesperson_id' => 'Operadores só podem escolher seu próprio perfil de vendedor.']);
             }

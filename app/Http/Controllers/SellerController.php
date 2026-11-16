@@ -14,7 +14,7 @@ class SellerController extends Controller
 {
     public function index(Request $request)
     {
-        abort_unless($request->attributes->get('currentUser')->role === 'admin',403);
+        app(\App\Access\AccessProfiles::class)->authorize($request);
         $data=$request->validate(['edit'=>'nullable|integer|exists:tenant.sellers,id']);
         return view('sellers',['rows'=>Seller::with('user')->orderBy('name')->paginate(20)->withQueryString(),
             'editing'=>isset($data['edit'])?Seller::findOrFail($data['edit']):null,'users'=>User::orderBy('name')->get()]);
@@ -22,7 +22,7 @@ class SellerController extends Controller
 
     public function save(Request $request, string $company)
     {
-        abort_unless($request->attributes->get('currentUser')->role === 'admin',403);
+        app(\App\Access\AccessProfiles::class)->authorize($request);
         $id=$request->validate(['id'=>'nullable|integer|exists:tenant.sellers,id'])['id']??null;
         $data=$request->validate(['name'=>'required|string|max:180',
             'user_id'=>['nullable','integer','exists:tenant.users,id',Rule::unique('tenant.sellers','user_id')->ignore($id)],

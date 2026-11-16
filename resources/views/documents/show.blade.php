@@ -7,10 +7,10 @@
 @section('content')
 @php($documentSalesperson=$document->salesperson)
 @php($hasActiveSalesperson=$document->salesperson_id && $documentSalesperson && $documentSalesperson->active)
-@php($canAssignSeller=$currentUser->role==='admin' && !in_array($document->status,['invoiced','cancelled'],true))
+@php($canAssignSeller=$currentUser->allows('documents.seller') && !in_array($document->status,['invoiced','cancelled'],true))
 @if($document->type==='work_order')
 <section class="panel no-print"><h2>Etapas da ordem de serviço</h2><p>Aberta → aprovação → execução → conclusão → venda.</p><p class="hint">Salvar ou concluir a OS não reserva nem baixa estoque. O movimento de estoque e os títulos financeiros são gerados ao confirmar a venda.</p>
-@if($document->status==='draft')<a class="button secondary" href="{{ route('document.edit',['company'=>$tenant->slug,'id'=>$document->id]) }}">Editar atendimento e itens da OS</a>@endif
+@if($document->status==='draft' && $currentUser->allows('documents.edit'))<a class="button secondary" href="{{ route('document.edit',['company'=>$tenant->slug,'id'=>$document->id]) }}">Editar atendimento e itens da OS</a>@endif
 @if(empty($document->items))<div class="notice">Atendimento recebido sem itens. Edite a OS para registrar diagnóstico, produtos e serviços antes de aprovar ou gerar venda.</div>@endif
 </section>
 @endif
@@ -26,7 +26,7 @@
 @endforeach
 </tbody></table></div><div class="receipt-totals"><span>Subtotal bruto</span><strong>R$ {{ number_format($documentGross,2,',','.') }}</strong><span>Descontos</span><strong>R$ {{ number_format($documentDiscount,2,',','.') }}</strong><span class="receipt-net">Total líquido</span><strong class="receipt-net">R$ {{ number_format($document->total,2,',','.') }}</strong></div>
 @if(!in_array($document->status,['invoiced','cancelled'],true) && !$hasActiveSalesperson)
-    <div class="notice no-print" role="status">@if($currentUser->role==='admin')O documento precisa de um vendedor ativo antes de gerar a venda. <a href="#document-seller-assignment" data-open-disclosure="document-seller-assignment">Vincular ou alterar o vendedor</a>.@else
+    <div class="notice no-print" role="status">@if($currentUser->allows('documents.seller'))O documento precisa de um vendedor ativo antes de gerar a venda. <a href="#document-seller-assignment" data-open-disclosure="document-seller-assignment">Vincular ou alterar o vendedor</a>.@else
 Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O usuário que executa a operação não assume o crédito automaticamente.@endif</div>
 @endif
 @if($canAssignSeller)
@@ -43,24 +43,24 @@ Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O
         </form>
     </details>
 @endif
-@if($currentUser->role==='admin')
+@if($currentUser->allows('documents.seller'))
     <details class="disclosure compact no-print" style="margin-top:20px"><summary>Histórico de atribuição do vendedor</summary><div class="disclosure-content scroll" role="region" aria-label="Histórico do vendedor creditado" tabindex="0"><table><thead><tr><th>Quando</th><th>Vendedor anterior</th><th>Vendedor atribuído</th><th>Quem registrou</th><th>Motivo</th></tr></thead><tbody>
     @forelse($assignments as $assignment)<tr><td>{{ $assignment->created_at->format('d/m/Y H:i') }}</td><td class="product-name">{{ $assignment->previous_seller_name??'Sem vendedor' }}</td><td class="product-name">{{ $assignment->new_seller_name??'Não informado' }}</td><td class="product-name">{{ $assignment->actor_name??'Não informado' }}</td><td class="seller-audit-reason">{{ $assignment->reason?:'—' }}</td></tr>@empty<tr><td colspan="5" class="empty">Nenhuma atribuição registrada no histórico disponível.</td></tr>@endforelse
     </tbody></table></div></details>
 @endif
-@if(!in_array($document->status,['invoiced','cancelled']))<div class="actions no-print">
+@if($currentUser->allows('documents.status') && !in_array($document->status,['invoiced','cancelled']))<div class="actions no-print">
 @foreach(match($document->status){'draft'=>['approved'=>'Registrar aprovação'],'approved'=>$document->type==='work_order'?['in_progress'=>'Iniciar execução']:[],'in_progress'=>['completed'=>'Concluir serviço'],default=>[]} as $v=>$label)<form method="post" action="{{ route('document.status',['company'=>$tenant->slug,'id'=>$document->id]) }}">
 @csrf<input type="hidden" name="status" value="{{ $v }}"><button class="primary" @disabled($document->type==='work_order' && $v==='approved' && empty($document->items))>{{ $label }}</button></form>
 @endforeach<form method="post" action="{{ route('document.status',['company'=>$tenant->slug,'id'=>$document->id]) }}" onsubmit="return confirm('Cancelar este documento?');">
 @csrf<input type="hidden" name="status" value="cancelled"><button class="button secondary">Cancelar documento</button></form></div>
 @endif
-@if($hasActiveSalesperson && (($document->type==='quote'&&$document->status==='approved')||($document->type==='work_order'&&$document->status==='completed')))<form class="no-print" method="post" action="{{ route('document.invoice',['company'=>$tenant->slug,'id'=>$document->id]) }}">
+@if($currentUser->allows('documents.invoice') && $hasActiveSalesperson && (($document->type==='quote'&&$document->status==='approved')||($document->type==='work_order'&&$document->status==='completed')))<form class="no-print" method="post" action="{{ route('document.invoice',['company'=>$tenant->slug,'id'=>$document->id]) }}">
 @csrf<h2 style="margin-top:30px">Gerar venda</h2><div class="form-grid">
 <div class="field"><label for="document-invoice-seller">Vendedor creditado
 </label><input id="document-invoice-seller" value="{{ $document->seller_name??'Não informado' }}" readonly><small class="hint">A venda herda o vendedor deste documento. Quem confirmar a operação será registrado separadamente.</small></div><div><label>Forma de pagamento</label><select name="payment_method">
 @foreach(['cash'=>'Dinheiro','pix'=>'Pix','credit'=>'Crédito','debit'=>'Débito','transfer'=>'Transferência','invoice'=>'A prazo'] as $v=>$l)<option value="{{ $v }}">{{ $l }}</option>
 @endforeach</select></div><div><label>Recebimento</label><select name="paid"><option value="1">Já recebido</option><option value="0">A receber</option></select></div><div><label>Número de parcelas</label><input name="installments" type="number" min="1" max="24" step="1" value="{{ old('installments',1) }}" required><small class="hint">Parcelas mensais para vendas a receber.</small></div><div><label>Primeiro vencimento se pendente</label><input type="date" name="due_date"></div></div><div class="actions"><button class="primary">Confirmar venda e baixar estoque</button></div><p class="hint">Não emite nota fiscal nem realiza cobrança automática.</p></form>
 @endif
-@if($document->sale_id)<p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Abrir venda #{{ $document->sale_id }}</a></p>
+@if($document->sale_id && $currentUser->allows('sales.view'))<p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Abrir venda #{{ $document->sale_id }}</a></p>
 @endif</section>
 @endsection

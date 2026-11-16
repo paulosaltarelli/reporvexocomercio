@@ -56,7 +56,7 @@ class CompanyOperations
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>self::DEFAULTS]);
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
-            $before=array_replace(self::DEFAULTS,$row->configuration);
+            $before=array_intersect_key(array_replace(self::DEFAULTS,$row->configuration),self::DEFAULTS);
             if ($before['inventory']!==$data['inventory'] && Product::where('quantity','<>',0)->sharedLock()->first()) {
                 throw ValidationException::withMessages(['inventory'=>'Concilie e zere os saldos por movimentações identificadas antes de mudar o controle de estoque.']);
             }
@@ -77,7 +77,9 @@ class CompanyOperations
             unset($data['version']);
             $data=array_replace(self::DEFAULTS,$data);
             if ($before===$data) return $row;
-            $row->update(['configuration'=>$data,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
+            $configuration=$data;
+            if (isset($row->configuration['_access_profiles'])) $configuration['_access_profiles']=$row->configuration['_access_profiles'];
+            $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
             $this->audit($row,$actor,'configuration',$before,$data);
             return $row;
         },3);

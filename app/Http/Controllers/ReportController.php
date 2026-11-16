@@ -19,7 +19,7 @@ class ReportController extends Controller
 {
     private function period(Request $r): array
     {
-        abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
+        app(\App\Access\AccessProfiles::class)->authorize($r);
         $d = Validator::make(['from' => $r->query('from', now()->startOfMonth()->toDateString()), 'to' => $r->query('to', now()->toDateString())], ['from' => 'required|date_format:Y-m-d', 'to' => 'required|date_format:Y-m-d|after_or_equal:from'])->validate();
         if (Carbon::parse($d['from'])->diffInDays(Carbon::parse($d['to'])) > 366) {
             throw ValidationException::withMessages(['to' => 'Escolha um período de até 366 dias.']);
