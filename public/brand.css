@@ -1,0 +1,15 @@
+/* Vexo is the company; Vendra is its management product. Original PNG assets. */
+.brand .brand-endorsement,.wordmark .brand-endorsement{display:flex;align-items:center;gap:4px;letter-spacing:0;text-transform:none;line-height:1;font-size:10px;font-weight:500;margin-top:5px;color:inherit}
+.brand-endorsement img{display:block;width:66px;height:22px;max-width:none;object-fit:contain}
+.wordmark .brand-endorsement{font-size:9px;margin-top:0}
+.wordmark .brand-endorsement img{width:51px;height:17px}
+.login-brand .brand-endorsement{color:#b8c8df}
+.login-brand .brand-endorsement img{width:90px;height:30px}
+.platform-brand .vexo-central-logo{display:block;width:180px;height:60px;object-fit:contain}
+.platform-brand .central-caption{margin:0 0 0 11px;letter-spacing:1.7px;font-size:8px}
+.site-footer .corporate-brand img{display:block;width:174px;height:58px;object-fit:contain}
+.product-owner{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.product-owner img{display:block;width:75px;height:25px;object-fit:contain}
+.workspace>footer.product-owner{justify-content:flex-start}
+@media(max-width:680px){.wordmark .brand-endorsement img{width:45px;height:15px}.site-footer .corporate-brand img{width:150px;height:50px}.platform-brand .vexo-central-logo{width:150px;height:50px}}
+@media print{.brand-endorsement img,.corporate-brand img{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
