@@ -61,6 +61,6 @@ O dashboard apresenta janeiro a dezembro com seletor de ano e tabela de valores 
 
 ## Atendimento e vendedores
 
-`/app/vexo/desk` reúne busca de cliente, criação de orçamento/venda, orçamentos em andamento e vendas do dia do vendedor selecionado. Operadores entram nesse painel após o login; administradores mantêm a visão geral e podem abrir o painel pelo menu. Cliente e vendedor seguem pré-selecionados para os formulários.
+`/app/vexo/desk` abre diretamente a frente de caixa: busca por nome/SKU/código de barras, carrinho, total e pagamento no mesmo formulário. Cliente é opcional e o vendedor vinculado ao acesso vem selecionado. Operadores entram nessa tela após o login; administradores mantêm a visão geral e podem abrir Frente de caixa pelo menu. Consulte `docs/FRENTE_DE_CAIXA.md` para atalhos, regras e limites.
 
 Cadastros → Vendedores permite trabalhar com vendedores sem login ou vincular um usuário. O orçamento fixa o vendedor creditado e a conversão preserva essa atribuição, separando quem registra a operação. Trocas anteriores ao faturamento são administrativas, justificadas e auditadas; documentos antigos sem vínculo exigem atribuição explícita.

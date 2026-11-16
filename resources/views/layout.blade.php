@@ -6,6 +6,7 @@
     <title>@yield('title','Visão geral') · Vendra</title>
     <link rel="stylesheet" href="/app.css?v={{ filemtime(public_path('app.css')) }}">
     <link rel="stylesheet" href="/navigation.css?v={{ filemtime(public_path('navigation.css')) }}">
+    @if(request()->routeIs('desk','sale.new'))<link rel="stylesheet" href="/pos.css?v={{ filemtime(public_path('pos.css')) }}">@endif
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css">@endif
 <link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>
 <body>
@@ -26,7 +27,7 @@
             <div class="notice error" id="validation-errors" tabindex="-1" role="alert"><strong>Confira os dados antes de continuar:</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
             <script id="validation-fields" type="application/json">@json($errors->keys())</script>
         @endif
-        @if($currentUser?->role==='admin' && request()->routeIs('dashboard','desk') && !$companySetup?->completed_at)
+        @if($currentUser?->role==='admin' && request()->routeIs('dashboard') && !$companySetup?->completed_at)
             <div class="notice" role="status">Confira a implantação desta empresa. <a href="{{ route('setup',['company'=>$tenant->slug]) }}">Configurar operação e acompanhar etapas</a></div>
         @endif
         @yield('content')
