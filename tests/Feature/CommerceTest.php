@@ -2713,6 +2713,103 @@ class CommerceTest extends TestCase
         $this->user->update(['role'=>'operator']);$this->get('/app/a/payment-methods')->assertForbidden();$this->post('/app/a/payment-methods',['version'=>1,'label'=>'Spoof','type'=>'cash','active'=>1])->assertForbidden();
     }
 
+    public function test_split_checkout_preserves_receipts_installments_and_exact_total(): void
+    {
+        $key=(string)Str::uuid();
+        $sale=$this->commissionSale('100',true,null,['request_key'=>$key,'payments'=>[
+            ['payment_option'=>'pix','amount'=>'30.00','paid'=>1],
+            ['payment_option'=>'credit','amount'=>'70.00','paid'=>0,'due_date'=>now()->addDay()->toDateString(),'installments'=>3],
+        ]]);
+        $this->assertFalse($sale->paid);$this->assertSame('30.00',(string)$sale->entries()->sum('paid_amount'));
+        $this->assertSame(['30.00','23.33','23.33','23.34'],$sale->entries()->orderBy('id')->pluck('amount')->all());
+        $this->assertSame('pix',\App\Models\Payment::firstOrFail()->method);
+        $rows=app(\App\Services\SalePayments::class)->rows($sale->id);$this->assertSame('70.00',$rows[1]['amount']);
+        $this->assertSame($sale->id,$this->commissionSale('100',true,null,['request_key'=>$key])->id);
+        $this->assertSame(1,Sale::count());$this->assertSame(4,FinancialEntry::count());
+        $summary=app(\App\Services\SalesBreakdown::class)->year((int)now()->year);
+        $this->assertSame('100.00',$summary['total']);$this->assertSame('70.00',$summary['methods'][0]['total']);
+        $this->assertSame('3.00',app(\App\Services\CommissionSettlements::class)->preview($this->commissionInput($sale))['total']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->get('/app/a/sales/'.$sale->id)->assertOk()->assertSee('Composição do pagamento');
+        $this->postJson('/app/a/sales/'.$sale->id.'/receive',[])->assertUnprocessable();
+    }
+
+    public function test_split_paid_cash_and_pix_support_change_fiscal_evidence_and_refund(): void
+    {
+        $sale=$this->commissionSale('100',true,null,['payments'=>[
+            ['payment_option'=>'cash','amount'=>'40','paid'=>1,'cash_received'=>'50'],
+            ['payment_option'=>'pix','amount'=>'60','paid'=>1],
+        ]]);
+        $this->assertTrue($sale->paid);$this->assertSame('10.00',app(\App\Services\SalePayments::class)->rows($sale->id)[0]['change']);
+        $evidence=app(\App\Fiscal\NfcePayload::class)->paymentEvidence($sale,['pix_mode'=>'static']);
+        $this->assertSame([['forma_pagamento'=>'01','valor_pagamento'=>'40.00'],['forma_pagamento'=>'20','valor_pagamento'=>'60.00']],$evidence['methods']);
+        $summary=app(\App\Services\CashService::class)->summary(now()->toDateString());
+        $this->assertSame('40.00',$summary['cash_in']);$this->assertSame('60.00',$summary['totals_by_method']['pix']['in']);
+        app(Checkout::class)->cancel($sale->id,$this->user->id,true);
+        $this->assertSame(['cash','pix'],\App\Models\Payment::where('kind','refund')->orderBy('id')->pluck('method')->all());
+        $this->assertSame('0.00',app(\App\Services\CashService::class)->summary(now()->toDateString())['totals_by_method']['pix']['net']);
+    }
+
+    public function test_split_invalid_totals_unknown_options_and_closed_day_roll_back_everything(): void
+    {
+        $this->product->update(['controls_stock'=>false]);
+        foreach([
+            [['payment_option'=>'cash','amount'=>'99','paid'=>1]],
+            [['payment_option'=>'cash','amount'=>'100','paid'=>1,'cash_received'=>'90']],
+            [['payment_option'=>'invoice','amount'=>'100','paid'=>1]],
+            [['payment_option'=>'missing','amount'=>'100','paid'=>1]],
+            [['payment_option'=>'pix','amount'=>'100','paid'=>0]],
+        ] as $rows){
+            try{$this->commissionSale('100',true,null,['payments'=>$rows]);$this->fail('Invalid split accepted.');}catch(ValidationException){$this->assertSame(0,Sale::count());$this->assertSame(0,FinancialEntry::count());$this->assertSame(0,\App\Models\Payment::count());}
+        }
+        app(\App\Services\CashService::class)->close(['request_key'=>(string)Str::uuid(),'date'=>now()->toDateString(),'opening_balance'=>'0','counted_balance'=>'0'],$this->user->id);
+        try{$this->commissionSale('100',true,null,['payments'=>[['payment_option'=>'pix','amount'=>'100','paid'=>1]]]);$this->fail('Closed day accepted.');}catch(ValidationException){$this->assertSame(0,Sale::count());}
+    }
+
+    public function test_cash_opening_movements_and_counted_methods_are_immutable_and_authorized(): void
+    {
+        $cash=app(\App\Services\CashService::class);$today=now()->toDateString();
+        $cash->open(['date'=>$today,'opening_balance'=>'50'],$this->user->id);
+        $input=['request_key'=>(string)Str::uuid(),'type'=>'supply','amount'=>'20','description'=>'Reforço de troco'];
+        $cash->movement($input,$this->user->id);$cash->movement($input,$this->user->id);
+        $cash->movement(['request_key'=>(string)Str::uuid(),'type'=>'withdrawal','amount'=>'10','description'=>'Retirada para cofre'],$this->user->id);
+        $this->assertSame('60.00',$cash->summary($today)['expected_balance']);$this->assertSame(2,\App\Models\Payment::count());
+        try{$cash->movement(['request_key'=>(string)Str::uuid(),'type'=>'withdrawal','amount'=>'61','description'=>'Excedente'],$this->user->id);$this->fail('Excess withdrawal accepted.');}catch(ValidationException){$this->assertSame(2,FinancialEntry::count());}
+        $close=['request_key'=>(string)Str::uuid(),'date'=>$today,'opening_balance'=>'50','counted_balance'=>'59','counted_methods'=>['pix'=>'0','credit'=>'2']];
+        $closure=$cash->close($close,$this->user->id);$this->assertSame('-1.00',$closure->difference);$this->assertSame('2.00',$closure->snapshot['differences_by_method']['credit']);
+        $this->assertSame($closure->id,$cash->close($close,$this->user->id)->id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$this->get('/app/a/cash')->assertOk()->assertSee('Conferência dos demais meios');
+        app(TenantConnection::class)->connect($this->a);$this->user->update(['role'=>'operator']);
+        $this->post('/app/a/cash/open',['date'=>$today,'opening_balance'=>'50'])->assertForbidden();$this->post('/app/a/cash/movement',$input)->assertForbidden();
+    }
+
+    public function test_http_os_without_items_then_split_cashier_conversion_is_idempotent(): void
+    {
+        $this->product->update(['controls_stock'=>false]);$this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->post('/app/a/documents',['request_key'=>(string)Str::uuid(),'type'=>'work_order','asset'=>'Notebook sem itens'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);$doc=\App\Models\Document::firstOrFail();
+        $this->assertSame([],$doc->items);$this->assertSame(0,FinancialEntry::count());
+        app(Documents::class)->updateDraft($doc->id,['expected_hash'=>app(Documents::class)->editHash($doc),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']]],$this->user->id);
+        foreach(['approved','in_progress','completed'] as $status)app(Documents::class)->transition($doc->id,$status);
+        $this->get('/app/a/desk?document_number='.$doc->id)->assertRedirect(route('document.show',['company'=>'a','id'=>$doc->id]).'#document-checkout');
+        $this->get('/app/a/documents/'.$doc->id)->assertOk()->assertSee('Dividir pagamento / entrada e saldo');
+        $input=['payments'=>[['payment_option'=>'cash','amount'=>'40','paid'=>1],['payment_option'=>'pix','amount'=>'60','paid'=>1]]];
+        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(1,Sale::count());$this->assertSame(2,\App\Models\Payment::count());$this->assertSame('invoiced',$doc->fresh()->status);
+    }
+
+    public function test_concurrent_split_checkout_and_cash_opening_are_recorded_once(): void
+    {
+        $this->product->update(['controls_stock'=>false]);
+        $input=['request_key'=>(string)Str::uuid(),'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']],'payments'=>[['payment_option'=>'cash','amount'=>'40','paid'=>1],['payment_option'=>'pix','amount'=>'60','paid'=>1]]];
+        $ids=$this->race(null,fn()=>app(Checkout::class)->complete($input,$this->user->id)->id);
+        $this->assertSame($ids[0],$ids[1]);$this->assertSame(1,Sale::count());$this->assertSame(2,FinancialEntry::count());$this->assertSame(2,\App\Models\Payment::count());
+        $open=['date'=>now()->toDateString(),'opening_balance'=>'0'];
+        $this->race(null,function()use($open){app(\App\Services\CashService::class)->open($open,$this->user->id);return 1;});
+        $this->assertSame(1,\App\Models\OperationRecord::where('action','cash_opened')->count());
+    }
+
     private function operationPayload(array $changes=[]): array
     {
         return array_replace(\App\Services\CompanyOperations::DEFAULTS,['version'=>0],$changes);

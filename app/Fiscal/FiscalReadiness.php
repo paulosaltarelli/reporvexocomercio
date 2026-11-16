@@ -138,7 +138,8 @@ final class FiscalReadiness
             $snapshot['totals'] = $totals;
             // This is an allocation of the declared commercial payment method,
             // NOT a receipt, tax payment code or a complete NFC-e payment group.
-            $snapshot['payment_review'] = ['commercial_method' => $sale->payment_method, 'allocation' => $totals, 'basis' => 'sale_amount_not_receipts'];
+            $plan=app(\App\Services\SalePayments::class)->rows($sale->id);
+            $snapshot['payment_review'] = ['plan'=>$plan,'commercial_method' => $plan?'composed':$sale->payment_method, 'allocation' => $totals, 'basis' => 'sale_amount_not_receipts'];
         }
 
         return ['ready_to_transmit' => false, 'blockers' => $issues, 'snapshot' => $snapshot];

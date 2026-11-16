@@ -109,7 +109,7 @@ final class NfePayload
             'cnpj_emitente' => $issuer->document, 'data_emissao' => now()->setTimezone($c['timezone'])->toIso8601String(),
             'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1',
             'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items,
-            'formas_pagamento' => [['forma_pagamento' => $payment['fiscal_code'], 'valor_pagamento' => $payment['total']]],
+            'formas_pagamento' => $payment['methods'],
             'valor_total' => $goods, 'valor_produtos' => $goodsGross, 'valor_desconto' => $goodsDiscount,
         ];
         // Required legal homologation label; business/issuer data are never fixtures.

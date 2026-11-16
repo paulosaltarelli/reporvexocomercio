@@ -117,7 +117,7 @@ class OperationsController extends Controller
 
     public function invoice(Request $r, string $company, int $id)
     {
-        $d = $r->validate(['payment_method' => 'required|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required|boolean', 'due_date' => 'nullable|required_if:paid,0|date_format:Y-m-d', 'installments' => 'nullable|integer|min:1|max:24','seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']);
+        $d = $r->validate(array_merge(\App\Services\SalePayments::rules(), ['payment_method' => 'required_without:payments|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required_without:payments|boolean', 'due_date' => ($r->has('payments')?'nullable|date_format:Y-m-d':'nullable|required_if:paid,0|date_format:Y-m-d'), 'installments' => 'nullable|integer|min:1|max:24','seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id']));
         $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 

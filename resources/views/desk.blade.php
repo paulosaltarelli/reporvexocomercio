@@ -3,6 +3,12 @@
 @section('subtitle','Busque os itens, confira o total e finalize a venda.')
 @section('actions')<div class="actions pos-shortcuts">@if($operationConfig['quotes'] && $currentUser->allows('documents.create'))<a class="button secondary" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'quote','salesperson_id'=>$selectedSalespersonId]) }}">Orçamento</a>@endif @if($operationConfig['work_orders'] && $currentUser->allows('documents.create'))<a class="button secondary" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'work_order','salesperson_id'=>$selectedSalespersonId]) }}">Ordem de serviço</a>@endif</div>@endsection
 @section('content')
+@if($currentUser->allows('documents.invoice'))
+<details class="panel pos-documents no-print"><summary>Receber orçamento aprovado ou OS concluída</summary><form method="get" action="{{ route('desk',['company'=>$tenant->slug]) }}"><div class="field"><label for="document-number">Número do documento</label><input id="document-number" type="number" name="document_number" min="1" required></div><button class="button secondary">Abrir pagamento</button></form>
+@if($readyDocuments->isNotEmpty())<div class="scroll"><table><thead><tr><th>Documento</th><th>Cliente</th><th class="num">Total</th><th></th></tr></thead><tbody>@foreach($readyDocuments as $ready)<tr><td>{{ $ready->type==='quote'?'Orçamento':'OS' }} #{{ $ready->id }}</td><td>{{ $ready->customer?->name??'Não informado' }}</td><td class="num">R$ {{ number_format($ready->total,2,',','.') }}</td><td><a href="{{ route('document.show',['company'=>$tenant->slug,'id'=>$ready->id]) }}#document-checkout">Receber no caixa</a></td></tr>@endforeach</tbody></table></div>@endif
+<p class="hint">A venda usa os itens e valores aprovados. O estoque e o financeiro são lançados uma única vez na confirmação.</p></details>
+@endif
+
 @if(!$canOperate)
 <div class="notice error" role="alert">Ative ou selecione um vendedor para registrar vendas. @if($currentUser->role==='admin')<a href="{{ route('sellers',['company'=>$tenant->slug]) }}">Conferir vendedores</a>.@endif</div>
 @endif
