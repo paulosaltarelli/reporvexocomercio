@@ -2,8 +2,8 @@
 @section('title','Minha empresa')
 @section('subtitle','Cadastro, identidade e configuração fiscal por empresa.')
 @section('content')
-<p class="no-print"><a href="{{ route('setup',['company'=>$tenant->slug]) }}">Operação e implantação: acompanhar etapas e módulos da empresa</a></p>
-<form class="panel" method="post" enctype="multipart/form-data">@csrf<h2>Identificação</h2><div class="form-grid">
+@if($currentUser->allows('administration'))<p class="no-print"><a href="{{ route('setup',['company'=>$tenant->slug]) }}">Operação e implantação: acompanhar etapas e módulos da empresa</a></p>@else<p class="hint">Os dados cadastrais são mantidos pelo administrador da empresa. Seu perfil permite configurar as operações fiscais abaixo.</p>@endif
+<form class="panel" method="post" enctype="multipart/form-data">@csrf<fieldset style="border:0;padding:0;margin:0;min-width:0" @disabled(!$currentUser->allows('administration'))><h2>Identificação</h2><div class="form-grid">
 @foreach(['legal_name'=>'Razão social','trade_name'=>'Nome fantasia','document'=>'CNPJ','email'=>'E-mail','phone'=>'Telefone'] as $field=>$label)
 <div class="field"><label>{{ $label }}</label><input name="{{ $field }}" value="{{ old($field,$profile->$field) }}" type="{{ $field==='email'?'email':'text' }}" @required($field==='legal_name') maxlength="{{ ['document'=>18,'phone'=>30][$field]??180 }}"></div>
 @endforeach</div>
@@ -29,8 +29,10 @@
 @foreach(explode(',','AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO') as $uf)<option @selected(old('state',$profile->state)===$uf)>{{ $uf }}</option>
 @endforeach</select></div><div class="field"><label>Regime tributário</label><select name="tax_regime"><option value="">Não informado</option>
 @foreach(['mei'=>'MEI','simples'=>'Simples Nacional','presumido'=>'Lucro Presumido','real'=>'Lucro Real'] as $value=>$label)<option value="{{ $value }}" @selected(old('tax_regime',$profile->tax_regime)===$value)>{{ $label }}</option>
-@endforeach</select></div></div></details><p class="hint">Dados sujeitos à conferência contábil. O cadastro local não comprova situação na Receita ou credenciamento na SEFAZ. Configure a emissão de mercadorias abaixo; NFS-e é uma integração separada.</p><div class="actions"><button class="primary">Salvar dados da empresa</button></div></form>
+@endforeach</select></div></div></details><p class="hint">Dados sujeitos à conferência contábil. O cadastro local não comprova situação na Receita ou credenciamento na SEFAZ. Configure a emissão de mercadorias abaixo; NFS-e é uma integração separada.</p><div class="actions"><button class="primary">Salvar dados da empresa</button></div></fieldset></form>
+@if($currentUser->allows('fiscal.manage'))
 @include('fiscal.company')
+@endif
 @endsection
 
 @push('scripts')

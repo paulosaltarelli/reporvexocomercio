@@ -19,7 +19,7 @@ class DeskController extends Controller
         $actor=$request->attributes->get('currentUser');
         $own=Seller::where('user_id',$actor->id)->first() ?? app(CommercialRules::class)->seller($actor->id);
         $selectedId=isset($data['salesperson_id'])?(int)$data['salesperson_id']:$own->id;
-        abort_unless($actor->role==='admin'||$selectedId===$own->id,403);
+        abort_unless($actor->allows('sales.seller')||$selectedId===$own->id,403);
         $salesperson=Seller::findOrFail($selectedId);
         $search=trim($data['q']??'');
         $matches=$search===''?collect():Customer::where(function($query)use($search){

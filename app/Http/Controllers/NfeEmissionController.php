@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 class NfeEmissionController extends Controller
 {
-    private function admin(Request $r): void { abort_unless($r->attributes->get('currentUser')->role === 'admin', 403); }
+    private function admin(Request $r): void { abort_unless($r->attributes->get('currentUser')->allows('fiscal.manage'), 403); }
     public function configure(Request $r, NfeCompanyConfiguration $service)
     {
         $this->admin($r);

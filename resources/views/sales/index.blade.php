@@ -1,7 +1,7 @@
 @extends('layout')
 @section('title','Vendas e recebimentos')
 @section('subtitle','Produtos e serviços no mesmo atendimento, com estoque integrado e vendedor identificado.')
-@section('actions')<a class="button" href="{{ route('sale.new',['company'=>$tenant->slug]) }}">+ Nova venda</a>@endsection
+@section('actions')@if($currentUser->allows('sales.create'))<a class="button" href="{{ route('sale.new',['company'=>$tenant->slug]) }}">+ Nova venda</a>@endif @endsection
 @section('content')
 <section class="panel">
     <form class="filter-bar no-print" method="get" aria-label="Filtrar vendas">

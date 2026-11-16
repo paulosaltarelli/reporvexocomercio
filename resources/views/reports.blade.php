@@ -13,7 +13,9 @@
 @forelse($top as $item)<tr><td>{{ $item->description }}</td><td class="num">{{ number_format($item->quantity,3,',','.') }}</td><td class="num">R$ {{ number_format($item->total,2,',','.') }}</td></tr>
 @empty<tr><td colspan="3" class="empty">Nenhuma venda concluída neste período.</td></tr>
 @endforelse</tbody></table></div></section>
+@if($currentUser->allows('reports.export'))
 <section class="panel no-print"><h2>Levar os dados para a planilha</h2><p class="muted">Arquivos CSV compatíveis com planilhas. O estoque mostra a posição atual. Vendas e movimentos de estoque usam a data de registro; baixas usam a data financeira; títulos usam o vencimento. O CSV de vendas também inclui canceladas para conferência.</p><div class="actions" style="flex-wrap:wrap">
 @foreach(['stock'=>'Estoque valorizado','movements'=>'Histórico do estoque','sales'=>'Vendas','payments'=>'Baixas e reembolsos','entries'=>'Títulos por vencimento'] as $kind=>$label)<a class="button secondary" href="{{ route('report.csv',['company'=>$tenant->slug,'kind'=>$kind,'from'=>$from,'to'=>$to]) }}">{{ $label }}</a>
 @endforeach</div></section>
+@endif
 @endsection

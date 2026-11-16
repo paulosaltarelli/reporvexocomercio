@@ -12,6 +12,11 @@ class User extends Authenticatable
 
     protected $hidden = ['password'];
 
+    public function allows(string $permission): bool
+    {
+        return app(\App\Access\AccessProfiles::class)->allows($this, $permission);
+    }
+
     public function seller()
     {
         return $this->hasOne(Seller::class);

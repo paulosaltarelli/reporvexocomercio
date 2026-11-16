@@ -11,7 +11,7 @@ class CashflowController extends Controller
 {
     public function index(Request $r)
     {
-        abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
+        app(\App\Access\AccessProfiles::class)->authorize($r);
         $d = $r->validate(['days' => 'nullable|integer|in:7,15,30,60,90', 'balance' => 'nullable|numeric|min:-999999999.99|max:999999999999.99|decimal:0,2']);
         $days = (int) ($d['days'] ?? 30);
         $today = CarbonImmutable::today();

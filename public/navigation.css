@@ -84,3 +84,5 @@
 }
 @media(prefers-reduced-motion:reduce){.app-sidebar *{transition:none!important}}
 @media print{.app-sidebar,.sidebar-backdrop,.workspace>header{display:none!important}.workspace{margin:0!important}.workspace>main{min-height:0}body.navigation-open{overflow:visible}}
+
+.sidebar-profile-label{display:block;color:#91a4c1;font-size:9px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}

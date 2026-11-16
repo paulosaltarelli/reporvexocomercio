@@ -22,7 +22,7 @@ final class PrepareFiscalReview
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             throw ValidationException::withMessages(['fiscal' => 'Contexto da empresa inválido.']);
         }
-        abort_unless(User::where('active', true)->where('role', 'admin')->whereKey($userId)->exists(), 403);
+        abort_unless((bool) User::where('active', true)->whereKey($userId)->first()?->allows('fiscal.manage'), 403);
 
         try {
             return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $userId, $requestKey) {

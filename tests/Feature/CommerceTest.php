@@ -214,6 +214,7 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
         foreach ([
             '/app/a/fiscal' => '/app/a/fiscal',
+            '/app/a/fiscal/company' => '/app/a/fiscal',
             '/app/a/nfse' => '/app/a/nfse',
             '/app/a/fiscal/profiles' => '/app/a/fiscal/profiles',
             '/app/a/fiscal/simulations' => '/app/a/fiscal/simulations',
@@ -1332,6 +1333,164 @@ class CommerceTest extends TestCase
         foreach (['sales/new', 'documents/new'] as $path) {
             $this->get('/app/a/'.$path.$query)->assertOk()->assertViewHas('selectedSalespersonId', $other->id)->assertViewHas('selectedCustomerId', (string) $customer->id);
         }
+    }
+
+    private function accessProfile(array $permissions, string $name = 'Perfil QA'): string
+    {
+        $service = app(\App\Access\AccessProfiles::class);
+        return $service->save(['version'=>$service->state(true)['version'],'name'=>$name,'permissions'=>$permissions],$this->user->id);
+    }
+
+    private function profiledOperator(string $profile): User
+    {
+        return DB::connection('tenant')->transaction(function () use ($profile) {
+            $user=User::create(['name'=>'Operador de perfil','email'=>'profile-'.Str::uuid().'@example.test','password'=>'test-profile-password','role'=>'operator','active'=>true]);
+            app(\App\Access\AccessProfiles::class)->assign($user->id,'operator',$profile,$this->user->id);
+            return $user;
+        });
+    }
+
+    public function test_access_profiles_default_matches_legacy_and_configuration_changes_preserve_profiles(): void
+    {
+        $operator=User::create(['name'=>'Operador legado','email'=>'legacy-profile@example.test','password'=>'test-profile-password','role'=>'operator','active'=>true]);
+        $service=app(\App\Access\AccessProfiles::class);
+        $this->assertTrue($service->allows($operator,'sales.create'));
+        $this->assertFalse($service->allows($operator,'finance.manage'));
+        $id=$this->accessProfile(['finance.view'],'Consulta financeira');
+        $this->profiledOperator($id);
+        $before=$service->state(true);
+        app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['version'=>$before['version'],'commissions'=>false]),$this->user->id);
+        $after=$service->state(true);
+        $this->assertSame($before['profiles'],$after['profiles']);
+        $this->assertSame($before['assignments'],$after['assignments']);
+        $this->assertFalse(app(\App\Services\CompanyOperations::class)->current()['commissions']);
+    }
+
+    public function test_access_profiles_restrict_direct_urls_posts_and_navigation_for_read_only_finance(): void
+    {
+        $id=$this->accessProfile(['finance.view'],'Financeiro consulta');$operator=$this->profiledOperator($id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id,'auth_version'=>0]);
+        $this->get('/app/a/finance')->assertOk()->assertDontSee('Registrar conta')->assertDontSee('Nova conta manual');
+        $this->get('/app/a/desk')->assertForbidden();
+        $this->get('/app/a/products')->assertForbidden();
+        $this->get('/app/a/users')->assertForbidden();
+        $this->get('/app/a/access-profiles')->assertForbidden();
+        $this->post('/app/a/finance',[])->assertForbidden();
+        $this->post('/app/a/finance/999/pay',[])->assertForbidden();
+        $this->post('/app/a/sales',$this->saleData())->assertForbidden();
+        $response=$this->get('/app/a/finance')->assertOk();
+        $dom=new \DOMDocument();@$dom->loadHTML($response->getContent());$xpath=new \DOMXPath($dom);
+        $this->assertCount(1,$xpath->query('//nav[@aria-label="Menu da empresa"]//a[contains(@href,"/finance")]'));
+        $this->assertCount(0,$xpath->query('//nav[@aria-label="Menu da empresa"]//a[contains(@href,"/desk")]'));
+        $this->assertCount(0,$xpath->query('//form[@method="post"][not(contains(@action,"logout"))]'));
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(0,Sale::count());
+    }
+
+    public function test_access_profiles_can_grant_finance_actions_without_granting_admin_or_stock(): void
+    {
+        $id=$this->accessProfile(['finance.manage'],'Financeiro operação');$operator=$this->profiledOperator($id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id,'auth_version'=>0]);
+        $this->get('/app/a/finance')->assertOk()->assertSee('Registrar conta');
+        $data=['request_key'=>(string)Str::uuid(),'direction'=>'out','description'=>'Despesa QA perfil','category'=>'QA','amount'=>'25.00','due_date'=>now()->toDateString(),'installments'=>1];
+        $this->post('/app/a/finance',$data)->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(1,FinancialEntry::count());
+        $entry=FinancialEntry::first();
+        $this->post('/app/a/finance/'.$entry->id.'/pay',['request_key'=>(string)Str::uuid(),'amount'=>'25.00','paid_on'=>now()->toDateString(),'payment_method'=>'cash'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame('25.00',FinancialEntry::find($entry->id)->paid_amount);
+        $this->get('/app/a/users')->assertForbidden();
+        $this->get('/app/a/setup')->assertForbidden();
+        $this->post('/app/a/stock',[])->assertForbidden();
+        app(TenantConnection::class)->connect($this->a);$this->assertSame('operator',User::find($operator->id)->role);
+    }
+
+    public function test_access_profiles_changes_apply_on_next_request_and_zero_permissions_cannot_leak_dashboard(): void
+    {
+        $id=$this->accessProfile(['products.view'],'Catálogo consulta');$operator=$this->profiledOperator($id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id,'auth_version'=>0]);
+        $this->get('/app/a/products')->assertOk()->assertDontSee('Custo base')->assertDontSee('Novo cadastro');
+        app(TenantConnection::class)->connect($this->a);$service=app(\App\Access\AccessProfiles::class);
+        $service->save(['version'=>$service->state(true)['version'],'name'=>'Sem funções','permissions'=>[]],$this->user->id,$id);
+        $this->get('/app/a/products')->assertForbidden();
+        $this->get('/app/a')->assertOk()->assertDontSee('Últimas vendas')->assertDontSee('Repor estoque')->assertDontSee('Consultar catálogo');
+        $this->get('/app/a/account/password')->assertOk();
+    }
+
+    public function test_access_profiles_reject_stale_unknown_escalation_and_in_use_deletion(): void
+    {
+        $id=$this->accessProfile(['sales.create'],'Caixa QA');$operator=$this->profiledOperator($id);
+        app(TenantConnection::class)->connect($this->a);$service=app(\App\Access\AccessProfiles::class);$state=$service->state(true);
+        foreach([
+            ['version'=>0,'name'=>'Perfil antigo','permissions'=>[]],
+            ['version'=>$state['version'],'name'=>'Perfil inválido','permissions'=>['administration']],
+        ] as $input){try{$service->save($input,$this->user->id,$id);$this->fail('Perfil inválido aceito');}catch(ValidationException){$this->assertSame($state['profiles'],$service->state(true)['profiles']);}}
+        try{$service->delete($id,$state['version'],$this->user->id);$this->fail('Perfil em uso excluído');}catch(ValidationException){$this->assertArrayHasKey($id,$service->state(true)['profiles']);}
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id,'auth_version'=>0])->post('/app/a/access-profiles',['version'=>$state['version'],'name'=>'Autoelevação','permissions'=>['fiscal.manage']])->assertForbidden();
+        $this->get('/app/a/access-profiles')->assertForbidden();
+    }
+
+    public function test_access_profiles_permissions_and_assignments_are_isolated_between_companies(): void
+    {
+        $id=$this->accessProfile(['finance.view'],'Somente empresa A');$operator=$this->profiledOperator($id);
+        app(TenantConnection::class)->connect($this->b);
+        $other=User::create(['name'=>'Outro administrador','email'=>'profile-b@example.test','password'=>'test-profile-password','role'=>'admin','active'=>true]);
+        $service=app(\App\Access\AccessProfiles::class);$this->assertArrayNotHasKey($id,$service->state(true)['profiles']);
+        try{DB::connection('tenant')->transaction(fn()=>$service->assign($other->id,'operator',$id,$other->id));$this->fail('Perfil de outra empresa aceito');}catch(ValidationException){$this->assertArrayNotHasKey($id,$service->state(true)['profiles']);}
+        app(TenantConnection::class)->connect($this->a);$this->assertSame($id,$service->profileId($operator->id));
+        $this->assertTrue($service->allows(User::find($operator->id),'finance.view'));
+    }
+
+    public function test_access_profiles_editor_assignment_dependencies_and_audit_are_visible(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->get('/app/a/access-profiles')->assertOk()->assertSee('Perfis e permissões')->assertDontSee('Curinga desconhecido');
+        $this->post('/app/a/access-profiles',['version'=>0,'name'=>'Estoque supervisor','permissions'=>['products.manage','stock.manage']])->assertRedirect();
+        app(TenantConnection::class)->connect($this->a);$service=app(\App\Access\AccessProfiles::class);$state=$service->state(true);$id=array_key_last($state['profiles']);
+        $this->assertContains('costs.view',$state['profiles'][$id]['permissions']);
+        $this->assertContains('products.view',$state['profiles'][$id]['permissions']);
+        $this->get('/app/a/access-profiles?profile='.$id)->assertOk()->assertSee('O que este perfil pode ver e fazer')->assertSee('Visualizar custos');
+        $this->get('/app/a/users')->assertOk()->assertSee('Perfil operacional')->assertSee('Estoque supervisor');
+        app(TenantConnection::class)->connect($this->a);$this->assertSame(1,DB::connection('tenant')->table('company_operation_audits')->where('action','access_profile_saved')->count());
+    }
+
+    public function test_access_profiles_can_delegate_fiscal_and_seller_functions_without_admin_role(): void
+    {
+        $this->product->update(['controls_stock'=>false]);
+        $id=$this->accessProfile(['sales.create','sales.seller','documents.seller','fiscal.manage'],'Supervisor delegado');
+        $operator=$this->profiledOperator($id);
+        $other=\App\Models\Seller::create(['name'=>'Vendedor delegado','active'=>true]);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$operator->id,'auth_version'=>0]);
+        $this->get('/app/a/desk?salesperson_id='.$other->id)->assertOk();
+        $this->get('/app/a/fiscal')->assertOk();
+        $this->get('/app/a/fiscal/company')->assertOk();
+        $this->post('/app/a/business',[])->assertForbidden();
+        $this->get('/app/a/users')->assertForbidden();
+        app(TenantConnection::class)->connect($this->a);
+        app(\App\Fiscal\FiscalProfileManager::class)->authorize($this->a,$operator->id);
+        $data=$this->saleData();$data['salesperson_id']=$other->id;
+        $this->post('/app/a/sales',$data)->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame($other->id,Sale::first()->salesperson_id);
+        $this->assertSame('operator',User::find($operator->id)->role);
+    }
+
+    public function test_access_profiles_cover_every_tenant_route_and_new_user_assignment(): void
+    {
+        foreach(app('router')->getRoutes() as $route){
+            if(!in_array(\App\Http\Middleware\TenantAuthenticated::class,$route->middleware(),true))continue;
+            $uri=preg_replace('/\{[^}]+\}/','1',$route->uri());$uri=str_replace('app/1','app/a',$uri);
+            if(str_contains($route->uri(),'{kind}'))$uri=preg_replace('#catalog/1#','catalog/groups',$uri);
+            $request=\Illuminate\Http\Request::create('/'.$uri,in_array('POST',$route->methods(),true)?'POST':'GET');
+            $route=clone $route;$route->bind($request);$request->setRouteResolver(fn()=>$route);
+            $permission=\App\Access\Permissions::request($request);
+            $this->assertTrue(in_array($permission,array_merge(array_keys(\App\Access\Permissions::labels()),['administration','account.self','home']),true),$route->uri().' '.$route->getActionMethod());
+        }
+        $id=$this->accessProfile(['products.view'],'Consulta catálogo');
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->post('/app/a/users',['name'=>'Perfil vinculado','email'=>'new-profile@example.test','role'=>'operator','access_profile'=>$id,'password'=>'new-profile-password','password_confirmation'=>'new-profile-password'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);$user=User::where('email','new-profile@example.test')->firstOrFail();
+        $this->assertSame($id,app(\App\Access\AccessProfiles::class)->profileId($user->id));
+        $this->assertFalse($user->allows('sales.create'));
+        $this->assertTrue($user->allows('products.view'));
     }
 
     public function test_pos_starts_with_items_and_accepts_anonymous_sale_with_idempotency(): void

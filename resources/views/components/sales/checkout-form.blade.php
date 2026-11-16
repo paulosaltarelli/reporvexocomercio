@@ -1,7 +1,7 @@
 @php($checkoutPaid=(string)(int)old('paid','1'))
 @php($checkoutSellerId=old('salesperson_id',$selectedSalespersonId??$currentSalesperson?->id))
 @php($checkoutSeller=$sellers->firstWhere('id',(int)$checkoutSellerId)??$currentSalesperson)
-@php($checkoutBlocked=$currentUser->role!=='admin' && (!$currentSalesperson || !$currentSalesperson->active))
+@php($checkoutBlocked=!$currentUser->allows('sales.seller') && (!$currentSalesperson || !$currentSalesperson->active))
 <form id="checkout-form" class="pos-checkout" method="post" action="{{ route('sales',['company'=>$tenant->slug]) }}">
     @csrf
     <input type="hidden" name="request_key" value="{{ old('request_key',\Illuminate\Support\Str::uuid()) }}">

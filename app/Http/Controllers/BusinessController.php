@@ -17,7 +17,12 @@ class BusinessController extends Controller
 {
     private function admin(Request $r): void
     {
-        abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
+        app(\App\Access\AccessProfiles::class)->authorize($r);
+    }
+
+    public function fiscal(Request $r)
+    {
+        return $this->form($r);
     }
 
     public function form(Request $r)

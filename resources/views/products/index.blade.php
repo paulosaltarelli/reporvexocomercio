@@ -2,9 +2,7 @@
 @section('title','Produtos e serviços')
 @section('subtitle','Um catálogo para os itens vendidos e os serviços prestados, com controle de estoque quando necessário.')
 @section('actions')
-@if($currentUser->role==='admin')
-<div class="actions" style="margin:0"><a class="button secondary" href="{{ route('prices',['company'=>$tenant->slug]) }}">Preços e alertas</a><a class="button" href="{{ route('product.new',['company'=>$tenant->slug,'type'=>request('type')]) }}">+ Novo cadastro</a></div>
-@endif
+<div class="actions" style="margin:0">@if($currentUser->allows('prices.view'))<a class="button secondary" href="{{ route('prices',['company'=>$tenant->slug]) }}">Preços e alertas</a>@endif @if($currentUser->allows('products.manage'))<a class="button" href="{{ route('product.new',['company'=>$tenant->slug,'type'=>request('type')]) }}">+ Novo cadastro</a>@endif</div>
 @endsection
 @section('content')
 <section class="panel">
@@ -16,7 +14,7 @@
     </form>
     <p class="hint">{{ $products->total() }} {{ $products->total()===1?'cadastro encontrado':'cadastros encontrados' }} · Serviços e itens sem controle de estoque não exibem saldo físico.</p>
     <div class="scroll"><table>
-        <thead><tr><th>Cadastro / SKU</th><th>Grupo</th><th>Controle de estoque</th><th class="num">Saldo</th>@if($currentUser->role==='admin')<th class="num">Custo base (R$)</th><th class="num">Margem alvo</th><th class="num">Sugerido (R$)</th>@endif<th class="num">Preço de venda</th><th></th></tr></thead>
+        <thead><tr><th>Cadastro / SKU</th><th>Grupo</th><th>Controle de estoque</th><th class="num">Saldo</th>@if($currentUser->allows('costs.view'))<th class="num">Custo base (R$)</th><th class="num">Margem alvo</th><th class="num">Sugerido (R$)</th>@endif<th class="num">Preço de venda</th><th></th></tr></thead>
         <tbody>
         @forelse($products as $product)
             @php($isService=($product->type??'product')==='service')
@@ -24,14 +22,14 @@
             <tr>
                 <td class="product-name"><strong>{{ $product->name }}</strong><small class="hint">{{ $product->sku }}</small><span class="badge {{ $isService?'service-type':'' }}">{{ $isService?'Serviço':'Produto' }}</span>@if(!$product->active) <span class="badge bad">Inativo</span>@endif</td>
                 <td>{{ $product->group->name }}
-                    @if($currentUser->role==='admin')
+                    @if($currentUser->allows('costs.view'))
                         @php($priceMode=$product->price_policy??$product->group->price_policy??'alert')
                         <small class="hint"><span class="badge {{ $priceMode==='automatic'?'':'warn' }}">{{ $priceMode==='automatic'?'Preço automático':'Somente alertas' }}</span></small>
                     @endif
                 </td>
                 <td>{{ $stockControlled?'Sim':'Não' }}</td>
                 <td class="num">@if($stockControlled)<span class="badge {{ $product->quantity<=$product->minimum_stock?'warn':'' }}">{{ number_format($product->quantity,3,',','.') }} {{ $product->unit }}</span>@else<span class="muted">—</span>@endif</td>
-                @if($currentUser->role==='admin')
+                @if($currentUser->allows('costs.view'))
                     @php($baseCost=$stockControlled?$product->average_cost:($product->reference_cost??'0'))
                     <td class="num">{{ number_format($baseCost,4,',','.') }}<small class="hint">{{ $stockControlled?'Custo médio':'Referência' }}</small></td>
                     <td class="num">{{ $product->margin??$product->group->margin }}%</td>
@@ -44,10 +42,10 @@
                     </td>
                 @endif
                 <td class="num">R$ {{ number_format($product->sale_price,2,',','.') }}</td>
-                <td>@if($currentUser->role==='admin')<a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">Editar</a>@endif</td>
+                <td>@if($currentUser->allows('products.manage'))<a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">Editar</a>@endif</td>
             </tr>
         @empty
-            <tr><td colspan="{{ $currentUser->role==='admin'?9:6 }}" class="empty">Nenhum cadastro encontrado. @if($currentUser->role==='admin')Cadastre um grupo e adicione seus produtos ou serviços.@endif</td></tr>
+            <tr><td colspan="{{ $currentUser->allows('costs.view')?9:6 }}" class="empty">Nenhum cadastro encontrado. @if($currentUser->allows('products.manage'))Cadastre um grupo e adicione seus produtos ou serviços.@endif</td></tr>
         @endforelse
         </tbody>
     </table></div>

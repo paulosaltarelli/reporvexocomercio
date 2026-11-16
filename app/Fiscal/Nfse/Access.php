@@ -11,6 +11,6 @@ final class Access
     public static function admin(Tenant $tenant, int $actor): void
     {
         abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403);
-        abort_unless(User::whereKey($actor)->where('active', true)->where('role', 'admin')->exists(), 403);
+        abort_unless((bool) User::whereKey($actor)->where('active', true)->first()?->allows('fiscal.manage'), 403);
     }
 }

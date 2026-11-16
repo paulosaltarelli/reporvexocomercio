@@ -4,6 +4,7 @@
         'label' => $label,
         'href' => route($route, ['company' => $tenant->slug] + $parameters),
         'active' => $active,
+        'permission' => \App\Access\Permissions::named($route,$parameters),
     ];
     $catalogLabel = match ($operationConfig['catalog_mode']) {
         'services' => 'Serviços', 'products' => 'Produtos', default => 'Produtos e serviços',
@@ -20,15 +21,15 @@
             $link('catalog', 'Clientes', request()->routeIs('catalog') && request()->route('kind') === 'customers', ['kind' => 'customers']),
             $link('catalog', 'Fornecedores', request()->routeIs('catalog') && request()->route('kind') === 'suppliers', ['kind' => 'suppliers']),
             $link('catalog', $isAdmin ? 'Grupos e margens' : 'Grupos', request()->routeIs('catalog') && request()->route('kind') === 'groups', ['kind' => 'groups']),
-            $isAdmin ? $link('sellers', 'Vendedores', request()->routeIs('sellers')) : null,
+            $currentUser->allows('sellers.manage') ? $link('sellers', 'Vendedores', request()->routeIs('sellers')) : null,
         ])],
         ['label' => $operationConfig['inventory'] ? 'Estoque e compras' : 'Compras e preços', 'icon' => 'box', 'links' => array_filter([
             $operationConfig['inventory'] ? $link('stock', 'Movimentações', request()->routeIs('stock')) : null,
-            $isAdmin ? $link('purchases', 'Compras', request()->routeIs('purchases', 'purchase.*')) : null,
-            $isAdmin ? $link('prices', 'Preços e alertas', request()->routeIs('prices', 'price.*')) : null,
+            $currentUser->allows('purchases.view') ? $link('purchases', 'Compras', request()->routeIs('purchases', 'purchase.*')) : null,
+            $currentUser->allows('prices.view') ? $link('prices', 'Preços e alertas', request()->routeIs('prices', 'price.*')) : null,
         ])],
     ];
-    if ($isAdmin) {
+    {
         $groups = array_merge($groups, [
             ['label' => 'Financeiro', 'icon' => 'wallet', 'links' => [
                 $link('finance', 'Contas a pagar e receber', request()->routeIs('finance', 'finance.*')),
@@ -36,7 +37,7 @@
                 $link('cash', 'Caixa diário', request()->routeIs('cash', 'cash.*')),
             ]],
             ['label' => 'Fiscal', 'icon' => 'document', 'links' => [
-                $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')),
+                $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'fiscal.company', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')),
                 $link('nfse.index', 'Notas de serviço', request()->routeIs('nfse.*')),
                 $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')),
                 $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')),
@@ -49,9 +50,12 @@
                 $link('business', 'Minha empresa', request()->routeIs('business')),
                 $link('setup', 'Operação e implantação', request()->routeIs('setup*')),
                 $link('users', 'Usuários e permissões', request()->routeIs('users', 'user.*')),
+                $link('access.profiles', 'Perfis e permissões', request()->routeIs('access.profiles*')),
             ]],
         ]);
     }
+    foreach($groups as &$group) $group['links']=array_values(array_filter($group['links'],fn($item)=>$currentUser->allows($item['permission'])));
+    unset($group);
     $navigationSection = request()->routeIs('account.password*') ? 'Minha conta' : 'Início';
     foreach ($groups as $group) {
         if (collect($group['links'])->contains('active', true)) $navigationSection = $group['label'];
@@ -60,17 +64,17 @@
 @section('navigation-section', $navigationSection)
 <aside class="app-sidebar" aria-label="Navegação da empresa">
     <div class="sidebar-heading">
-        <a class="brand" href="{{ route($isAdmin ? 'dashboard' : 'desk', ['company' => $tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span class="brand-endorsement">por <img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></span></a>
+        <a class="brand" href="{{ route($isAdmin ? 'dashboard' : app(\App\Access\AccessProfiles::class)->landing($currentUser), ['company' => $tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span class="brand-endorsement">por <img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></span></a>
         <button type="button" class="sidebar-close" aria-label="Fechar menu"><x-navigation-icon name="close"/></button>
     </div>
     <div class="company"><span class="company-symbol"><x-navigation-icon name="building"/></span><div><span class="company-caption">SUA EMPRESA</span><strong>{{ $tenant->name }}</strong></div></div>
     <div id="company-navigation" class="sidebar-menu">
         <nav aria-label="Menu da empresa" class="grouped-navigation">
             <span class="navigation-caption">PRINCIPAL</span>
-            @if($isAdmin)
+            @if($currentUser->allows('dashboard.view'))
                 <a class="nav nav-primary {{ request()->routeIs('dashboard') ? 'selected' : '' }}" href="{{ route('dashboard', ['company' => $tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif><x-navigation-icon name="grid"/><span>Visão geral</span></a>
             @endif
-            <a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Frente de caixa</span></a>
+            @if($currentUser->allows('desk.use'))<a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Frente de caixa</span></a>@endif
             <span class="navigation-caption navigation-section-caption">GESTÃO</span>
             @foreach($groups as $group)
                 @if(count($group['links']))
@@ -87,6 +91,6 @@
             @endforeach
         </nav>
     </div>
-    <div class="aside-bottom"><span class="sidebar-product-dot" aria-hidden="true"></span><div class="sidebar-user"><strong>{{ $currentUser?->name }}</strong><a href="{{ route('account.password', ['company' => $tenant->slug]) }}" @if(request()->routeIs('account.password*')) aria-current="page" @endif>Alterar minha senha</a></div></div>
+    <div class="aside-bottom"><span class="sidebar-product-dot" aria-hidden="true"></span><div class="sidebar-user"><strong>{{ $currentUser?->name }}</strong><small class="sidebar-profile-label">Perfil: {{ app(\App\Access\AccessProfiles::class)->profileName($currentUser) }}</small><a href="{{ route('account.password', ['company' => $tenant->slug]) }}" @if(request()->routeIs('account.password*')) aria-current="page" @endif>Alterar minha senha</a></div></div>
 </aside>
 <button type="button" class="sidebar-backdrop" aria-label="Fechar menu" hidden></button>
