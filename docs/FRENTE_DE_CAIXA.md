@@ -62,3 +62,20 @@ os POSTs de integração ocorreram apenas nos bancos de teste.
 
 Os resultados de publicação ficam no PR e no journal privado correspondente.
 Não tratar aprovação de revisão anterior como execução da fonte nova.
+
+## Correção de permissão após publicação
+
+A pasta nova `resources/views/partials` foi criada com modo efetivo 0700 porque
+`umask 0077` restringiu `mkdir(mode=0750)`. O arquivo tinha modo 0640 e grupo
+correto, mas `vendra-web` não conseguia atravessar a pasta. Isso causou HTTP 500
+nas telas autenticadas, algo que o smoke apenas dos logins não detectou.
+
+A pasta foi corrigida para 0750, mantendo root:vendra-web, sob o lock compartilhado.
+Dashboard e frente de caixa foram renderizados como `vendra-web` usando objetos
+fictícios em memória e sessão array, sem criar usuário, venda ou consultar dados.
+
+Para novos diretórios, aplicar `chmod(0750)` explicitamente depois de criar e
+atribuir grupo. Antes de reabrir o serviço, testar os arquivos do overlay com
+`ops/check-web-readable.py`; a leitura é conferida com o usuário web e inclui
+implicitamente a travessia dos ancestrais. Não considerar lint ou respostas 200
+apenas de login como prova de renderização das telas internas.
