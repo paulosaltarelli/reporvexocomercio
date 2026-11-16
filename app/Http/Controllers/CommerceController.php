@@ -33,6 +33,7 @@ class CommerceController extends Controller
 
     public function dashboard(Request $request)
     {
+        if ($request->attributes->get('currentUser')->role==='admin' && app(\App\Services\CompanyOnboarding::class)->required($request->attributes->get('tenant'))) return redirect()->route('setup',['company'=>$request->route('company')]);
         $sales = Sale::where('status', 'completed');
         $currentYear = (int) now()->year;
         $data = $request->validate(['year'=>'nullable|integer|min:2000|max:'.$currentYear]);
@@ -246,13 +247,13 @@ class CommerceController extends Controller
     {
         $this->admin($r);
 
-        return view('users', ['users' => User::orderBy('name')->get(), 'accessState'=>app(\App\Access\AccessProfiles::class)->state(), 'profileService'=>app(\App\Access\AccessProfiles::class)]);
+        return view('users', ['users' => User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'accessState'=>app(\App\Access\AccessProfiles::class)->state(), 'profileService'=>app(\App\Access\AccessProfiles::class)]);
     }
 
     public function saveUser(Request $r)
     {
         $this->admin($r);
-        $d = $r->validate(['name' => 'required|string|max:180', 'email' => 'required|email|max:180|unique:tenant.users,email', 'password' => 'required|string|min:12|max:128|confirmed', 'role' => 'required|in:admin,operator','access_profile'=>'nullable|string|max:60']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'email' => 'required|email|max:180|not_regex:/@support\.vexo\.invalid$/i|unique:tenant.users,email', 'password' => 'required|string|min:12|max:128|confirmed', 'role' => 'required|in:admin,operator','access_profile'=>'nullable|string|max:60']);
         unset($d['password_confirmation']);
         $d['must_change_password'] = true;
         $profile=$d['access_profile']??'operator';unset($d['access_profile']);

@@ -77,8 +77,7 @@ class CompanyOperations
             unset($data['version']);
             $data=array_replace(self::DEFAULTS,$data);
             if ($before===$data) return $row;
-            $configuration=$data;
-            if (isset($row->configuration['_access_profiles'])) $configuration['_access_profiles']=$row->configuration['_access_profiles'];
+            $configuration=array_replace($row->configuration,$data);
             $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
             $this->audit($row,$actor,'configuration',$before,$data);
             return $row;
@@ -111,7 +110,8 @@ class CompanyOperations
             $pending=$this->pending();
             if ($pending) throw ValidationException::withMessages(['configuration'=>array_values($pending)]);
             if ($row->completed_at) return;
-            $row->update(['completed_at'=>now(),'updated_by'=>$actor,'version'=>$row->version+1]);
+            $configuration=$row->configuration;$configuration['_onboarding_completed_at']??=now()->toIso8601String();
+            $row->update(['configuration'=>$configuration,'completed_at'=>now(),'updated_by'=>$actor,'version'=>$row->version+1]);
             $this->audit($row,$actor,'completed',[],['completed_at'=>$row->completed_at->toIso8601String()]);
         },3);
     }

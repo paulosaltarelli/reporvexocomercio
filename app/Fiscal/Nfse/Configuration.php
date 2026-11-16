@@ -14,6 +14,28 @@ use Illuminate\Validation\ValidationException;
 
 final class Configuration
 {
+    public function draft(Tenant $tenant,array $input,int $actor): void
+    {
+        Access::admin($tenant,$actor);
+        $rules=['municipality_code'=>['nullable','regex:/^[0-9]{7}$/D'],'municipal_registration'=>'nullable|string|max:15','timezone'=>'nullable|timezone','op_simp_nac'=>'nullable|in:1,2,3','reg_ap_trib_sn'=>'nullable|in:1,2,3','reg_esp_trib'=>'nullable|in:0','service_national_code'=>['nullable','regex:/^[0-9]{6}$/D'],'service_municipal_code'=>['nullable','regex:/^[0-9]{3}$/D'],'nbs'=>['nullable','regex:/^[0-9]{9}$/D'],'iss_mode'=>'nullable|in:municipal_parameterized','total_tax_mode'=>'nullable|in:not_informed,simples_percentage','total_tax_percent'=>'nullable|numeric|min:0|max:99.99','series'=>'nullable|integer|min:1|max:49999','next_number'=>'nullable|integer|min:1|max:999999999999999','certificate'=>'prohibited','certificate_password'=>'prohibited','csc'=>'prohibited','environment'=>'prohibited','endpoint'=>'prohibited'];
+        $data=Validator::make($input,$rules)->validate();
+        $values=array_filter(array_intersect_key($data,$rules),fn($v)=>$v!==null&&$v!=='');
+        DB::connection('tenant')->transaction(function()use($values,$actor){
+            \App\Models\CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>\App\Services\CompanyOperations::DEFAULTS]);
+            $row=\App\Models\CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
+            $profile=BusinessProfile::whereKey(1)->sharedLock()->firstOrFail();$cnpj=TaxpayerDocument::normalize((string)$profile->document);
+            if(!TaxpayerDocument::cnpj($cnpj))throw ValidationException::withMessages(['document'=>'Salve o CNPJ válido da empresa antes do rascunho.']);
+            if(isset($values['municipality_code'])&&$values['municipality_code']!==$profile->municipality_code)throw ValidationException::withMessages(['municipality_code'=>'O município deve corresponder à empresa.']);
+            $config=$row->configuration;$before=$config['_nfse_draft']??[];$after=['document'=>$cnpj,'values'=>$values];$config['_nfse_draft']=$after;
+            $row->update(['configuration'=>$config,'version'=>$row->version+1,'updated_by'=>$actor]);
+            DB::connection('tenant')->table('company_operation_audits')->insert(['version'=>$row->version,'user_id'=>$actor,'action'=>'nfse_draft','before'=>json_encode($before),'after'=>json_encode($after),'created_at'=>now()]);
+        },3);
+    }
+    public function draftValues(): array
+    {
+        $draft=\App\Models\CompanyOperation::find(1)?->configuration['_nfse_draft']??[];
+        return ($draft['document']??null)===TaxpayerDocument::normalize((string)BusinessProfile::find(1)?->document)?($draft['values']??[]):[];
+    }
     public function save(Tenant $tenant, #[\SensitiveParameter] array $input, #[\SensitiveParameter] ?string $pfx, int $actor): NfseConfiguration
     {
         Access::admin($tenant, $actor);

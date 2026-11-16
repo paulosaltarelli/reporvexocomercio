@@ -86,6 +86,30 @@ class PlatformTest extends TestCase
         $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_auth_version' => $this->admin->auth_version]);
     }
 
+    public function test_global_admin_management_is_central_only_preserves_last_admin_and_revokes_sessions(): void
+    {
+        $this->get('/vexo-admin/admins')->assertRedirect('/vexo-admin/login');
+        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_auth_version'=>$this->admin->auth_version]);
+        $this->get('/vexo-admin/admins')->assertOk()->assertSee('Administradores Vexo');
+        $base=['name'=>'Administrador','email'=>$this->admin->email,'active'=>0,'expected_version'=>$this->admin->auth_version];
+        $this->post('/vexo-admin/admins/'.$this->admin->id,$base)->assertSessionHasErrors('active');
+        $this->post('/vexo-admin/admins',['name'=>'Segundo DBA','email'=>'SECOND@example.test','active'=>1,'password'=>'test-global-password-9876','password_confirmation'=>'test-global-password-9876'])->assertRedirect('/vexo-admin/admins')->assertSessionHasNoErrors();
+        $other=PlatformAdmin::where('email','second@example.test')->firstOrFail();$this->assertTrue(Hash::check('test-global-password-9876',$other->password));
+        $before=$other->auth_version;
+        $this->post('/vexo-admin/admins/'.$other->id,['name'=>$other->name,'email'=>$other->email,'active'=>0,'expected_version'=>$before])->assertRedirect('/vexo-admin/admins')->assertSessionHasNoErrors();
+        $this->assertFalse($other->fresh()->active);$this->assertSame($before+1,$other->fresh()->auth_version);
+        $this->post('/vexo-admin/admins/'.$other->id,['name'=>'Stale','email'=>$other->email,'active'=>1,'expected_version'=>$before])->assertSessionHasErrors('expected_version');
+        $this->assertStringNotContainsString('test-global-password-9876',PlatformAudit::all()->toJson());
+        $this->post('/vexo-admin/admins',['name'=>'Bad','email'=>'bad@example.test','active'=>1,'password'=>'short','password_confirmation'=>'short'])->assertSessionHasErrors('password')->assertSessionMissing('_old_input.password');
+    }
+    public function test_central_shows_company_login_and_setup_urls_without_starting_support_on_get(): void
+    {
+        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_auth_version'=>$this->admin->auth_version]);
+        $this->get('/vexo-admin')->assertOk()->assertSee('/app/'.$this->company->slug.'/login',false)->assertSessionMissing('platform_support');
+        $this->get('/vexo-admin/companies/'.$this->company->id)->assertOk()->assertSee('/app/'.$this->company->slug.'/setup',false)->assertSee('Acessar loja como DBA')->assertSessionMissing('platform_support');
+        $this->get('/vexo-admin/companies/'.$this->company->id.'/support')->assertStatus(405);
+    }
+
     public function test_platform_login_is_distinct_from_customer_admin_session_and_logs_out_with_audit(): void
     {
         $this->withSession(['tenant_id' => $this->company->id, 'user_id' => $this->admin->id, 'auth_version' => 0, 'role' => 'admin']);

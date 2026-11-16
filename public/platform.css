@@ -7,3 +7,7 @@
 .platform-filters{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:26px}.platform-filters .field{margin:0;flex:1;min-width:180px}.platform-filters>.button{flex-shrink:0}.platform-filters>a{font-size:12px;padding-bottom:10px}@media(max-width:760px){.platform-filters{display:grid;grid-template-columns:1fr}.platform-filters .field{min-width:0}.platform-filters>.button{width:100%}}
 
 .badge.demonstration{background:#e7f3ff;color:#1c5f9e;margin-top:5px}
+
+.company-access-url{display:inline-block;overflow-wrap:anywhere;max-width:34rem;font-size:.8rem}.support-entry{margin-top:1rem}.platform-admin-card form{margin-top:1rem}
+
+.platform-main .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.platform-admin-card{padding:1rem 0;border-bottom:1px solid #dce4ef}.platform-admin-card summary{cursor:pointer;overflow-wrap:anywhere}@media(max-width:600px){.platform-main .form-grid{grid-template-columns:1fr}}

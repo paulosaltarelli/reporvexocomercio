@@ -44,9 +44,7 @@ class AccountController extends Controller
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
         $start=$user->role==='admin'?'dashboard':app(\App\Access\AccessProfiles::class)->landing($user);
-        if ($user->role==='admin' && $r->attributes->get('tenant')->storage_mode==='shared'
-            && ! \App\Models\CompanyOperation::find(1)?->completed_at
-            && !($r->attributes->get('tenant')->is_demonstration && \App\Models\DemoRun::where('code','computer-store-v1')->whereNotNull('completed_at')->exists())) $start='setup';
+        if ($user->role==='admin' && app(\App\Services\CompanyOnboarding::class)->required($r->attributes->get('tenant'))) $start='setup';
         return redirect()->route($start, ['company' => $company])->with('success', 'Senha alterada. Outras sessões deste usuário foram encerradas.');
     }
 
@@ -54,13 +52,14 @@ class AccountController extends Controller
     {
         abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
         $user = User::findOrFail($id);
-        $d = $r->validate(['name' => 'required|string|max:180', 'email' => ['required', 'email', 'max:180', Rule::unique('tenant.users', 'email')->ignore($id)], 'role' => 'required|in:admin,operator', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128|confirmed','access_profile'=>'nullable|string|max:60']);
+        abort_if(\App\Platform\SupportAccess::isManaged($user),403,'Contas técnicas são gerenciadas pela Central Vexo.');
+        $d = $r->validate(['name' => 'required|string|max:180', 'email' => ['required', 'email', 'not_regex:/@support\.vexo\.invalid$/i', 'max:180', Rule::unique('tenant.users', 'email')->ignore($id)], 'role' => 'required|in:admin,operator', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128|confirmed','access_profile'=>'nullable|string|max:60']);
         DB::connection('tenant')->transaction(function () use ($d, $id, $r) {
             // Lock in stable order to protect the last active administrator.
             $users = User::orderBy('id')->lockForUpdate()->get();
             $u = $users->firstWhere('id', $id);
             abort_unless($u, 404);
-            $isLastAdmin = $u->active && $u->role === 'admin' && $users->where('active', true)->where('role', 'admin')->count() === 1;
+            $isLastAdmin = $u->active && $u->role === 'admin' && $users->reject(fn($candidate)=>\App\Platform\SupportAccess::isManaged($candidate))->where('active', true)->where('role', 'admin')->count() === 1;
             if ($isLastAdmin && (! $d['active'] || $d['role'] !== 'admin')) {
                 throw ValidationException::withMessages(['role' => 'Mantenha pelo menos um administrador ativo.']);
             }

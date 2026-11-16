@@ -25,6 +25,7 @@ class ResolveTenant
             view()->share('companyProfile',\App\Models\BusinessProfile::find(1));
             view()->share('demoMode', DemoRun::where('code', 'computer-store-v1')->whereNotNull('completed_at')->exists());
             view()->share('currentUser', null);
+            view()->share('supportAdmin', null);
             view()->share('operationConfig', app(\App\Services\CompanyOperations::class)->current());
             view()->share('companySetup', \App\Models\CompanyOperation::find(1));
 

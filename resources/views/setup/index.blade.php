@@ -14,11 +14,7 @@
 <p class="form-note">Você pode salvar e continuar depois. As configurações salvas valem imediatamente para novas operações. O histórico é preservado.</p>
 @endif
 @if($step===1)
-<section class="panel"><h2>Identidade da empresa</h2>
-<p>Os dados e a logo de Minha empresa são usados nos relatórios. Confira também endereço, registros e regime tributário antes de configurar o fiscal.</p>
-<dl><dt>Razão social</dt><dd>{{ $profile?->legal_name ?: 'Não preenchida' }}</dd><dt>CNPJ</dt><dd>{{ $profile?->document ?: 'Não preenchido' }}</dd><dt>Contato</dt><dd>{{ $profile?->email ?: 'Não preenchido' }}</dd></dl>
-<div class="setup-actions"><a class="button primary" href="{{ route('business',['company'=>$tenant->slug]) }}">Preencher dados e enviar logo</a><a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>2]) }}">Continuar para operação</a></div>
-</section>
+@include('components.company-profile-form',['companyFormAction'=>route('setup.company.save',['company'=>$tenant->slug]),'companySubmitLabel'=>'Salvar empresa e continuar','wizardCompany'=>true])
 @elseif($step===2)
 <form class="panel" method="post" action="{{ route('setup.save',['company'=>$tenant->slug]) }}">@csrf
 <input type="hidden" name="version" value="{{ old('version',$setup?->version??0) }}">
@@ -39,29 +35,21 @@
 <button class="primary">Salvar e continuar</button>
 </form>
 @elseif($step===3)
-<section class="panel"><h2>Preparação fiscal</h2>
-<p>NFC-e e NF-e permanecem em homologação. NFS-e possui preparação local de DPS; a transmissão ainda não está disponível.</p>
-<ul>@foreach(['nfce'=>'NFC-e','nfe'=>'NF-e','nfse'=>'NFS-e'] as $key=>$label)<li>{{ $label }}: <strong>{{ $configuration[$key]?'habilitada para configurar':'desabilitada' }}</strong></li>@endforeach</ul>
+<section class="panel"><h2>Configuração fiscal</h2><p>Preencha e salve os dados nesta etapa. Eles ficam disponíveis nas configurações fiscais definitivas da empresa. A emissão em produção permanece bloqueada.</p>
+@if(!$configuration['nfce']&&!$configuration['nfe']&&!$configuration['nfse'])<p>Nenhum módulo fiscal foi selecionado. Você pode concluir a implantação sem certificado e configurar o fiscal posteriormente.</p>@else<p>Use os dados confirmados pelo responsável fiscal. O certificado e sua senha são enviados apenas pelo formulário seguro abaixo.</p>@endif
+</section>
 @if($configuration['nfce'] || $configuration['nfe'] || $configuration['nfse'])
-<p>Cadastre o certificado PFX e a senha exclusivamente na tela segura da empresa. Não envie pelo chat. Habilitar o recurso não confirma credenciamento ou autorização fiscal. Desabilitar bloqueia novas emissões; documentos já enfileirados continuam seu processamento, e consultas ou cancelamentos permanecem disponíveis.</p>
-<div class="setup-actions"><a class="button primary" href="{{ route('business',['company'=>$tenant->slug]) }}">Configurar certificado e emitente</a>@if($configuration['nfse'])<a class="button secondary" href="{{ route('nfse.index',['company'=>$tenant->slug]) }}">Preparação de NFS-e</a>@endif</div>
-@else
-<p>Esta operação não utilizará emissão fiscal pelo sistema. Nenhum certificado é necessário para concluir este cadastro.</p>
+@include('fiscal.company',['setupFiscal'=>true])
 @endif
-<a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>4]) }}">Continuar para equipe</a>
-</section>
+<form class="panel setup-actions" method="post" action="{{ route('setup.fiscal.continue',['company'=>$tenant->slug]) }}">@csrf<a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>2]) }}">Voltar para operação</a><button class="primary">Conferir fiscal e continuar</button><p class="hint">Para avançar, os módulos fiscais selecionados precisam estar preparados. Se não for usar um módulo agora, desabilite-o na etapa Operação.</p></form>
 @elseif($step===4)
-<section class="panel"><h2>Usuários e vendedores</h2>
-<p>Cadastre quem terá acesso e confira os perfis de administrador e operador. O vendedor continua vinculado à venda e ao orçamento mesmo sem comissões.</p>
-<p>Comissões: <strong>{{ $configuration['commissions']?'habilitadas':'desabilitadas' }}</strong>. Regime das próximas vendas: <strong>{{ $configuration['commission_basis']==='cash'?'caixa':'competência' }}</strong>.</p>
-<div class="setup-actions"><a class="button primary" href="{{ route('users',['company'=>$tenant->slug]) }}">Configurar usuários</a><a class="button secondary" href="{{ route('sellers',['company'=>$tenant->slug]) }}">Configurar vendedores</a><a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>5]) }}">Revisar implantação</a></div>
-</section>
+@include('setup.team')
 @else
-<section class="panel"><h2>Revisão da implantação</h2>
+<section class="panel"><h2>Revisão da implantação</h2><p>Empresa, operação e equipe serão mantidas nos seus cadastros definitivos. Produtos, serviços, clientes e movimentações serão cadastrados depois.</p><dl><dt>Empresa</dt><dd>{{ $profile?->legal_name }}</dd><dt>CNPJ</dt><dd>{{ $profile?->document }}</dd><dt>Usuários de acesso</dt><dd>{{ $users->count() }}</dd><dt>Responsáveis pelo caixa</dt><dd>{{ $sellers->pluck('name')->implode(', ') ?: 'Cadastre na etapa Equipe' }}</dd></dl>
 @if($configuration['nfce'] || $configuration['nfe'] || $configuration['nfse'])<p class="form-note">Emissão fiscal permanece em homologação/preparação; concluir o cadastro não libera produção.</p>@endif
 <dl><dt>Operação</dt><dd>{{ ['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'][$configuration['catalog_mode']] }}</dd><dt>Estoque</dt><dd>{{ $configuration['inventory']?'Habilitado':'Desabilitado' }}</dd><dt>Comissões</dt><dd>{{ $configuration['commissions']?($configuration['commission_basis']==='cash'?'Caixa':'Competência'):'Desabilitadas' }}</dd></dl>
 @if($pending)<h3>Pontos a conferir</h3><ul>@foreach($pending as $message)<li>{{ $message }}</li>@endforeach</ul>@endif
-<form method="post" action="{{ route('setup.complete',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="version" value="{{ $setup?->version??0 }}"><label class="setup-option"><input type="checkbox" name="reviewed" value="1" required> Revisei os dados, usuários e escolhas desta empresa.</label><button class="primary">Concluir conferência</button></form>
+<form method="post" action="{{ route('setup.complete',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="version" value="{{ $setup?->version??0 }}"><label class="setup-option"><input type="checkbox" name="reviewed" value="1" required> Revisei os dados, usuários e escolhas desta empresa.</label><button class="primary">Concluir implantação e abrir sistema</button></form>
 </section>
 @endif
 @if($audit->isNotEmpty())<details class="panel"><summary>Histórico recente de configuração</summary><ul>@foreach($audit as $event)<li>{{ \Carbon\Carbon::parse($event->created_at)->format('d/m/Y H:i') }} · versão {{ $event->version }} · {{ match($event->action){'completed'=>'Implantação conferida','company_changed'=>'Dados da empresa alterados',default=>'Configuração alterada'} }}</li>@endforeach</ul></details>@endif

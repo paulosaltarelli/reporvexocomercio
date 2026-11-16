@@ -2527,6 +2527,81 @@ class CommerceTest extends TestCase
         $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertForbidden();
     }
 
+    public function test_guided_setup_saves_real_company_team_and_configuration_without_catalog_data(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->get('/app/a/setup?step=1')->assertOk()->assertSee('Salvar empresa e continuar')->assertDontSee('Preencher dados e enviar logo');
+        $this->post('/app/a/setup/company',['legal_name'=>'Empresa Implantada','document'=>'07.396.600/0001-60','state'=>'MG','city'=>'Lavras','municipality_code'=>'3138203','tax_regime'=>'simples'])->assertRedirect('/app/a/setup?step=2')->assertSessionHasNoErrors();
+        $this->get('/app/a/business')->assertOk()->assertSee('Empresa Implantada');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(2,app(\App\Services\CompanyOnboarding::class)->step());
+        $version=\App\Models\CompanyOperation::find(1)->version;
+        $this->post('/app/a/setup',$this->operationPayload(['version'=>$version,'nfce'=>false,'nfe'=>false,'nfse'=>false]))->assertRedirect('/app/a/setup?step=3')->assertSessionHasNoErrors();
+        $this->post('/app/a/setup/fiscal/continue')->assertRedirect('/app/a/setup?step=4');
+        $this->from('/app/a/setup?step=4')->post('/app/a/users',['name'=>'Caixa','email'=>'cashier@example.test','role'=>'operator','password'=>'initial-cashier-1234','password_confirmation'=>'initial-cashier-1234','access_profile'=>'operator'])->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
+        $this->post('/app/a/setup/team',['name'=>'Responsável do caixa','user_id'=>$this->user->id,'active'=>1])->assertRedirect('/app/a/setup?step=5')->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(1,\App\Models\Seller::where('name','Responsável do caixa')->count());$version=\App\Models\CompanyOperation::find(1)->version;
+        $this->post('/app/a/setup/complete',['version'=>$version,'reviewed'=>1])->assertRedirect('/app/a')->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertNotNull(\App\Models\CompanyOperation::find(1)->completed_at);
+        $this->assertNotEmpty(\App\Models\CompanyOperation::find(1)->configuration['_onboarding_completed_at']);
+        $this->assertSame(1,Product::count());$this->assertSame(0,Sale::count());$this->assertSame(0,StockMovement::count());
+        app(TenantConnection::class)->connect($this->b);$this->assertNull(\App\Models\BusinessProfile::find(1));$this->assertSame(0,\App\Models\Seller::count());
+    }
+    public function test_setup_rejects_invalid_company_missing_fiscal_and_team_without_completing(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->post('/app/a/setup/company',['legal_name'=>'Sem CNPJ','document'=>'123'])->assertSessionHasErrors('document');
+        $this->post('/app/a/setup/fiscal/continue')->assertSessionHasErrors('configuration');
+        $this->post('/app/a/setup/team',['name'=>'','active'=>1])->assertSessionHasErrors('name');
+        $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertSessionHasErrors('team');
+        app(TenantConnection::class)->connect($this->a);$this->assertNull(\App\Models\CompanyOperation::find(1)?->completed_at);
+    }
+    public function test_nfse_partial_draft_keeps_unknown_numbering_empty_and_never_enables_emission(): void
+    {
+        \App\Models\BusinessProfile::forceCreate(['id'=>1,'legal_name'=>'Empresa','document'=>'07.396.600/0001-60','municipality_code'=>'3138203','tax_regime'=>'simples']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->from('/app/a/setup?step=3')->post('/app/a/nfse/configuration/draft',['municipality_code'=>'3138203','timezone'=>'America/Sao_Paulo','op_simp_nac'=>'3','reg_ap_trib_sn'=>'1','service_national_code'=>'010701','nbs'=>'115011000'])->assertSessionHasNoErrors()->assertRedirect('/app/a/setup?step=3');
+        app(TenantConnection::class)->connect($this->a);
+        $draft=app(\App\Fiscal\Nfse\Configuration::class)->draftValues();$this->assertSame('010701',$draft['service_national_code']);$this->assertArrayNotHasKey('series',$draft);
+        $this->assertSame(0,\App\Models\NfseConfiguration::count());$this->assertSame(0,DB::connection('tenant')->table('nfse_sequences')->count());
+        $this->post('/app/a/nfse/configuration/draft',['series'=>70000])->assertSessionHasErrors('series');
+        $this->post('/app/a/nfse/configuration/draft',['certificate_password'=>'must-not-flash'])->assertSessionHasErrors('certificate_password')->assertSessionMissing('_old_input.certificate_password');
+        app(TenantConnection::class)->connect($this->b);$this->assertSame([],app(\App\Fiscal\Nfse\Configuration::class)->draftValues());
+    }
+    public function test_global_support_is_identified_audited_and_cannot_be_used_without_central_session(): void
+    {
+        $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte central','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1]);
+        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Implantação da empresa'])->assertRedirect('/app/a');
+        $this->get('/app/a')->assertOk()->assertSee('Suporte Vexo · DBA');
+        $this->from('/app/a/business')->post('/app/a/business',['legal_name'=>'Alteração global'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(1,\App\Platform\PlatformAudit::where('action','support.enter')->count());
+        $this->assertSame(1,\App\Platform\PlatformAudit::where('action','support.request')->count());
+        app(TenantConnection::class)->connect($this->a);$support=User::where('email','like','%@support.vexo.invalid')->firstOrFail();
+        $this->get('/app/a/users')->assertOk()->assertDontSee($support->email);
+        $this->post('/app/a/users/'.$support->id,['name'=>'Bypass','role'=>'admin','active'=>1,'email'=>'bypass@example.test'])->assertForbidden();
+        $this->post('/vexo-admin/support/leave')->assertRedirect('/vexo-admin')->assertSessionMissing('platform_support')->assertSessionMissing('tenant_id');
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a')->assertOk()->assertDontSee('Suporte Vexo · DBA');
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$support->id,'auth_version'=>$support->auth_version])->get('/app/a')->assertRedirect('/vexo-admin/login');
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1])->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Teste de revogação'])->assertRedirect('/app/a');
+        $admin->update(['active'=>false,'auth_version'=>2]);
+        $this->get('/app/a')->assertRedirect('/vexo-admin/login')->assertSessionMissing('tenant_id');
+    }
+    public function test_global_support_cannot_jump_store_context_and_preserves_configuration_metadata(): void
+    {
+        $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1]);
+        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Configurar loja A'])->assertRedirect('/app/a');
+        app(TenantConnection::class)->connect($this->a);
+        $version=\App\Models\CompanyOperation::find(1)->version;
+        app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['version'=>$version,'commissions'=>false]),$this->user->id);
+        $this->assertNotEmpty(\App\Models\CompanyOperation::find(1)->configuration['_platform_support']);
+        $this->get('/app/b/desk')->assertRedirect('/app/b/login')->assertSessionMissing('platform_admin_id');
+        app(TenantConnection::class)->connect($this->b);$this->assertSame(0,User::where('email','like','%@support.vexo.invalid')->count());
+    }
+
     private function operationPayload(array $changes=[]): array
     {
         return array_replace(\App\Services\CompanyOperations::DEFAULTS,['version'=>0],$changes);

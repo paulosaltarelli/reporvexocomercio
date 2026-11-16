@@ -43,6 +43,9 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::get('setup', [\App\Http\Controllers\CompanySetupController::class,'index'])->name('setup');
         Route::post('setup', [\App\Http\Controllers\CompanySetupController::class,'save'])->name('setup.save');
+        Route::post('setup/company', [\App\Http\Controllers\CompanySetupController::class,'company'])->name('setup.company.save');
+        Route::post('setup/fiscal/continue', [\App\Http\Controllers\CompanySetupController::class,'fiscalContinue'])->name('setup.fiscal.continue');
+        Route::post('setup/team', [\App\Http\Controllers\CompanySetupController::class,'team'])->name('setup.team.save');
         Route::post('setup/complete', [\App\Http\Controllers\CompanySetupController::class,'complete'])->name('setup.complete');
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
@@ -144,6 +147,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
 Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware([ResolveTenant::class, TenantAuthenticated::class])->group(function () {
     Route::get('nfse', [\App\Http\Controllers\NfseController::class, 'index'])->name('nfse.index');
     Route::post('nfse/config', [\App\Http\Controllers\NfseController::class, 'save'])->name('nfse.config');
+        Route::post('nfse/configuration/draft',[\App\Http\Controllers\NfseController::class,'draft'])->name('nfse.config.draft');
     Route::get('nfse/sales/{id}', [\App\Http\Controllers\NfseController::class, 'sale'])->whereNumber('id')->name('nfse.sale');
     Route::post('nfse/sales/{id}/prepare', [\App\Http\Controllers\NfseController::class, 'prepare'])->whereNumber('id')->name('nfse.prepare');
     Route::get('nfse/documents/{id}', [\App\Http\Controllers\NfseController::class, 'show'])->whereNumber('id')->name('nfse.show');
