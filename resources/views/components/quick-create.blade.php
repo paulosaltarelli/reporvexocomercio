@@ -4,8 +4,8 @@
 <dialog id="quick-create-dialog" class="quick-create-dialog" aria-labelledby="quick-create-title" data-endpoint="{{ route('quick.create',['company'=>$tenant->slug,'kind'=>'__kind__']) }}" data-inventory="{{ $operationConfig['inventory']?'1':'0' }}">
 <form id="quick-create-form" method="post">
 @csrf<input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
-<div class="section-heading"><h2 id="quick-create-title">Cadastro rápido</h2><button type="button" class="text-button quick-cancel" aria-label="Fechar cadastro rápido">Fechar</button></div>
-<p class="hint">Salve e use no atendimento. Os itens e pagamentos em andamento serão preservados.</p>
+<div class="section-heading"><h2 id="quick-create-title">Cadastro rápido</h2><button type="button" class="text-button quick-cancel" aria-label="Fechar cadastro rápido" title="Fechar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+<p class="hint">Preencha os dados essenciais para usar no atendimento.</p>
 <div id="quick-create-errors" class="notice error" role="alert" hidden></div>
 <div class="field"><label id="quick-name-label" for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="180" required></div>
 <fieldset data-quick-section="customer"><legend>Contato do cliente · opcional</legend><div class="form-grid"><div class="field"><label for="quick-document">CPF / CNPJ</label><input id="quick-document" name="document" maxlength="20" inputmode="numeric"></div><div class="field"><label for="quick-phone">Telefone</label><input id="quick-phone" name="phone" type="tel" maxlength="30"></div><div class="field"><label for="quick-email">E-mail</label><input id="quick-email" name="email" type="email" maxlength="180"></div></div></fieldset>

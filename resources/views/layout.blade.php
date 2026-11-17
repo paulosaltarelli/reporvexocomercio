@@ -11,7 +11,7 @@
     @if(request()->routeIs('dashboard','commissions*','commission.*','payment.methods*'))<link rel="stylesheet" href="/commercial-insights.css?v={{ filemtime(public_path('commercial-insights.css')) }}">@endif
     @if(request()->routeIs('access.profiles*'))<link rel="stylesheet" href="/access-profiles.css?v={{ filemtime(public_path('access-profiles.css')) }}">@endif
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css?v={{ filemtime(public_path('company-setup.css')) }}">@endif
-<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>
+<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"><link rel="stylesheet" href="/interface.css?v={{ filemtime(public_path('interface.css')) }}"></head>
 <body @if($wizardMode??false) class="onboarding-shell" @endif>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 @if(!($wizardMode??false))@include('partials.company-navigation')@endif
