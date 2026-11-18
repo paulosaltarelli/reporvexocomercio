@@ -573,6 +573,55 @@ class CommerceTest extends TestCase
         catch (ValidationException) { $this->assertSame(1, \App\Models\Document::count()); }
     }
 
+    public function test_work_order_starts_without_approval_and_can_be_edited_during_service(): void
+    {
+        $documents = app(Documents::class);
+        $doc = $documents->create(['type'=>'work_order','request_key'=>(string) Str::uuid(),'items'=>[]], $this->user->id);
+        $before = [Sale::count(), FinancialEntry::count(), StockMovement::count()];
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->get('/app/a/documents/'.$doc->id)->assertOk()->assertSee('Iniciar serviço')->assertDontSee('Registrar aprovação');
+        $this->post('/app/a/documents/'.$doc->id.'/status', ['status'=>'completed'])->assertSessionHasErrors('status');
+        $this->post('/app/a/documents/'.$doc->id.'/status', ['status'=>'in_progress'])->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('in_progress', $doc->fresh()->status);
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk();
+        app(TenantConnection::class)->connect($this->a);
+        $hash = $documents->editHash($doc->fresh());
+        $this->post('/app/a/documents/'.$doc->id.'/update', ['expected_hash'=>$hash,'notes'=>'Diagnóstico durante o serviço','items'=>[]])->assertSessionHasNoErrors();
+        $this->get('/app/a/documents/'.$doc->id)->assertOk()->assertSee('Finalizar serviço')->assertDontSee('Registrar aprovação');
+        $this->post('/app/a/documents/'.$doc->id.'/status', ['status'=>'completed'])->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('completed', $doc->fresh()->status);
+        $this->assertSame('Diagnóstico durante o serviço', $doc->fresh()->notes);
+        $this->assertSame($before, [Sale::count(), FinancialEntry::count(), StockMovement::count()]);
+        $this->get('/app/a/documents/'.$doc->id)->assertOk()->assertDontSee('id="document-checkout"', false);
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertStatus(409);
+        app(TenantConnection::class)->connect($this->a);
+        try { $documents->invoice($doc->id, ['payment_method'=>'cash','paid'=>true], $this->user->id); $this->fail('OS sem itens não gera venda.'); }
+        catch (ValidationException $e) { $this->assertArrayHasKey('items', $e->errors()); }
+        $legacy = $documents->create(['type'=>'work_order','request_key'=>(string) Str::uuid(),'items'=>[]], $this->user->id);
+        $legacy->update(['status'=>'approved']);
+        $documents->transition($legacy->id, 'in_progress');
+        $this->assertSame('in_progress', $legacy->fresh()->status);
+    }
+
+    public function test_cash_next_opening_displays_last_counted_cash_even_after_days_without_activity(): void
+    {
+        $cash = app(\App\Services\CashService::class);
+        $date = now()->subDays(3)->toDateString();
+        $cash->close(['request_key'=>(string) Str::uuid(),'date'=>$date,'opening_balance'=>'120.00','counted_balance'=>'115.00'], $this->user->id);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->get('/app/a/cash?opening_balance=999.00')->assertOk()
+            ->assertSee('Saldo trazido do fechamento de')->assertSee('115,00')->assertSee('Confirmar abertura')
+            ->assertViewHas('summary', fn($summary)=>$summary['opening_balance']==='115.00');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(0, \App\Models\OperationRecord::where('action','cash_opened')->count());
+        $this->post('/app/a/cash/open', ['date'=>now()->toDateString(),'opening_balance'=>'115.00'])->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('115.00', $cash->opening(now()->toDateString())->after['opening_balance']);
+        $this->get('/app/a/cash')->assertOk()->assertDontSee('Saldo trazido do fechamento de');
+    }
+
     public function test_work_order_document_filters_separate_type_status_customer_asset_and_id(): void
     {
         $customer = \App\Models\Customer::create(['name' => 'Cliente filtro QA', 'document' => '11222333000181', 'phone' => '35999990000']);
@@ -655,7 +704,7 @@ class CommerceTest extends TestCase
             $this->fail('Unfinished order must be rejected');
         } catch (ValidationException) {
         }
-        foreach (['approved', 'in_progress', 'completed'] as $status) {
+        foreach (['in_progress', 'completed'] as $status) {
             app(Documents::class)->transition($d->id, $status);
         }
         $sale = app(Documents::class)->invoice($d->id, ['payment_method' => 'cash', 'paid' => true], $this->user->id);

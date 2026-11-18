@@ -20,7 +20,7 @@ class CashController extends Controller
         $d = $r->validate(['date' => 'nullable|date_format:Y-m-d|before_or_equal:today', 'opening_balance' => 'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']);
         $date = $d['date'] ?? now()->toDateString();
         $last = CashClosure::where('date', '<', $date)->orderByDesc('date')->first();
-        $opening = (string) ($d['opening_balance'] ?? $last?->counted_balance ?? '0.00');
+        $opening = (string) ($last?->counted_balance ?? $d['opening_balance'] ?? '0.00');
         $summary = app(CashService::class)->summary($date, $opening);
         $latest = CashClosure::orderByDesc('date')->first();
         $next = Payment::when($latest, fn ($q) => $q->where('paid_on', '>', $latest->date->toDateString()))->where('paid_on', '<=', now()->toDateString())->min('paid_on');
