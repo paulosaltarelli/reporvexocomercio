@@ -94,3 +94,7 @@ Nova imagem `public/brand/vendra-vendas.jpg`, 1200×760, reconstrução estátic
 Testes locais Chromium/Playwright em 320/390/768/1024/1440: quatro imagens decodificadas, quatro exemplos, âncoras, sete CTAs, teclado/FAQ/menu/impressão, ausência de overflow e erros JS. Sem envio de mensagens ou rastreadores. `git diff --check` aprovado. PHP/Laravel e VPS permanecem fora da validação local.
 
 Overlay desta entrega: `resources/views/welcome.blade.php`, `public/marketing.css`, `public/brand/vendra-vendas.jpg`. Os três JPEG anteriores já pertencem ao main e devem estar disponíveis na VPS; conferir sua integridade, sem sobrescrevê-los se divergirem do baseline. Assets da página versionados como `20261116`. `public/marketing.js` não foi alterado. Não incluir documentação/testes ou arquivos do ERP no overlay. Publicação continua dependente de acesso seguro à VPS no chat executor, com o procedimento de lock, baseline, backup e smoke acima.
+
+## Favicon e Instagram — 18/11/2026
+
+Favicon com o símbolo existente da Vendra em SVG e ICO (16/32/48 px), além de apple-touch-icon de 180 px. Links versionados para atualizar o cache. Instagram oficial da Vexo no rodapé: https://www.instagram.com/vexogestao/. Removida a frase do rodapé solicitada pelo usuário, sem alterar o módulo fiscal. Overlay limitado a welcome.blade.php e aos três ícones públicos. Conferência estática em cinco larguras, links e imagens locais. Publicação com baseline, lock compartilhado, backup e smoke HTTPS dos ícones e da landing.
