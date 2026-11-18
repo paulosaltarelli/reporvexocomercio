@@ -162,3 +162,25 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline
 @media print { .showcase-row { break-inside: avoid; grid-template-columns: 1.3fr 1fr; gap: 20px; }.showcase-copy h3 { font-size: 22px; }.image-expand { display: none; }.showcase-image img { max-height: 230px; object-fit: contain; } }
 
 .showcase-example { margin-top: 18px; padding: 14px 16px; border-left: 3px solid #25a3cc; border-radius: 0 7px 7px 0; background: #edf3fa; color: #365575; font-size: 12px !important; line-height: 1.75 !important; }
+
+.footer-bottom {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.footer-instagram {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 44px;
+    height: 44px;
+    color: #d1dff0;
+    border: 1px solid #3a506d;
+    border-radius: 12px;
+}
+
+.footer-instagram:hover {
+    color: white;
+    background: #182d48;
+    border-color: #789ac3;
+}

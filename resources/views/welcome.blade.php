@@ -13,7 +13,7 @@
     <link rel="icon" href="/favicon.ico?v=20261118" sizes="16x16 32x32 48x48">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261118">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20261118" sizes="180x180">
-    <link rel="stylesheet" href="/marketing.css?v=20261116">
+    <link rel="stylesheet" href="/marketing.css?v=20261118b">
 <link rel="stylesheet" href="/brand.css?v=20261116-vexo1"></head>
 <body>
 <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
@@ -97,7 +97,21 @@
     <section class="contact-section" id="contato" aria-labelledby="contact-title"><div class="container contact-inner"><div><span class="eyebrow">VAMOS CONVERSAR SOBRE A SUA EMPRESA</span><h2 id="contact-title">Seu próximo passo:<br>ver o Vendra na prática.</h2><p>Conte o que precisa organizar. Vamos apresentar os recursos<br>e conversar sobre uma proposta para sua empresa.</p></div><div class="contact-actions"><a class="button button-light" href="https://wa.me/5535999193304?text=Ol%C3%A1%21%20Quero%20uma%20demonstra%C3%A7%C3%A3o%20do%20Vendra.%20Meu%20segmento%20%C3%A9%3A%20__.%20Quero%20organizar%3A%20__." target="_blank" rel="noopener noreferrer" data-cta="contact">Pedir demonstração pelo WhatsApp <svg class="arrow-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a><span class="contact-phone">(35) 99919-3304</span><a class="contact-email" href="mailto:ivancasvilela@gmail.com?subject=Quero%20conhecer%20o%20Vendra">ivancasvilela@gmail.com</a></div></div></section>
 </main>
 <a class="button mobile-conversion" href="https://wa.me/5535999193304?text=Ol%C3%A1%21%20Quero%20uma%20demonstra%C3%A7%C3%A3o%20do%20Vendra.%20Meu%20segmento%20%C3%A9%3A%20__.%20Quero%20organizar%3A%20__." target="_blank" rel="noopener noreferrer" data-cta="mobile_fixed">Pedir demonstração <svg class="arrow-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-<footer class="site-footer"><div class="container"><div class="footer-top"><a class="brand corporate-brand" href="/" aria-label="Vexo, empresa desenvolvedora do Vendra"><img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></a><p>Gestão para quem faz<br>o comércio acontecer.</p><a href="/app/vexo/login">Já tenho acesso <svg class="arrow-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div><div class="footer-bottom"><span>© {{ now()->year }} Vexo. Vendra é um produto Vexo.</span><a href="https://www.instagram.com/vexogestao/" target="_blank" rel="noopener noreferrer" aria-label="Instagram da Vexo: @vexogestao">Instagram · @vexogestao ↗</a></div></div></footer>
+<footer class="site-footer">
+    <div class="container">
+        <div class="footer-top"><a class="brand corporate-brand" href="/" aria-label="Vexo, empresa desenvolvedora do Vendra"><img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></a><p>Gestão para quem faz<br>o comércio acontecer.</p><a href="/app/vexo/login">Já tenho acesso <svg class="arrow-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
+        <div class="footer-bottom">
+            <span>© {{ now()->year }} Vexo. Vendra é um produto Vexo.</span>
+            <a class="footer-instagram" href="https://www.instagram.com/vexogestao/" target="_blank" rel="noopener noreferrer" aria-label="Instagram da Vexo: @vexogestao">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" stroke-width="1.8"/>
+                    <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/>
+                    <circle cx="17.5" cy="6.5" r="1.1" fill="currentColor"/>
+                </svg>
+            </a>
+        </div>
+    </div>
+</footer>
 <script src="/marketing.js?v=20261116" defer></script>
 </body>
 </html>
