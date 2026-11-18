@@ -1,12 +1,15 @@
 
-@extends('layout')
+@extends(request()->boolean('termica') ? 'printing.thermal' : 'layout')
 @section('title','Venda #'.$sale->id)
 @section('subtitle','Comprovante interno. Este documento não é uma nota fiscal.')
 @section('actions')@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button class="button secondary no-print" onclick="window.print()">Imprimir</button>
-@endsection
+ <a class="button secondary no-print" href="{{ request()->fullUrlWithQuery(['termica'=>1]) }}">Impressão térmica</a>@endsection
 @section('content')
 @php($passedCardFee=app(\App\Services\SalePayments::class)->passedTotal($sale->id))
 @php($paymentPlan=app(\App\Services\SalePayments::class)->rows($sale->id))
+@if(request()->boolean('termica'))
+@include('printing.sale')
+@else
 <section class="panel"><div class="split"><div><h2>{{ $tenant->name }}</h2><p>{{ $sale->customer?->name??'Consumidor final' }}</p><p class="muted">{{ $sale->created_at->format('d/m/Y H:i') }} · {{ $paymentPlan?'Pagamento composto':app(\App\Services\PaymentMethods::class)->labels('sale_payment_method',[$sale->id])[$sale->id]??\App\Services\PaymentMethods::TYPES[$sale->payment_method] }}</p></div><div><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span>
 @if($sale->due_date)<p>Vencimento: {{ \Carbon\Carbon::parse($sale->due_date)->format('d/m/Y') }}</p>
 @endif</div></div><p class="hint"><strong>Vendedor creditado:</strong> {{ $sale->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $sale->creator?->name??'Não informado' }}</p>
@@ -49,4 +52,5 @@
 @endif
 @endif
 <div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>NFC-e {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->allows('fiscal.manage'))<a href="{{ route('fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente a NFC-e. O cancelamento fiscal é solicitado separadamente.</p></div><p class="hint">Este comprovante interno não substitui nota fiscal. Não realiza cobranças ou reembolsos automáticos.</p></section>
+@endif
 @endsection

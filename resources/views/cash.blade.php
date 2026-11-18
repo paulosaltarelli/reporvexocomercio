@@ -1,8 +1,11 @@
-@extends('layout')
+@extends(request()->boolean('termica') ? 'printing.thermal' : 'layout')
 @section('title','Caixa diário')
 @section('subtitle','Confira o dinheiro físico, os movimentos por forma de pagamento e registre o fechamento do dia.')
-@section('actions')<button type="button" class="button secondary no-print" onclick="window.print()">Imprimir / salvar PDF</button>@endsection
+@section('actions')<button type="button" class="button secondary no-print" onclick="window.print()">Imprimir / salvar PDF</button> <a class="button secondary no-print" href="{{ request()->fullUrlWithQuery(['termica'=>1]) }}">Impressão térmica</a>@endsection
 @section('content')
+@if(request()->boolean('termica'))
+@include('printing.cash')
+@else
 <div class="context-strip"><span><strong>Dia da conferência:</strong> {{ \Carbon\Carbon::parse($date)->format('d/m/Y') }}</span><span class="badge {{ $closure?'':'warn' }}">{{ $closure?'Fechamento registrado':'Dia em aberto' }}</span></div>
 <p class="report-period">Conferência de {{ \Carbon\Carbon::parse($date)->format('d/m/Y') }}</p>
 <form class="panel toolbar filter-bar cash-filters" method="get"><div><label for="cash-date">Dia de conferência</label><input id="cash-date" type="date" name="date" value="{{ $date }}" max="{{ now()->toDateString() }}" required></div><div><label for="opening-filter">Abertura em dinheiro (R$)</label><input id="opening-filter" name="opening_balance" type="number" min="0" step="0.01" value="{{ $summary['opening_balance'] }}" @readonly($last || $closure || $openingRecord)><small class="hint">Quando houver fechamento anterior, a abertura é vinculada ao valor contado nele.</small></div><button class="primary">Conferir dia</button></form>
@@ -28,6 +31,7 @@
 @forelse($history as $item)<tr><td>{{ $item->date->format('d/m/Y') }}</td><td class="num">{{ number_format($item->opening_balance,2,',','.') }}</td><td class="num">{{ number_format($item->expected_balance,2,',','.') }}</td><td class="num">{{ number_format($item->counted_balance,2,',','.') }}</td><td class="num">{{ number_format($item->difference,2,',','.') }}</td><td><a href="{{ route('cash',['company'=>$tenant->slug,'date'=>$item->date->toDateString()]) }}">Conferir</a></td></tr>
 @empty<tr><td colspan="6" class="empty">Nenhum fechamento registrado.</td></tr>
 @endforelse</tbody></table></div>{{ $history->links() }}</div></details>
+@endif
 @endsection
 
 @push('scripts')
