@@ -69,8 +69,8 @@ class Documents
         return DB::connection('tenant')->transaction(function () use ($id, $validated) {
             $configuration=app(CompanyOperations::class)->lock();
             $document = Document::whereKey($id)->lockForUpdate()->firstOrFail();
-            if ($document->type !== 'work_order' || $document->status !== 'draft' || $document->sale_id) {
-                throw ValidationException::withMessages(['document' => 'Somente uma OS aberta, ainda sem aprovação ou venda, pode ser editada.']);
+            if ($document->type !== 'work_order' || ! in_array($document->status, ['draft', 'approved', 'in_progress'], true) || $document->sale_id) {
+                throw ValidationException::withMessages(['document' => 'Somente uma OS aberta ou em serviço, ainda sem finalização ou venda, pode ser editada.']);
             }
             if (! hash_equals($this->editHash($document), $validated['expected_hash'])) {
                 throw ValidationException::withMessages(['expected_hash' => 'A OS foi alterada por outra operação. Reabra e revise antes de salvar.']);
@@ -110,13 +110,13 @@ class Documents
         DB::connection('tenant')->transaction(function () use ($id, $status) {
             $d = Document::lockForUpdate()->findOrFail($id);
             $allowed = match ($d->status) {
-                'draft' => ['approved', 'cancelled'],'approved' => $d->type === 'work_order' ? ['in_progress', 'cancelled'] : ['cancelled'],'in_progress' => ['completed', 'cancelled'],'completed' => ['cancelled'],default => []
+                'draft' => $d->type === 'work_order' ? ['approved', 'in_progress', 'cancelled'] : ['approved', 'cancelled'],'approved' => $d->type === 'work_order' ? ['in_progress', 'cancelled'] : ['cancelled'],'in_progress' => ['completed', 'cancelled'],'completed' => ['cancelled'],default => []
             };
             if (! in_array($status, $allowed, true)) {
                 throw ValidationException::withMessages(['status' => 'Transição não permitida para este documento.']);
             }
-            if ($status !== 'cancelled' && empty($d->items)) {
-                throw ValidationException::withMessages(['items' => 'Inclua os produtos ou serviços e revise o diagnóstico antes de aprovar a OS.']);
+            if ($status === 'approved' && empty($d->items)) {
+                throw ValidationException::withMessages(['items' => 'Inclua os produtos ou serviços antes de registrar a aprovação.']);
             }
             $d->update(['status' => $status]);
         }, 3);

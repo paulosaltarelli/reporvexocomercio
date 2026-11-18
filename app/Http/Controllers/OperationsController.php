@@ -75,7 +75,7 @@ class OperationsController extends Controller
     public function edit(Request $r, string $company, int $id, Documents $documents)
     {
         $document = Document::findOrFail($id);
-        abort_unless($document->type === 'work_order' && $document->status === 'draft' && ! $document->sale_id, 409, 'Somente uma OS aberta pode ser editada.');
+        abort_unless($document->type === 'work_order' && in_array($document->status, ['draft', 'approved', 'in_progress'], true) && ! $document->sale_id, 409, 'Somente uma OS aberta ou em serviço pode ser editada.');
         $current = Seller::where('user_id', $r->attributes->get('currentUser')->id)->first();
         return view('documents.form', [
             'document' => $document, 'type' => 'work_order', 'editHash' => $documents->editHash($document),
