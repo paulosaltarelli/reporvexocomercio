@@ -1,13 +1,18 @@
-const registryButton = document.querySelector('[data-registry-url]');
-
-if (registryButton) {
+document.querySelectorAll('[data-registry-url]').forEach(registryButton => {
     const form = registryButton.closest('form');
     const documentInput = form.elements.namedItem('document');
-    const status = document.getElementById('customer-registry-status');
+    const status = registryButton.closest('.field').querySelector('[role="status"]');
+    let generation = 0;
+    form.addEventListener('reset', () => {
+        generation++;
+        status.textContent = '';
+        registryButton.disabled = false;
+    });
     const normalize = (value) => value.replace(/[.\/\s-]/g, '').toUpperCase();
 
     registryButton.hidden = false;
     registryButton.addEventListener('click', async () => {
+        const requestGeneration = generation;
         const cnpj = normalize(documentInput.value);
         if (!/^\d{14}$/.test(cnpj)) {
             status.textContent = 'Digite um CNPJ numérico com 14 dígitos para consultar.';
@@ -24,6 +29,7 @@ if (registryButton) {
                 body: JSON.stringify({document: cnpj, _token: form.elements.namedItem('_token').value}),
             });
             const data = await response.json();
+            if (requestGeneration !== generation) return;
             if (normalize(documentInput.value) !== cnpj) {
                 status.textContent = 'O documento mudou. Faça uma nova consulta.';
                 return;
@@ -42,11 +48,14 @@ if (registryButton) {
                 const input = form.elements.namedItem(name);
                 if (input instanceof HTMLInputElement && !input.value.trim()) input.value = value;
             }
-            status.textContent = 'Dados da BrasilAPI inseridos nos campos vazios. Revise o cadastro e informe a IE, se houver.';
+            status.textContent = form.closest('dialog')
+                ? 'Consulta concluída. Confira nome e contato antes de salvar.'
+                : 'Dados da BrasilAPI inseridos nos campos vazios. Revise o cadastro e informe a IE, se houver.';
         } catch {
+            if (requestGeneration !== generation) return;
             status.textContent = 'Consulta indisponível. Preencha manualmente ou tente novamente.';
         } finally {
-            registryButton.disabled = false;
+            if (requestGeneration === generation) registryButton.disabled = false;
         }
     });
-}
+});
