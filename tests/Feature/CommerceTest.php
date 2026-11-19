@@ -196,6 +196,53 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->get('/app/b/')->assertRedirect('/app/b/login');
     }
 
+    public function test_negative_stock_policy_controls_checkout_and_replenishment(): void
+    {
+        $operations = app(\App\Services\CompanyOperations::class);
+        $savePolicy = function (string $policy) use ($operations): void {
+            $version = \App\Models\CompanyOperation::find(1)?->version ?? 0;
+            $operations->save(array_replace($operations->current(), ['version' => $version, 'negative_stock' => $policy]), $this->user->id);
+        };
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->post('/app/a/sales', $this->saleData())->assertSessionHasErrors('quantity');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(0, Sale::count());
+
+        $savePolicy('warn');
+        $this->post('/app/a/sales', $this->saleData())->assertSessionHasNoErrors()->assertSessionHas('stock_warning');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('-1.000', $this->product->fresh()->quantity);
+        $savePolicy('block');
+        $this->move('in', '1', '40');
+        $this->assertSame('0.000', $this->product->fresh()->quantity);
+
+        $savePolicy('allow');
+        $this->post('/app/a/sales', $this->saleData('2'))->assertSessionHasNoErrors()->assertSessionMissing('stock_warning');
+        app(TenantConnection::class)->connect($this->a);
+        $this->move('in', '3', '50');
+        $this->assertSame('1.000', $this->product->fresh()->quantity);
+        $this->assertSame('50.0000', $this->product->fresh()->average_cost);
+    }
+
+    public function test_work_order_separates_unified_catalog_products_and_services(): void
+    {
+        $service = Product::create(['name' => 'Diagnóstico QA', 'sku' => 'DIAGNOSTICO-QA',
+            'product_group_id' => $this->product->product_group_id, 'type' => 'service',
+            'sale_price' => '60.00', 'unit' => 'UN']);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $doc = app(Documents::class)->create([
+            'request_key' => (string) Str::uuid(), 'type' => 'work_order', 'items' => [
+                ['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '100'],
+                ['kind' => 'product', 'id' => $service->id, 'quantity' => '1', 'unit_price' => '60'],
+            ],
+        ], $this->user->id);
+        $this->assertSame('160.00', $doc->total);
+        $this->get('/app/a/documents/'.$doc->id)->assertOk()
+            ->assertSee('Subtotal de produtos: R$ 100,00')->assertSee('Subtotal de serviços: R$ 60,00');
+        $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk()
+            ->assertSee('Previsão de entrega (opcional)')->assertSee('id="service-total"', false);
+    }
+
     public function test_login_dashboard_and_all_views_render(): void
     {
         $this->get('/app/a/login')->assertOk()->assertSee('Empresa a');

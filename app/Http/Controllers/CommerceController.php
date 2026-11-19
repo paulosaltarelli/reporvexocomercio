@@ -162,9 +162,15 @@ class CommerceController extends Controller
     {
         $this->admin($r);
         $d = $r->validate(['request_key' => 'required|uuid', 'product_id' => 'required|exists:tenant.products,id', 'type' => 'required|in:in,out', 'quantity' => 'required|numeric|min:0.001|max:999999999|decimal:0,3', 'unit_cost' => 'required|numeric|min:0|max:999999999.9999|decimal:0,4', 'reason' => 'required|string|min:3|max:500']);
-        app(Inventory::class)->move((int) $d['product_id'], $d['type'], (string) $d['quantity'], (string) $d['unit_cost'], $d['reason'], $r->attributes->get('currentUser')->id, $d['request_key']);
+        $product = app(Inventory::class)->move((int) $d['product_id'], $d['type'], (string) $d['quantity'], (string) $d['unit_cost'], $d['reason'], $r->attributes->get('currentUser')->id, $d['request_key']);
 
-        return back()->with('success', 'Movimentação registrada.');
+        $response = back()->with('success', 'Movimentação registrada.');
+        if ($d['type'] === 'out' && bccomp($product->quantity, '0', 3) < 0
+            && app(\App\Services\CompanyOperations::class)->current()['negative_stock'] === 'warn') {
+            $response->with('stock_warning', 'Saída registrada com estoque negativo: '.$product->name.'.');
+        }
+
+        return $response;
     }
 
     public function sales(Request $request)
@@ -211,7 +217,8 @@ class CommerceController extends Controller
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 
-        return redirect()->route('sale.show', ['company' => $company, 'id' => $sale->id])->with('success', 'Venda registrada e estoque atualizado.');
+        return redirect()->route('sale.show', ['company' => $company, 'id' => $sale->id])->with('success', 'Venda registrada.')
+            ->with('stock_warning', app(Inventory::class)->saleWarning($sale->id));
     }
 
     public function sale(Request $r, string $company, int $id)

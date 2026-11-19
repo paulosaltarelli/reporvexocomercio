@@ -97,7 +97,7 @@ class Documents
             $total = bcadd($total, $terms['total'], 2);
             $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
             $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
-            $items[] = array_merge(['kind' => $line['kind'], 'id' => $line['kind'] === 'product' ? $model->id : (int) $line['id'], 'description' => $model->name], $terms);
+            $items[] = array_merge(['kind' => $line['kind'], 'id' => $line['kind'] === 'product' ? $model->id : (int) $line['id'], 'description' => $model->name, 'item_type' => $model instanceof Product ? $model->type : 'service'], $terms);
         }
         Decimal::input($total, 2, 'items');
         Decimal::input($subtotal, 2, 'items');

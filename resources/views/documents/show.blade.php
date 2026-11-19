@@ -14,17 +14,28 @@
 @if(empty($document->items))<div class="notice">@if($document->status==='completed')Serviço finalizado sem itens para cobrança.@else Você pode iniciar e finalizar o serviço sem itens. Para cobrar, registre os produtos e serviços antes de finalizar.@endif</div>@endif
 </section>
 @endif
-<section class="panel"><h2>{{ $tenant->name }}</h2><p><strong>Cliente:</strong> {{ $document->customer?->name??'Não informado' }}</p><p><strong>Vendedor creditado:</strong> {{ $document->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $document->creator?->name??'Não informado' }}</p><p><strong>Etapa:</strong> {{ $document->type==='work_order'?['draft'=>'Aberta','approved'=>'Aberta','in_progress'=>'Em serviço','completed'=>'Finalizada','invoiced'=>'Venda gerada','cancelled'=>'Cancelada'][$document->status]:['draft'=>'Aberto','approved'=>'Aprovado','in_progress'=>'Em execução','completed'=>'Concluído','invoiced'=>'Venda gerada','cancelled'=>'Cancelado'][$document->status] }}</p><p><strong>Equipamento:</strong> {{ $document->asset??'—' }} · <strong>Técnico:</strong> {{ $document->technician??'—' }}</p><p><strong>{{ $document->type==='work_order'?'Previsão de entrega':'Validade' }}:</strong> {{ $document->valid_until??'—' }}</p><p style="white-space:pre-wrap">{{ $document->notes }}</p><div class="scroll"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th class="num">Preço bruto unitário (R$)</th><th class="num">Bruto (R$)</th><th class="num">Desconto (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>
-@php($documentGross='0.00')
-@php($documentDiscount='0.00')
-@foreach($document->items as $item)
+<section class="panel"><h2>{{ $tenant->name }}</h2><p><strong>Cliente:</strong> {{ $document->customer?->name??'Não informado' }}</p><p><strong>Vendedor creditado:</strong> {{ $document->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $document->creator?->name??'Não informado' }}</p><p><strong>Etapa:</strong> {{ $document->type==='work_order'?['draft'=>'Aberta','approved'=>'Aberta','in_progress'=>'Em serviço','completed'=>'Finalizada','invoiced'=>'Venda gerada','cancelled'=>'Cancelada'][$document->status]:['draft'=>'Aberto','approved'=>'Aprovado','in_progress'=>'Em execução','completed'=>'Concluído','invoiced'=>'Venda gerada','cancelled'=>'Cancelado'][$document->status] }}</p><p><strong>Equipamento:</strong> {{ $document->asset??'—' }} · <strong>Técnico:</strong> {{ $document->technician??'—' }}</p><p><strong>{{ $document->type==='work_order'?'Previsão de entrega':'Validade' }}:</strong> {{ $document->valid_until??'—' }}</p><p style="white-space:pre-wrap">{{ $document->notes }}</p>
+@php
+    $sections = $sections ?? collect(['all' => collect($document->items)]);
+    $documentGross = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['gross_total'] ?? $item['total']), 2), '0.00');
+    $documentDiscount = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['discount_amount'] ?? '0'), 2), '0.00');
+@endphp
+@foreach(['product' => 'Produtos', 'service' => 'Serviços', 'all' => 'Itens'] as $type => $label)
+    @if(($section = $sections->get($type)) && $section->isNotEmpty())
+        <h3>{{ $label }}</h3>
+<div class="scroll"><table><thead><tr><th>Item</th><th class="num">Quantidade</th><th class="num">Preço bruto unitário (R$)</th><th class="num">Bruto (R$)</th><th class="num">Desconto (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>
+@foreach($section as $item)
 @php($lineGross=(string)($item['gross_total']??$item['total']))
 @php($lineDiscount=(string)($item['discount_amount']??'0.00'))
-@php($documentGross=bcadd($documentGross,$lineGross,2))
-@php($documentDiscount=bcadd($documentDiscount,$lineDiscount,2))
 <tr><td class="product-name">{{ $item['description'] }}</td><td class="num">{{ number_format($item['quantity'],3,',','.') }}</td><td class="num">{{ number_format($item['unit_price'],2,',','.') }}</td><td class="num">{{ number_format($lineGross,2,',','.') }}</td><td class="num">{{ number_format($lineDiscount,2,',','.') }}</td><td class="num"><strong>{{ number_format($item['total'],2,',','.') }}</strong></td></tr>
 @endforeach
-</tbody></table></div><div class="receipt-totals"><span>Subtotal bruto</span><strong>R$ {{ number_format($documentGross,2,',','.') }}</strong><span>Descontos</span><strong>R$ {{ number_format($documentDiscount,2,',','.') }}</strong><span class="receipt-net">Total líquido</span><strong class="receipt-net">R$ {{ number_format($document->total,2,',','.') }}</strong></div>
+</tbody></table></div>        @if($type !== 'all')
+            @php($sectionTotal = $section->reduce(fn ($total, $item) => bcadd($total, (string) $item['total'], 2), '0.00'))
+            <p><strong>Subtotal de {{ mb_strtolower($label) }}: R$ {{ number_format($sectionTotal,2,',','.') }}</strong></p>
+        @endif
+    @endif
+@endforeach
+<div class="receipt-totals"><span>Subtotal bruto</span><strong>R$ {{ number_format($documentGross,2,',','.') }}</strong><span>Descontos</span><strong>R$ {{ number_format($documentDiscount,2,',','.') }}</strong><span class="receipt-net">Total líquido</span><strong class="receipt-net">R$ {{ number_format($document->total,2,',','.') }}</strong></div>
 @if(!in_array($document->status,['invoiced','cancelled'],true) && !$hasActiveSalesperson)
     <div class="notice no-print" role="status">@if($currentUser->allows('documents.seller'))O documento precisa de um vendedor ativo antes de gerar a venda. <a href="#document-seller-assignment" data-open-disclosure="document-seller-assignment">Vincular ou alterar o vendedor</a>.@else
 Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O usuário que executa a operação não assume o crédito automaticamente.@endif</div>

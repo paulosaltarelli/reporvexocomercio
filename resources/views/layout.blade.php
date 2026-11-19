@@ -24,6 +24,9 @@
         @if(isset($supportAdmin))<div class="notice support-banner" role="status"><strong>Suporte Vexo · DBA: {{ $supportAdmin->name }}</strong><p>Loja: {{ $tenant->name }}. Acesso global identificado e auditado.</p><form method="post" action="{{ route('platform.support.leave') }}">@csrf<button class="button secondary">Encerrar suporte e voltar à central</button></form></div>@endif
         @include('components.company-report-header',['reportPrintOnly'=>!request()->routeIs('reports','commissions','sale.show','document.show','purchase.show','cash','cashflow','finance')])
         <div class="page-top"><div><div class="eyebrow">@yield('navigation-section','GESTÃO COMERCIAL')</div><h1>@yield('title','Visão geral')</h1><p class="muted">@yield('subtitle')</p></div>@yield('actions')</div>
+        @if(session('stock_warning'))
+            <div class="notice form-note no-print" role="alert">{{ session('stock_warning') }}</div>
+        @endif
         @if(session('success'))
             <div class="notice success" role="status">{{ session('success') }}</div>
         @endif

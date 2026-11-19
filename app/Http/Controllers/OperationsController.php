@@ -94,7 +94,19 @@ class OperationsController extends Controller
 
     public function show(Request $r, string $company, int $id)
     {
-        return view('documents.show', ['document' => Document::with('customer','creator')->findOrFail($id),'sellers'=>Seller::where('active',true)->orderBy('name')->get(),'assignments'=>Document::findOrFail($id)->assignments()->orderBy('id')->get()]);
+        $document = Document::with('customer', 'creator')->findOrFail($id);
+        $items = collect($document->items);
+        $knownTypes = Product::whereIn('id', $items->filter(fn ($item) => $item['kind'] === 'product' && ! isset($item['item_type']))
+            ->pluck('id')->unique()->all())->pluck('type', 'id');
+        $sections = $document->type === 'work_order'
+            ? $items->groupBy(fn ($item) => $item['item_type'] ?? ($item['kind'] === 'service' ? 'service' : ($knownTypes[$item['id']] ?? 'product')))
+            : collect(['all' => $items]);
+
+        return view('documents.show', [
+            'document' => $document, 'sections' => $sections,
+            'sellers' => Seller::where('active', true)->orderBy('name')->get(),
+            'assignments' => $document->assignments()->orderBy('id')->get(),
+        ]);
     }
 
     public function assignSeller(Request $request, string $company, int $id)
@@ -121,7 +133,8 @@ class OperationsController extends Controller
         $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 
-        return redirect()->route('sale.show', ['company' => $company, 'id' => $s->id])->with('success', 'Venda gerada e estoque baixado. Não houve emissão fiscal.');
+        return redirect()->route('sale.show', ['company' => $company, 'id' => $s->id])->with('success', 'Venda gerada a partir do atendimento.')
+            ->with('stock_warning', app(\App\Services\Inventory::class)->saleWarning($s->id));
     }
 
     public function finance(Request $r)

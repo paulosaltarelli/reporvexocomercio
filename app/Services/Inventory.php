@@ -9,6 +9,19 @@ use Illuminate\Validation\ValidationException;
 
 class Inventory
 {
+    public function saleWarning(int $saleId): ?string
+    {
+        if (app(CompanyOperations::class)->current()['negative_stock'] !== 'warn') {
+            return null;
+        }
+
+        $products = Product::whereIn('id', StockMovement::query()
+            ->select('product_id')->where('sale_id', $saleId)->where('type', 'sale')->where('balance', '<', 0))
+            ->orderBy('name')->pluck('name');
+
+        return $products->isEmpty() ? null : 'Venda registrada com estoque negativo: '.$products->implode(', ').'.';
+    }
+
     public function move(int $productId, string $type, string $qty, string $cost, string $reason, int $userId, string $key, ?int $saleId = null): Product
     {
         $qty = Decimal::input($qty, 3, 'quantity', '0.001', '999999999');
@@ -41,15 +54,20 @@ class Inventory
             }
             $incoming = in_array($type, ['in', 'return']);
             $balance = $incoming ? bcadd($p->quantity, $qty, 3) : bcsub($p->quantity, $qty, 3);
-            if (bccomp($balance, '0', 3) < 0) {
+            if (! $incoming && $configuration['negative_stock'] === 'block' && bccomp($balance, '0', 3) < 0) {
                 throw ValidationException::withMessages(['quantity' => 'Estoque insuficiente para '.$p->name.'.']);
             }
-            Decimal::input($balance, 3, 'quantity', '0', '9999999999999.999');
+            Decimal::input(ltrim($balance, '-'), 3, 'quantity', '0', '9999999999999.999');
             $unitCost = $incoming ? $cost : $p->average_cost;
             $avg = $p->average_cost;
-            if ($incoming) {
-                $value = bcadd(bcmul($p->quantity, $avg, 8), bcmul($qty, $cost, 8), 8);
-                $avg = Decimal::round(bcdiv($value, $balance, 8), 4);
+            if ($incoming && bccomp($balance, '0', 3) > 0) {
+                // Only units available after covering the deficit carry inventory value.
+                if (bccomp($p->quantity, '0', 3) <= 0) {
+                    $avg = $cost;
+                } else {
+                    $value = bcadd(bcmul($p->quantity, $avg, 8), bcmul($qty, $cost, 8), 8);
+                    $avg = Decimal::round(bcdiv($value, $balance, 8), 4);
+                }
             }
             $p->update(['quantity' => $balance, 'average_cost' => $avg]);
             $movement = StockMovement::create(['request_key' => $key, 'product_id' => $p->id, 'user_id' => $userId, 'sale_id' => $saleId, 'type' => $type, 'quantity' => $qty, 'unit_cost' => $unitCost, 'balance' => $balance, 'average_cost' => $avg, 'reason' => $reason]);

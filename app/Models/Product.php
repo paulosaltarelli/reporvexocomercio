@@ -86,7 +86,7 @@ class Product extends Model
             }
             $quantity = (! $current || $product->isDirty('quantity'))
                 ? (string) ($product->quantity ?? '0.000') : (string) $current->quantity;
-            Decimal::input($quantity, 3, 'quantity', '0', '9999999999999.999');
+            Decimal::input(str_starts_with($quantity, '-') ? substr($quantity, 1) : $quantity, 3, 'quantity', '0', '9999999999999.999');
             if (! $product->controlsStock() && bccomp($quantity, '0', 3) !== 0) {
                 throw ValidationException::withMessages(['quantity' => 'Itens sem controle de estoque devem permanecer com saldo zero.']);
             }

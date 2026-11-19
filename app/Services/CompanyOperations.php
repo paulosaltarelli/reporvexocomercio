@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 class CompanyOperations
 {
     public const DEFAULTS = [
-        'catalog_mode'=>'mixed', 'inventory'=>true, 'commissions'=>true, 'commission_basis'=>'cash',
+        'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
         'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>true,
     ];
     public function current(): array
@@ -42,8 +42,8 @@ class CompanyOperations
     public function save(array $input, int $actor): CompanyOperation
     {
         abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
-        $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual'];
-        foreach (array_diff(array_keys(self::DEFAULTS), ['catalog_mode','commission_basis']) as $key) $rules[$key]='required|boolean';
+        $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual', 'negative_stock'=>'sometimes|required|in:block,warn,allow'];
+        foreach (array_diff(array_keys(self::DEFAULTS), ['catalog_mode','commission_basis','negative_stock']) as $key) $rules[$key]='required|boolean';
         $data=Validator::make($input,$rules)->validate();
         foreach (array_keys(self::DEFAULTS) as $key) if (is_bool(self::DEFAULTS[$key])) $data[$key]=(bool)$data[$key];
         if ($data['catalog_mode']==='services' && ($data['inventory'] || $data['nfce'] || $data['nfe'])) {
@@ -57,6 +57,7 @@ class CompanyOperations
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
             $before=array_intersect_key(array_replace(self::DEFAULTS,$row->configuration),self::DEFAULTS);
+            $data['negative_stock'] ??= $before['negative_stock'];
             if ($before['inventory']!==$data['inventory'] && Product::where('quantity','<>',0)->sharedLock()->first()) {
                 throw ValidationException::withMessages(['inventory'=>'Concilie e zere os saldos por movimentações identificadas antes de mudar o controle de estoque.']);
             }

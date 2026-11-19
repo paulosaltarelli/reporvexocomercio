@@ -31,6 +31,17 @@
 @endforeach
 </div></fieldset>
 @endforeach
+<div class="form-grid">
+    <div class="field">
+        <label for="negative-stock">Quando a saída deixa o estoque negativo</label>
+        <select id="negative-stock" name="negative_stock">
+            @foreach(['block'=>'Bloquear a saída', 'warn'=>'Permitir e avisar', 'allow'=>'Permitir sem aviso'] as $value => $label)
+                <option value="{{ $value }}" @selected(old('negative_stock',$configuration['negative_stock']) === $value)>{{ $label }}</option>
+            @endforeach
+        </select>
+        <small class="hint">Esta regra se aplica quando a gestão de estoque está ativa. Em “Permitir e avisar”, o alerta aparece após o registro da saída.</small>
+    </div>
+</div>
 <p class="form-note">Estoque: custo médio ponderado e política de preço automático/alerta continuam configuráveis por grupo ou produto. Descontos ainda respeitam os limites individuais. Desativar comissões zera a comissão de novas vendas; não apaga valores anteriores. O regime é registrado em cada venda. O relatório atual reconcilia recebimentos acumulados das vendas do período; não é um demonstrativo de pagamentos ao vendedor.</p>
 <button class="primary">Salvar e continuar</button>
 </form>

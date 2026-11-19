@@ -11,7 +11,7 @@
     <input type="hidden" name="items_present" value="1">
     <div id="items"></div>
     <button type="button" id="add" class="button secondary">+ Adicionar item</button>
-    <div class="sale-totals" role="status" aria-live="polite"><div><span>Bruto</span><strong id="gross-total">R$ 0,00</strong></div><div><span>Descontos</span><strong id="discount-total">R$ 0,00</strong></div><div class="sale-net-total"><span>Total líquido</span><strong id="total">R$ 0,00</strong></div></div>
+    <div class="sale-totals" role="status" aria-live="polite">@if($splitItemTotals??false)<div><span>Produtos</span><strong id="product-total">R$ 0,00</strong></div><div><span>Serviços</span><strong id="service-total">R$ 0,00</strong></div>@endif<div><span>Bruto</span><strong id="gross-total">R$ 0,00</strong></div><div><span>Descontos</span><strong id="discount-total">R$ 0,00</strong></div><div class="sale-net-total"><span>Total líquido</span><strong id="total">R$ 0,00</strong></div></div>
     <p class="hint">Prévia por item, com arredondamento em centavos. Os valores definitivos são calculados na confirmação.</p>
 </section>
 <template id="row">
@@ -21,7 +21,7 @@
                 @foreach($products as $product)
                     @php($isService=($product->type??'product')==='service')
                     @php($stockControlled=!$isService && ($product->controls_stock??true))
-                    <option value="product:{{ $product->id }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
+                    <option value="product:{{ $product->id }}" data-item-type="{{ $isService ? 'service' : 'product' }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
                 @endforeach
             </select><input type="hidden" class="kind"><input type="hidden" class="item-id"><input type="hidden" class="catalog-seen"></div>
             <div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div>
@@ -37,6 +37,7 @@
 <script>
 (() => {
     let sequence=0;
+    const splitItemTotals=@json((bool)($splitItemTotals??false));
     const isPos=@json((bool)($isPos??false));
     const previous=Object.values(@json(session()->hasOldInput('items_present')?old('items',[]):old('items',$initialItems??[])));
     const allowEmptyItems=@json((bool)($allowEmptyItems??false));
@@ -48,7 +49,7 @@
         return (units/10000n).toString()+','+(units%10000n).toString().padStart(4,'0');
     }
     function updateTotals(){
-        let gross=0n,discount=0n,net=0n;
+        let gross=0n,discount=0n,net=0n,products=0n,services=0n;
         container.querySelectorAll('.sale-line-block').forEach(block=>{
             const row=block.querySelector('.sale-row');
             const choice=row.querySelector('.choice');
@@ -59,6 +60,8 @@
             price.setCustomValidity('');
             const result=Vendra.commercialLine(row.querySelector('.qty').value,option?.dataset.price||'0',price.value,explicit.value);
             if(!choice.value||!result){row.querySelector('.line-total').textContent='—';note.textContent=choice.value?'Confira quantidade, preço e desconto.':'Selecione um item para conferir preço e desconto permitido.';return;}
+            if(option.dataset.itemType==='service') services+=result.net;
+            else products+=result.net;
             gross+=result.gross;discount+=result.discount;net+=result.net;
             row.querySelector('.line-total').textContent=Vendra.centsText(result.net);
             const allowed=option.dataset.discountEnabled==='1';
@@ -69,6 +72,10 @@
             const catalog=Vendra.decimalUnits(option.dataset.price,2)??0n;
             note.textContent='Cadastro: '+Vendra.centsText(catalog)+' · '+(allowed?'limite efetivo de '+String(option.dataset.discountLimit).replace('.',',')+'%':'desconto bloqueado')+' · desconto total da prévia: '+percentText(result.discount,result.gross)+'%'+(exceeds?' — confira o preço e o desconto; a prévia ultrapassa o limite.':'.');
         });
+        if(splitItemTotals){
+            document.querySelector('#product-total').textContent=Vendra.centsText(products);
+            document.querySelector('#service-total').textContent=Vendra.centsText(services);
+        }
         document.querySelector('#gross-total').textContent=Vendra.centsText(gross);
         document.querySelector('#discount-total').textContent=Vendra.centsText(discount);
         document.querySelector('#total').textContent=Vendra.centsText(net);
@@ -112,7 +119,7 @@
         if(event.detail.targetForm!==container.closest('form'))return;
         const item=event.detail.item,value='product:'+item.id,template=document.querySelector('#row').content.querySelector('.choice');
         let option=[...template.options].find(o=>o.value===value);
-        if(!option){option=new Option((item.type==='service'?'Serviço':'Produto')+' · '+item.sku+' · '+item.name+(item.controls_stock?' (saldo '+item.quantity+')':''),value);Object.assign(option.dataset,{sku:item.sku,barcode:item.barcode||'',name:item.name,price:item.price,discountEnabled:item.discount_enabled?'1':'0',discountLimit:item.discount_limit});template.add(option);container.querySelectorAll('.choice').forEach(choice=>choice.add(option.cloneNode(true)));}
+        if(!option){option=new Option((item.type==='service'?'Serviço':'Produto')+' · '+item.sku+' · '+item.name+(item.controls_stock?' (saldo '+item.quantity+')':''),value);Object.assign(option.dataset,{itemType:item.type,sku:item.sku,barcode:item.barcode||'',name:item.name,price:item.price,discountEnabled:item.discount_enabled?'1':'0',discountLimit:item.discount_limit});template.add(option);container.querySelectorAll('.choice').forEach(choice=>choice.add(option.cloneNode(true)));}
         const empty=[...container.querySelectorAll('.sale-line-block')].find(block=>!block.querySelector('.choice').value);
         if(!empty&&container.children.length>=50)return;
         const block=empty||add();const choice=block.querySelector('.choice');choice.value=value;choice.dispatchEvent(new Event('change'));event.detail.used=true;
