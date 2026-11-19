@@ -49,7 +49,8 @@
             ])],
             ['label' => 'Configurações', 'icon' => 'settings', 'links' => [
                 $link('business', 'Minha empresa', request()->routeIs('business')),
-                $link('setup', 'Operação e implantação', request()->routeIs('setup*')),
+                $link('setup', 'Operação e implantação', request()->routeIs('setup*') && request()->integer('step') !== 2),
+                $link('setup', 'Parâmetros de estoque', request()->routeIs('setup') && request()->integer('step') === 2, ['step' => 2]),
                 $link('users', 'Usuários e permissões', request()->routeIs('users', 'user.*')),
                 $link('payment.methods','Formas de pagamento',request()->routeIs('payment.methods*')),
                 $link('access.profiles', 'Perfis e permissões', request()->routeIs('access.profiles*')),

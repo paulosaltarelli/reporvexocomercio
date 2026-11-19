@@ -5,9 +5,14 @@
 @section('actions')<button class="button secondary no-print" onclick="window.print()">Imprimir</button>
 @endsection
 @section('content')
-@php($documentSalesperson=$document->salesperson)
-@php($hasActiveSalesperson=$document->salesperson_id && $documentSalesperson && $documentSalesperson->active)
-@php($canAssignSeller=$currentUser->allows('documents.seller') && !in_array($document->status,['invoiced','cancelled'],true))
+@php
+    $documentSalesperson = $document->salesperson;
+    $hasActiveSalesperson = $document->salesperson_id && $documentSalesperson && $documentSalesperson->active;
+    $canAssignSeller = $currentUser->allows('documents.seller') && ! in_array($document->status, ['invoiced','cancelled'], true);
+    $sections = $sections ?? collect(['all' => collect($document->items)]);
+    $documentGross = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['gross_total'] ?? $item['total']), 2), '0.00');
+    $documentDiscount = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['discount_amount'] ?? '0'), 2), '0.00');
+@endphp
 @if($document->type==='work_order')
 <section class="panel no-print"><h2>Etapas da ordem de serviço</h2><p>Aberta → Em serviço → Finalizada → Recebimento no caixa.</p><p class="hint">Salvar ou concluir a OS não reserva nem baixa estoque. O movimento de estoque e os títulos financeiros são gerados ao confirmar a venda.</p>
 @if(in_array($document->status,['draft','approved','in_progress'],true) && $currentUser->allows('documents.edit'))<a class="button secondary" href="{{ route('document.edit',['company'=>$tenant->slug,'id'=>$document->id]) }}">Editar atendimento e itens da OS</a>@endif
@@ -15,11 +20,6 @@
 </section>
 @endif
 <section class="panel"><h2>{{ $tenant->name }}</h2><p><strong>Cliente:</strong> {{ $document->customer?->name??'Não informado' }}</p><p><strong>Vendedor creditado:</strong> {{ $document->seller_name??'Não informado' }} · <strong>Registrado por:</strong> {{ $document->creator?->name??'Não informado' }}</p><p><strong>Etapa:</strong> {{ $document->type==='work_order'?['draft'=>'Aberta','approved'=>'Aberta','in_progress'=>'Em serviço','completed'=>'Finalizada','invoiced'=>'Venda gerada','cancelled'=>'Cancelada'][$document->status]:['draft'=>'Aberto','approved'=>'Aprovado','in_progress'=>'Em execução','completed'=>'Concluído','invoiced'=>'Venda gerada','cancelled'=>'Cancelado'][$document->status] }}</p><p><strong>Equipamento:</strong> {{ $document->asset??'—' }} · <strong>Técnico:</strong> {{ $document->technician??'—' }}</p><p><strong>{{ $document->type==='work_order'?'Previsão de entrega':'Validade' }}:</strong> {{ $document->valid_until??'—' }}</p><p style="white-space:pre-wrap">{{ $document->notes }}</p>
-@php
-    $sections = $sections ?? collect(['all' => collect($document->items)]);
-    $documentGross = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['gross_total'] ?? $item['total']), 2), '0.00');
-    $documentDiscount = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['discount_amount'] ?? '0'), 2), '0.00');
-@endphp
 @foreach(['product' => 'Produtos', 'service' => 'Serviços', 'all' => 'Itens'] as $type => $label)
     @if(($section = $sections->get($type)) && $section->isNotEmpty())
         <h3>{{ $label }}</h3>
