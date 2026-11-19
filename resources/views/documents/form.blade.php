@@ -12,8 +12,8 @@
 @if(isset($document))<div class="field"><label for="os-seller">Vendedor creditado</label><input id="os-seller" value="{{ $document->seller_name??'Não informado' }}" readonly><small class="hint">Vínculo preservado neste atendimento.</small></div>@else
 @include('components.sales.seller-field')
 @endif
-<div class="field"><label for="document-due">{{ $type==='quote'?'Validade do orçamento':'Previsão de entrega' }}</label><input id="document-due" type="date" name="valid_until" value="{{ old('valid_until',$document->valid_until??null) }}"></div>
-<div class="field"><label for="document-asset">Equipamento ou veículo</label><input id="document-asset" name="asset" maxlength="255" placeholder="Modelo, número de série ou placa" value="{{ old('asset',$document->asset??null) }}"></div>
+<div class="field"><label for="document-due">{{ $type==='quote'?'Validade do orçamento':'Previsão de entrega (opcional)' }}</label><input id="document-due" type="date" name="valid_until" value="{{ old('valid_until',$document->valid_until??null) }}"></div>
+<div class="field"><label for="document-asset">Equipamento</label><input id="document-asset" name="asset" maxlength="255" placeholder="Modelo ou número de série" value="{{ old('asset',$document->asset??null) }}"></div>
 <div class="field"><label for="document-technician">Responsável técnico</label><input id="document-technician" name="technician" maxlength="255" value="{{ old('technician',$document->technician??null) }}"></div>
 <div class="field full"><label for="document-notes">{{ $type==='quote'?'Observações':'Relato do cliente e diagnóstico' }}</label><textarea id="document-notes" name="notes" maxlength="2000" placeholder="{{ $type==='quote'?'Condições e informações para o cliente':'Descreva o motivo do atendimento e o que já foi identificado' }}">{{ old('notes',$document->notes??null) }}</textarea></div>
 </div></section>
