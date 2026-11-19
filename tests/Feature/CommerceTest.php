@@ -196,6 +196,46 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->get('/app/b/')->assertRedirect('/app/b/login');
     }
 
+    public function test_customer_cnpj_lookup_prefills_without_saving_and_catalog_persists_the_details(): void
+    {
+        $cnpj = '00000000000191';
+        $http = \Illuminate\Support\Facades\Http::class;
+        $http::preventStrayRequests();
+        $http::fake([
+            'https://brasilapi.com.br/api/cnpj/v1/'.$cnpj => $http::response([
+                'cnpj' => $cnpj, 'razao_social' => 'Cliente PJ de teste', 'nome_fantasia' => 'Cliente QA',
+                'natureza_juridica' => 'Sociedade Empresária Limitada',
+                'data_inicio_atividade' => '2020-12-01', 'descricao_situacao_cadastral' => 'ATIVA',
+                'cnae_fiscal' => 111301, 'cep' => '01234-567', 'logradouro' => 'Rua de teste',
+                'numero' => '123', 'complemento' => 'Sala 4', 'bairro' => 'Centro', 'municipio' => 'São Paulo',
+                'uf' => 'SP', 'codigo_municipio_ibge' => 3550308, 'email' => 'empresa@example.test',
+                'ddd_telefone_1' => '1133334444', 'qsa' => [['nome_socio' => 'Dado que deve ser descartado']],
+            ]),
+        ]);
+
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a/catalog/customers')->assertOk()->assertSee('Buscar CNPJ')->assertSee('Inscrição estadual');
+        $this->postJson('/app/a/catalog/customers/cnpj', ['document' => '00.000.000/0001-90'])
+            ->assertUnprocessable()->assertJsonValidationErrors('document');
+        $http::assertNothingSent();
+
+        $lookup = $this->postJson('/app/a/catalog/customers/cnpj', ['document' => '00.000.000/0001-91'])
+            ->assertOk()->assertJsonPath('fields.fiscal_postal_code', '01234567')
+            ->assertJsonPath('fields.primary_cnae', '0111301')->assertJsonMissingPath('fields.qsa');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(0, \App\Models\Customer::count());
+
+        $details = $lookup->json('fields') + ['document' => $cnpj, 'fiscal_state_registration' => '123.456.789'];
+        $this->post('/app/a/catalog/customers', $details)->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $customer = \App\Models\Customer::sole();
+        $this->assertSame('123456789', $customer->fiscal_state_registration);
+        $this->assertSame('Cliente QA', $customer->trade_name);
+        $this->assertSame('2020-12-01', $customer->opened_on);
+        $this->get('/app/a/catalog/customers?edit='.$customer->id)->assertOk()
+            ->assertSee('Cliente QA')->assertSee('Sala 4')->assertSee('0111301');
+    }
+
     public function test_login_dashboard_and_all_views_render(): void
     {
         $this->get('/app/a/login')->assertOk()->assertSee('Empresa a');
