@@ -122,6 +122,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
         Route::get('products/{id}/edit', [CommerceController::class, 'productForm'])->whereNumber('id')->name('product.edit');
         Route::post('products/save/{id?}', [CommerceController::class, 'saveProduct'])->whereNumber('id')->name('product.save');
+        Route::post('catalog/customers/cnpj', [CommerceController::class, 'lookupCustomerRegistry'])
+            ->middleware('throttle:10,1')->name('customer.cnpj');
         Route::get('catalog/{kind}', [CommerceController::class, 'catalog'])->name('catalog');
         Route::post('catalog/{kind}', [CommerceController::class, 'saveCatalog']);
         Route::get('stock', [CommerceController::class, 'stock'])->name('stock');

@@ -57,6 +57,7 @@ final class Permissions
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},
             'CommerceController'=>match($action) {
                 'dashboard'=>'home', 'products'=>'products.view', 'productForm','saveProduct'=>'products.manage',
+                'lookupCustomerRegistry'=>'customers.manage',
                 'catalog','saveCatalog'=>match($kind) { 'customers'=>'customers.', 'suppliers'=>'suppliers.', 'groups'=>'groups.', 'services'=>'products.', default=>'denied.' }.($action==='catalog'?'view':'manage'),
                 'stock'=>'stock.view','moveStock'=>'stock.manage','sales','sale'=>'sales.view','saleForm','checkout'=>'sales.create','cancel'=>'sales.cancel','receive'=>'sales.receive',
                 'users','saveUser'=>'administration',default=>'denied',

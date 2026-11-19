@@ -8,7 +8,11 @@
 @php($commercialKeys=['discount_enabled','max_discount_percent','commission_percent'])
 @php($mainFields=array_diff_key($visibleFields,array_flip($commercialKeys)))
 @if($currentUser->allows($kind.'.manage'))<form class="panel" method="post">
-@csrf<h2>{{ $editing?'Editar cadastro':'Novo cadastro' }}</h2><input type="hidden" name="id" value="{{ $editing?->id }}"><div class="form-grid">
+@csrf<h2>{{ $editing?'Editar cadastro':'Novo cadastro' }}</h2><input type="hidden" name="id" value="{{ $editing?->id }}">
+@if($kind === 'customers')
+@include('components.customers.registry-fields')
+@else
+<div class="form-grid">
 @foreach($mainFields as $field=>$label)
 @if($field==='price_policy')
 <div class="field"><label for="price_policy">Atualização do preço</label><select id="price_policy" name="price_policy" required><option value="alert" @selected(old('price_policy',$editing?->price_policy??'alert')==='alert')>Somente alertas · manter preço atual</option><option value="automatic" @selected(old('price_policy',$editing?->price_policy??'alert')==='automatic')>Automático · atualizar pelo custo médio</option></select><small class="hint">Regra padrão para os produtos que herdam a configuração deste grupo.</small></div>
@@ -20,7 +24,9 @@
 @endif value="{{ old($field,$editing?->$field??($numeric?($field==='margin'?30:0):'')) }}" 
 @required(in_array($field,['name','margin','price','cost']))></div>
 @endif
-@endforeach</div>
+@endforeach
+</div>
+@endif
 @if($kind==='groups')
 <details class="disclosure compact" style="margin-top:22px" @if($errors->hasAny(['discount_enabled','max_discount_percent','commission_percent'])) open @endif>
     <summary>Descontos e comissões</summary>

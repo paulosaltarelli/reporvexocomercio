@@ -120,6 +120,15 @@ class CommerceController extends Controller
         return view('catalog', ['rows' => $model::orderBy('name')->paginate(20), 'title' => $title, 'fields' => $fields, 'kind' => $kind, 'editing' => $r->integer('edit') ? $model::findOrFail($r->integer('edit')) : null]);
     }
 
+    public function lookupCustomerRegistry(Request $request, \App\Services\CustomerRegistryLookup $registry)
+    {
+        $this->admin($request);
+        $data = $request->validate(['document' => 'required|string|max:24']);
+
+        return response()->json(['fields' => $registry->find($data['document'])])
+            ->header('Cache-Control', 'no-store');
+    }
+
     private function catalogSpec(string $kind): array
     {
         return match ($kind) {
@@ -142,6 +151,34 @@ class CommerceController extends Controller
             'customers','suppliers' => ['name' => 'required|string|max:180', 'document' => 'nullable|string|max:20', 'email' => 'nullable|email|max:180', 'phone' => 'nullable|string|max:30', 'address' => 'nullable|string|max:1000'],
             'services' => ['name' => 'required|string|max:180', 'price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'cost' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'municipal_service_code' => 'nullable|string|max:30', 'iss_rate' => 'nullable|numeric|min:0|max:100|decimal:0,2'],
         };
+        if ($kind === 'customers') {
+            $rules += [
+                'trade_name' => 'nullable|string|max:180',
+                'legal_nature' => 'nullable|string|max:180',
+                'opened_on' => 'nullable|date_format:Y-m-d',
+                'registration_status' => 'nullable|string|max:60',
+                'primary_cnae' => 'nullable|digits:7',
+                'fiscal_street' => 'nullable|string|max:60',
+                'fiscal_number' => 'nullable|string|max:60',
+                'fiscal_complement' => 'nullable|string|max:60',
+                'fiscal_district' => 'nullable|string|max:60',
+                'fiscal_city' => 'nullable|string|max:60',
+                'fiscal_state' => 'nullable|in:AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO',
+                'fiscal_postal_code' => 'nullable|digits:8',
+                'fiscal_municipality_code' => 'nullable|digits:7',
+                'fiscal_state_registration' => 'nullable|digits_between:2,14',
+            ];
+            $normalized = [];
+            foreach (['fiscal_postal_code', 'primary_cnae', 'fiscal_state_registration'] as $field) {
+                if (is_string($r->input($field))) {
+                    $normalized[$field] = str_replace(['.', '-', '/', ' '], '', $r->input($field));
+                }
+            }
+            if (is_string($r->input('fiscal_state'))) {
+                $normalized['fiscal_state'] = strtoupper($r->input('fiscal_state'));
+            }
+            $r->merge($normalized);
+        }
         $data=$r->validate($rules);
         DB::connection('tenant')->transaction(function()use($row,$data,$kind,$r){
             app(\App\Services\CompanyOperations::class)->lock();
