@@ -2965,8 +2965,13 @@ class CommerceTest extends TestCase
         $this->get('/app/a/desk?document_number='.$doc->id)->assertRedirect(route('document.show',['company'=>'a','id'=>$doc->id]).'#document-checkout');
         $this->get('/app/a/documents/'.$doc->id)->assertOk()->assertSee('Dividir pagamento / entrada e saldo');
         $input=['payments'=>[['payment_option'=>'cash','amount'=>'40','paid'=>1],['payment_option'=>'pix','amount'=>'60','paid'=>1]]];
-        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect()->assertSessionHasNoErrors();
-        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect('/app/a/documents/'.$doc->id)->assertSessionHasNoErrors();
+        $this->post('/app/a/documents/'.$doc->id.'/invoice',$input)->assertRedirect('/app/a/documents/'.$doc->id)->assertSessionHasNoErrors();
+        $print = '/app/a/documents/'.$doc->id.'?imprimir=1';
+        $this->get('/app/a/desk?document_number='.$doc->id)->assertRedirect('/app/a/documents/'.$doc->id);
+        $this->get('/app/a/desk?document_number='.$doc->id.'&action=print_os')->assertRedirect($print);
+        $this->get($print)->assertOk()->assertSee('Ordem de serviço #'.$doc->id)->assertSee('window.addEventListener', false);
+        $this->get('/app/a/documents')->assertOk()->assertSee($print, false);
         app(TenantConnection::class)->connect($this->a);$this->assertSame(1,Sale::count());$this->assertSame(2,\App\Models\Payment::count());$this->assertSame('invoiced',$doc->fresh()->status);
     }
 

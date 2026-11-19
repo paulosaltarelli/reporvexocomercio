@@ -133,7 +133,11 @@ class OperationsController extends Controller
         $d['installments'] = $r->integer('installments', 1);
         $s = app(Documents::class)->invoice($id, $d, $r->attributes->get('currentUser')->id);
 
-        return redirect()->route('sale.show', ['company' => $company, 'id' => $s->id])->with('success', 'Venda gerada a partir do atendimento.')
+        $destination = $s->document?->type === 'work_order'
+            ? route('document.show', ['company'=>$company, 'id'=>$id])
+            : route('sale.show', ['company'=>$company, 'id'=>$s->id]);
+
+        return redirect($destination)->with('success', 'Venda #'.$s->id.' gerada a partir do atendimento.')
             ->with('stock_warning', app(\App\Services\Inventory::class)->saleWarning($s->id));
     }
 

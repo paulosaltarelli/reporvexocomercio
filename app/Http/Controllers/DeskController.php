@@ -15,9 +15,17 @@ class DeskController extends Controller
     public function index(Request $request)
     {
         if($request->filled('document_number')){
-            abort_unless($request->attributes->get('currentUser')->allows('documents.invoice'),403);
+            $print = $request->input('action') === 'print_os';
+            abort_unless($request->attributes->get('currentUser')->allows($print ? 'documents.view' : 'documents.invoice'),403);
             $lookup=$request->validate(['document_number'=>'required|integer|min:1']);
             $document=Document::findOrFail($lookup['document_number']);
+            if ($print) {
+                if ($document->type !== 'work_order') throw \Illuminate\Validation\ValidationException::withMessages(['document_number'=>'Este número é de um orçamento. Informe o número da OS.']);
+                return redirect()->route('document.show',['company'=>$request->route('company'),'id'=>$document->id,'imprimir'=>1]);
+            }
+            if ($document->sale_id && $document->type === 'work_order') {
+                return redirect()->route('document.show',['company'=>$request->route('company'),'id'=>$document->id]);
+            }
             if($document->sale_id)return redirect()->route('sale.show',['company'=>$request->route('company'),'id'=>$document->sale_id]);
             if(!in_array($document->status,['approved','completed'],true))throw \Illuminate\Validation\ValidationException::withMessages(['document_number'=>'Aprove o orçamento ou conclua a OS antes de receber no caixa.']);
             return redirect()->to(route('document.show',['company'=>$request->route('company'),'id'=>$document->id]).'#document-checkout');

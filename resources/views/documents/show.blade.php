@@ -2,7 +2,7 @@
 @extends('layout')
 @section('title',($document->type==='quote'?'Orçamento #':'Ordem de serviço #').$document->id)
 @section('subtitle',$document->type==='work_order'?'Acompanhe o atendimento, inicie o serviço e finalize quando estiver pronto.':'Documento interno. Aprovação registrada manualmente pela equipe.')
-@section('actions')<button class="button secondary no-print" onclick="window.print()">Imprimir</button>
+@section('actions')<button class="button secondary no-print" onclick="window.print()">{{ $document->type==='work_order'?'Imprimir OS':'Imprimir' }}</button>
 @endsection
 @section('content')
 @php
@@ -70,6 +70,12 @@ Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O
 <div class="field"><label for="document-invoice-seller">Vendedor creditado
 </label><input id="document-invoice-seller" value="{{ $document->seller_name??'Não informado' }}" readonly><small class="hint">A venda herda o vendedor deste documento. Quem confirmar a operação será registrado separadamente.</small></div><div class="single-payment-field"><label>Forma de pagamento</label>@include('components.payment-method-select',['paymentSelectId'=>'payment-option','paymentDefault'=>'cash'])</div><div class="single-payment-field"><label>Recebimento</label><select name="paid"><option value="1">Já recebido</option><option value="0">A receber</option></select></div><div class="single-payment-field"><label>Número de parcelas</label><input name="installments" type="number" min="1" max="24" step="1" value="{{ old('installments',1) }}" required><small class="hint">Parcelas mensais para vendas a receber.</small></div><div class="single-payment-field"><label>Primeiro vencimento se pendente</label><input type="date" name="due_date"></div></div>@include('components.sales.card-fees')@include('components.sales.split-payments')<p class="card-sale-total notice" role="status" hidden></p><div class="actions"><button class="primary">Confirmar venda e baixar estoque</button></div><p class="hint">Não emite nota fiscal nem realiza cobrança automática.</p></form>
 @endif
-@if($document->sale_id && $currentUser->allows('sales.view'))<p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Abrir venda #{{ $document->sale_id }}</a></p>
+@if($document->sale_id && $currentUser->allows('sales.view'))<p class="no-print"><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Abrir venda #{{ $document->sale_id }}</a></p>
 @endif</section>
 @endsection
+
+@if($document->type==='work_order' && request()->boolean('imprimir'))
+@push('scripts')
+<script>window.addEventListener('load', () => window.print(), {once: true});</script>
+@endpush
+@endif

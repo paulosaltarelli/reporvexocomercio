@@ -2,7 +2,11 @@
 @extends(request()->boolean('termica') ? 'printing.thermal' : 'layout')
 @section('title','Venda #'.$sale->id)
 @section('subtitle','Comprovante interno. Este documento não é uma nota fiscal.')
-@section('actions')@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button class="button secondary no-print" onclick="window.print()">Imprimir</button>
+@section('actions')
+@if($sale->document_id && $currentUser->allows('documents.view') && $sale->document?->type==='work_order')
+    @include('components.work-order-print',['orderId'=>$sale->document_id])
+@endif
+@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button class="button secondary no-print" onclick="window.print()">Imprimir</button>
  <a class="button secondary no-print" href="{{ request()->fullUrlWithQuery(['termica'=>1]) }}">Impressão térmica</a>@endsection
 @section('content')
 @php($passedCardFee=app(\App\Services\SalePayments::class)->passedTotal($sale->id))
