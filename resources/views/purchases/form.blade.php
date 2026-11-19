@@ -41,7 +41,8 @@
 </form>
 <template id="purchase-row">
     <div class="sale-row purchase-row">
-        <div class="selection"><label>Produto</label><select class="purchase-product" required><option value="">Selecione</option>@foreach($products as $product)<option value="{{ $product->id }}">{{ $product->sku }} · {{ $product->name }} ({{ $product->unit }})</option>@endforeach</select></div>
+        <div class="selection"><label>Produto</label><select class="purchase-product" required><option value="">Selecione</option>@foreach($products as $product)<option value="{{ $product->id }}" data-units="{{ json_encode(\App\Services\MeasureUnits::options($product,$operationConfig,'purchase')) }}">{{ $product->sku }} · {{ $product->name }} ({{ $product->unit }})</option>@endforeach</select></div>
+        <div><label>Unidade de compra</label><select class="purchase-unit" required></select><input type="hidden" class="purchase-factor"></div>
         <div><label>Quantidade recebida</label><input class="purchase-quantity" type="number" min="0.001" max="999999" step="0.001" value="1" required></div>
         <div><label>Custo por unidade (R$)</label><input class="purchase-cost" type="number" min="0" max="999999999.9999" step="0.0001" required></div>
         <button type="button" class="text-button remove">Remover</button>
@@ -61,6 +62,19 @@
         const current=index++;
         const fields=[['purchase-product','product_id'],['purchase-quantity','quantity'],['purchase-cost','unit_cost']];
         fields.forEach(([selector,name])=>{const input=row.querySelector('.'+selector);input.name=`items[${current}][${name}]`;if(data&&data[name]!==undefined)input.value=data[name];input.addEventListener('input',updateTotal);});
+        const product=row.querySelector('.purchase-product'),unit=row.querySelector('.purchase-unit'),factor=row.querySelector('.purchase-factor');
+        unit.name=`items[${current}][measure_unit]`;
+        factor.name=`items[${current}][factor_seen]`;
+        const units=()=>JSON.parse(product.selectedOptions[0]?.dataset.units || '{}');
+        function refresh(preferred){
+            const options=units();
+            unit.replaceChildren(...Object.keys(options).map(code=>new Option(code,code)));
+            if(preferred && options[preferred]) unit.value=preferred;
+            factor.value=options[unit.value] || '';
+        }
+        product.addEventListener('change',()=>refresh(null));
+        unit.addEventListener('change',()=>factor.value=units()[unit.value]);
+        refresh(data?.measure_unit);
         row.querySelector('.remove').addEventListener('click',()=>{row.remove();updateTotal();addButton.focus();});
         container.append(row);Vendra.associateLabels(row);updateTotal();
     }

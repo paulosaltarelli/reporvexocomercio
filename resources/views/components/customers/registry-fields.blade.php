@@ -1,4 +1,5 @@
 @php
+    $prefix = $prefix ?? '';
     $customerFields = [
         'name' => ['Nome / razão social', 'text', 180],
         'trade_name' => ['Nome fantasia', 'text', 180],
@@ -22,13 +23,13 @@
     ];
 @endphp
 <div class="form-grid">
-<div class="field">
-    <label for="document">CPF / CNPJ</label>
+<div class="field {{ $prefix ? 'full' : '' }}">
+    <label for="{{ $prefix }}document">CPF / CNPJ</label>
     <div class="control-with-action">
-        <input id="document" name="document" type="text" maxlength="20" value="{{ old('document', $editing?->document) }}">
+        <input id="{{ $prefix }}document" name="document" type="text" maxlength="20" value="{{ $prefix ? '' : old('document', $editing?->document) }}">
         <button type="button" class="button secondary" data-registry-url="{{ route('customer.cnpj', ['company' => $tenant->slug]) }}" hidden>Buscar CNPJ</button>
     </div>
-    <small class="hint" id="customer-registry-status" role="status"></small>
+    <small class="hint" id="{{ $prefix }}customer-registry-status" role="status"></small>
 </div>
 @foreach($customerFields as $field => [$label, $type, $limit])
     @include('components.customers.registry-input')
@@ -40,8 +41,8 @@
         @include('components.customers.registry-input')
     @endforeach
     <div class="field full">
-        <label for="address">Endereço livre ou referência</label>
-        <textarea id="address" name="address" maxlength="1000">{{ old('address', $editing?->address) }}</textarea>
+        <label for="{{ $prefix }}address">Endereço livre ou referência</label>
+        <textarea id="{{ $prefix }}address" name="address" maxlength="1000">{{ $prefix ? '' : old('address', $editing?->address) }}</textarea>
     </div>
 </div>
 @push('scripts')

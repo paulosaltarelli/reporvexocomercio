@@ -21,11 +21,12 @@
                 @foreach($products as $product)
                     @php($isService=($product->type??'product')==='service')
                     @php($stockControlled=!$isService && ($product->controls_stock??true))
-                    <option value="product:{{ $product->id }}" data-item-type="{{ $isService ? 'service' : 'product' }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
+                    <option value="product:{{ $product->id }}" @if($isPos??false) data-measures="{{ json_encode(\App\Services\MeasureUnits::options($product,$operationConfig,'sale')) }}" @endif data-item-type="{{ $isService ? 'service' : 'product' }}" data-sku="{{ $product->sku }}" data-barcode="{{ $product->barcode }}" data-name="{{ $product->name }}" data-legacy-service-id="{{ $product->legacy_service_id??'' }}" data-price="{{ $product->sale_price }}" data-discount-enabled="{{ $product->discountEnabled()?'1':'0' }}" data-discount-limit="{{ $product->maxDiscountPercent() }}">{{ $isService?'Serviço':'Produto' }} · {{ $product->sku }} · {{ $product->name }}@if($stockControlled) (saldo {{ number_format($product->quantity,3,',','.') }})@endif</option>
                 @endforeach
             </select><input type="hidden" class="kind"><input type="hidden" class="item-id"><input type="hidden" class="catalog-seen"></div>
+            @if($isPos??false)<div class="sale-measure" hidden><label>Unidade de venda</label><select class="measure"></select><input class="factor-seen" type="hidden"></div>@endif
             <div><label>Quantidade</label><input class="qty" type="number" step="0.001" min="0.001" max="999999" value="1" required></div>
-            <div><label>Preço unitário (R$)</label><input class="price" type="number" step="0.01" min="0" max="999999999999.99" required></div>
+            <div><label class="price-label">Preço unitário (R$)</label><input class="price" type="number" step="0.01" min="0" max="999999999999.99" required></div>
             <div><label>Desconto adicional (%)</label><input class="discount" type="number" step="0.01" min="0" max="100" value="0" required></div>
             <div class="line-total-field"><span class="line-total-label">Líquido do item</span><strong class="line-total">R$ 0,00</strong></div>
             <button type="button" class="text-button remove">Remover</button>
@@ -58,7 +59,13 @@
             const explicit=row.querySelector('.discount');
             const note=block.querySelector('.line-discount-note');
             price.setCustomValidity('');
-            const result=Vendra.commercialLine(row.querySelector('.qty').value,option?.dataset.price||'0',price.value,explicit.value);
+            const quantity=row.querySelector('.qty');
+            const factor=row.querySelector('.factor-seen')?.value || '1';
+            const scaled=(Vendra.decimalUnits(quantity.value,3) ?? 0n) * (Vendra.decimalUnits(factor,6) ?? 0n);
+            quantity.setCustomValidity(scaled % 1000000n ? 'A quantidade convertida exige mais de três casas decimais.' : '');
+            const milli=scaled / 1000000n;
+            const baseQuantity=String(milli/1000n)+'.'+String(milli%1000n).padStart(3,'0');
+            const result=Vendra.commercialLine(baseQuantity,option?.dataset.price||'0',price.value,explicit.value);
             if(!choice.value||!result){row.querySelector('.line-total').textContent='—';note.textContent=choice.value?'Confira quantidade, preço e desconto.':'Selecione um item para conferir preço e desconto permitido.';return;}
             if(option.dataset.itemType==='service') services+=result.net;
             else products+=result.net;
@@ -70,7 +77,7 @@
             price.setCustomValidity(exceeds?'O desconto total, incluindo a redução do preço unitário e o arredondamento, ultrapassa a permissão deste item.':'');
             note.classList.toggle('line-limit-warning',exceeds);
             const catalog=Vendra.decimalUnits(option.dataset.price,2)??0n;
-            note.textContent='Cadastro: '+Vendra.centsText(catalog)+' · '+(allowed?'limite efetivo de '+String(option.dataset.discountLimit).replace('.',',')+'%':'desconto bloqueado')+' · desconto total da prévia: '+percentText(result.discount,result.gross)+'%'+(exceeds?' — confira o preço e o desconto; a prévia ultrapassa o limite.':'.');
+            note.textContent=(row.querySelector('.measure')?.selectedIndex>0 ? 'Quantidade em estoque: '+baseQuantity+' '+Object.keys(JSON.parse(option.dataset.measures))[0]+' · ' : '')+'Cadastro: '+Vendra.centsText(catalog)+' · '+(allowed?'limite efetivo de '+String(option.dataset.discountLimit).replace('.',',')+'%':'desconto bloqueado')+' · desconto total da prévia: '+percentText(result.discount,result.gross)+'%'+(exceeds?' — confira o preço e o desconto; a prévia ultrapassa o limite.':'.');
         });
         if(splitItemTotals){
             document.querySelector('#product-total').textContent=Vendra.centsText(products);
@@ -88,7 +95,29 @@
         [['kind','kind'],['item-id','id'],['qty','quantity'],['price','unit_price'],['discount','discount_percent'],['catalog-seen','catalog_price_seen']].forEach(([selector,field])=>row.querySelector('.'+selector).name=`items[${index}][${field}]`);
         const choice=row.querySelector('.choice');
         const discount=row.querySelector('.discount');
+        const measure=row.querySelector('.measure');
+        const factor=row.querySelector('.factor-seen');
+        function chooseUnit(preferred){
+            if(!measure)return;
+            const units=JSON.parse(choice.selectedOptions[0]?.dataset.measures || '{}');
+            measure.replaceChildren(...Object.keys(units).map(code=>new Option(code,code)));
+            if(preferred && units[preferred]) measure.value=preferred;
+            row.querySelector('.sale-measure').hidden=measure.options.length<2;
+            measure.disabled=!measure.value;
+            factor.disabled=measure.disabled;
+            factor.value=units[measure.value] || '1';
+            row.querySelector('.price-label').textContent=measure.value?'Preço por '+Object.keys(units)[0]+' (R$)':'Preço unitário (R$)';
+        }
+        if(measure){
+            measure.name=`items[${index}][measure_unit]`;
+            factor.name=`items[${index}][factor_seen]`;
+            measure.addEventListener('change',()=>{
+                factor.value=JSON.parse(choice.selectedOptions[0].dataset.measures)[measure.value];
+                updateTotals();
+            });
+        }
         function choose(reset){
+            chooseUnit(reset?null:data?.measure_unit);
             const [kind,id]=choice.value.split(':');
             const option=choice.selectedOptions[0];
             row.querySelector('.kind').value=kind||'';row.querySelector('.item-id').value=id||'';
@@ -130,7 +159,7 @@
         const normalize=value=>String(value||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
         function matches(){const term=normalize(search.value);return term?catalog().filter(option=>[option.dataset.name,option.dataset.sku,option.dataset.barcode].some(value=>normalize(value).includes(term))):[];}
         function insert(option){
-            const existing=[...container.querySelectorAll('.sale-line-block')].find(block=>block.querySelector('.choice').value===option.value);
+            const existing=[...container.querySelectorAll('.sale-line-block')].find(block=>block.querySelector('.choice').value===option.value && !(block.querySelector('.measure')?.selectedIndex>0));
             if(existing){
                 const input=existing.querySelector('.qty'),units=Vendra.decimalUnits(input.value,3);
                 if(units===null||units+1000n>999999000n){status.textContent='Confira a quantidade deste item antes de adicionar.';input.focus();return;}

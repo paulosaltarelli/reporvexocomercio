@@ -93,7 +93,7 @@ class CommerceController extends Controller
     {
         $this->admin($r);
         $p = $id ? Product::findOrFail($id) : new Product;
-        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'discount_enabled'=>'nullable|boolean','max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => 'required|in:UN,KG,M,L,CX,PC,PAR', 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'discount_enabled'=>'nullable|boolean','max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => ['required',Rule::in(array_keys(\App\Services\MeasureUnits::catalog(app(\App\Services\CompanyOperations::class)->current())))], 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => 'nullable|digits:8', 'origin' => 'nullable|in:0,1,2,3,4,5,6,7,8', 'active' => 'nullable|boolean']);
         $d['active'] = $r->boolean('active');
         $d['type']=$d['type']??$p->type??'product';
         $d['controls_stock']=$d['type']==='product' ? ($r->has('controls_stock')?$r->boolean('controls_stock'):($p->exists?(bool)$p->controls_stock:true)) : false;
@@ -105,6 +105,14 @@ class CommerceController extends Controller
             if(!$configuration['inventory'] && $d['controls_stock']) throw ValidationException::withMessages(['controls_stock'=>'Desmarque o controle de estoque ou habilite a gestão de estoque da empresa.']);
             if($p->exists){$locked=Product::lockForUpdate()->findOrFail($p->id);$previous=(string)$locked->sale_price;}else{$locked=$p;$previous=null;}
             if($locked->exists&&bccomp((string)$locked->quantity,'0',3)!==0&&(!$d['controls_stock']||$d['type']==='service'))throw ValidationException::withMessages(['controls_stock'=>'Zere o saldo com uma movimentação identificada antes de desativar o estoque ou trocar o tipo para serviço.']);
+            if ($locked->exists && $d['unit'] !== $locked->unit && (
+                !empty($configuration['unit_links'][$locked->id]['units'])
+                || bccomp((string)$locked->quantity,'0',3) !== 0
+                || \App\Models\StockMovement::where('product_id',$locked->id)->exists()
+                || \App\Models\SaleItem::where('product_id',$locked->id)->exists()
+                || \App\Models\PurchaseItem::where('product_id',$locked->id)->exists()
+                || \App\Models\Document::whereJsonContains('items', ['kind'=>'product','id'=>$locked->id])->exists()
+            )) throw ValidationException::withMessages(['unit'=>'A unidade de estoque já está em uso. Cadastre uma equivalência para comprar ou vender em outra unidade.']);
             $locked->fill($d)->save();
             app(PricingService::class)->syncProduct($locked->id,$r->attributes->get('currentUser')->id,$previous===null?'product:create':'product:update',$previous);
         },3);
@@ -148,36 +156,12 @@ class CommerceController extends Controller
         $row = $r->integer('id') ? $model::findOrFail($r->integer('id')) : new $model;
         $rules = match ($kind) {
             'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2','price_policy'=>'sometimes|required|in:alert,automatic','discount_enabled'=>'sometimes|required|boolean','max_discount_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2'],
-            'customers','suppliers' => ['name' => 'required|string|max:180', 'document' => 'nullable|string|max:20', 'email' => 'nullable|email|max:180', 'phone' => 'nullable|string|max:30', 'address' => 'nullable|string|max:1000'],
+            'customers' => \App\Services\CustomerFields::RULES,
+            'suppliers' => ['name' => 'required|string|max:180', 'document' => 'nullable|string|max:20', 'email' => 'nullable|email|max:180', 'phone' => 'nullable|string|max:30', 'address' => 'nullable|string|max:1000'],
             'services' => ['name' => 'required|string|max:180', 'price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'cost' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'municipal_service_code' => 'nullable|string|max:30', 'iss_rate' => 'nullable|numeric|min:0|max:100|decimal:0,2'],
         };
         if ($kind === 'customers') {
-            $rules += [
-                'trade_name' => 'nullable|string|max:180',
-                'legal_nature' => 'nullable|string|max:180',
-                'opened_on' => 'nullable|date_format:Y-m-d',
-                'registration_status' => 'nullable|string|max:60',
-                'primary_cnae' => 'nullable|digits:7',
-                'fiscal_street' => 'nullable|string|max:60',
-                'fiscal_number' => 'nullable|string|max:60',
-                'fiscal_complement' => 'nullable|string|max:60',
-                'fiscal_district' => 'nullable|string|max:60',
-                'fiscal_city' => 'nullable|string|max:60',
-                'fiscal_state' => 'nullable|in:AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO',
-                'fiscal_postal_code' => 'nullable|digits:8',
-                'fiscal_municipality_code' => 'nullable|digits:7',
-                'fiscal_state_registration' => 'nullable|digits_between:2,14',
-            ];
-            $normalized = [];
-            foreach (['fiscal_postal_code', 'primary_cnae', 'fiscal_state_registration'] as $field) {
-                if (is_string($r->input($field))) {
-                    $normalized[$field] = str_replace(['.', '-', '/', ' '], '', $r->input($field));
-                }
-            }
-            if (is_string($r->input('fiscal_state'))) {
-                $normalized['fiscal_state'] = strtoupper($r->input('fiscal_state'));
-            }
-            $r->merge($normalized);
+            $r->merge(\App\Services\CustomerFields::normalize($r->only(array_keys($rules))));
         }
         $data=$r->validate($rules);
         DB::connection('tenant')->transaction(function()use($row,$data,$kind,$r){
@@ -250,7 +234,7 @@ class CommerceController extends Controller
 
     public function checkout(Request $r, string $company)
     {
-        $d = $r->validate(array_merge(\App\Services\SalePayments::rules(), ['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required_without:payments|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required_without:payments|boolean', 'due_date' => ($r->has('payments')?'nullable|date_format:Y-m-d':'nullable|required_if:paid,0|date_format:Y-m-d'), 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']));
+        $d = $r->validate(array_merge(\App\Services\SalePayments::rules(), ['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required_without:payments|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required_without:payments|boolean', 'due_date' => ($r->has('payments')?'nullable|date_format:Y-m-d':'nullable|required_if:paid,0|date_format:Y-m-d'), 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.measure_unit'=>'nullable|string|max:10','items.*.factor_seen'=>'nullable|string|max:20','items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']));
         $d['installments'] = $r->integer('installments', 1);
         $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
 

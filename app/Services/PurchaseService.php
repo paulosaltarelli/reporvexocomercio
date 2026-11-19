@@ -51,15 +51,20 @@ class PurchaseService
                     // Effective unit cost already includes any freight/taxes allocated by the operator.
                     $cost = Decimal::input((string) $line['unit_cost'], 4, 'items', '0', '999999999.9999');
                     $lineTotal = Decimal::input(Decimal::round(bcmul($quantity, $cost, 8)), 2, 'items');
+                    [$stockQuantity, $factor, $detail] = MeasureUnits::convert($product, $configuration, $line, 'purchase');
+                    $stockCost = Decimal::input(Decimal::round(bcdiv($cost, $factor, 10), 4), 4, 'items', '0', '999999999.9999');
+                    if (bccomp($cost, '0', 4) > 0 && bccomp($stockCost, '0', 4) === 0) {
+                        throw ValidationException::withMessages(['items'=>'O custo convertido é inferior à precisão do estoque.']);
+                    }
                     $item = PurchaseItem::create([
-                        'purchase_id' => $purchase->id, 'product_id' => $product->id, 'description' => $product->name,
+                        'purchase_id' => $purchase->id, 'product_id' => $product->id, 'description' => $product->name.$detail,
                         'quantity' => $quantity, 'unit_cost' => $cost, 'total' => $lineTotal,
                     ]);
                     if ($configuration['inventory'] && $product->controlsStock()) {
-                        app(Inventory::class)->move($product->id, 'in', $quantity, $cost,
+                        app(Inventory::class)->move($product->id, 'in', $stockQuantity, $stockCost,
                             'Compra #'.$purchase->id.' · item #'.$item->id, $userId, 'purchase-'.$purchase->id.'-'.$item->id);
                     } else {
-                        $product->update(['reference_cost' => $cost]);
+                        $product->update(['reference_cost' => $stockCost]);
                         $referenceProducts[$product->id] = $product->id;
                     }
                     $total = bcadd($total, $lineTotal, 2);

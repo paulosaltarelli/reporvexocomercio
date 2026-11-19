@@ -86,13 +86,17 @@ class Checkout
                     $item = $product ? Product::where('active', true)->lockForUpdate()->findOrFail($line['id'])
                         : Product::resolveLegacyService((int) $line['id'], true);
                     app(CompanyOperations::class)->assertItem($item instanceof Product ? $item->type : 'service', $configuration);
+                    $detail = '';
+                    if (!$document && isset($line['measure_unit']) && $item instanceof Product) {
+                        [$line['quantity'], , $detail] = MeasureUnits::convert($item, $configuration, $line, 'sale');
+                    }
                     $terms = $document ? $rules->fromDocument($item, $line, (int) $document->commercial_version) : $rules->quote($item, $line);
                     $qty = $terms['quantity'];
                     $unitCost = $item instanceof Product ? ($configuration['inventory'] ? $item->pricingCost() : (string)$item->reference_cost) : $item->cost;
                     $amount = $terms['total'];
                     SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
-                        'description' => $document ? ($line['description'] ?? $item->name) : $item->name, 'unit_cost' => $unitCost], $terms));
+                        'description' => $document ? ($line['description'] ?? $item->name) : $item->name.$detail, 'unit_cost' => $unitCost], $terms));
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
                     $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
                     $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);

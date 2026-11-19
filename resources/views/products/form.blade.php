@@ -24,8 +24,8 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
 @foreach($groups as $g)<option value="{{ $g->id }}" data-margin="{{ $g->margin }}" data-price-policy="{{ $g->price_policy??'alert' }}" data-discount-enabled="{{ $g->discount_enabled?'1':'0' }}" data-discount-limit="{{ $g->max_discount_percent??'0' }}" data-commission="{{ $g->commission_percent??'0' }}"
 @selected(old('product_group_id',$product->product_group_id)==$g->id)>{{ $g->name }} · {{ $g->margin }}%</option>
 @endforeach</select></div>
-<div class="field"><label>Unidade</label><select name="unit">
-@foreach(['UN','KG','M','L','CX','PC','PAR'] as $u)<option
+<div class="field"><label>Unidade de estoque (base)</label><a href="{{ route('units',['company'=>$tenant->slug]) }}" target="_blank" rel="noopener">Cadastrar unidades</a><select name="unit">
+@foreach(array_keys(\App\Services\MeasureUnits::catalog($operationConfig)) as $u)<option
 @selected(old('unit',$product->unit)===$u)>{{ $u }}</option>
 @endforeach</select></div><div class="field" id="minimum-stock-field"><label>Estoque mínimo</label><input type="number" step="0.001" min="0" name="minimum_stock" value="{{ old('minimum_stock',$product->minimum_stock) }}" required></div>
 <div class="field"><label>Margem própria (%)</label><input id="margin" type="number" step="0.01" min="0" max="99.99" name="margin" value="{{ old('margin',$product->margin) }}"><small class="hint">Em branco: herda a margem do grupo. A margem própria e a regra de atualização são escolhas independentes.</small></div><div class="field"><label for="price_policy">Atualização do preço</label><select id="price_policy" name="price_policy"><option value="" @selected(old('price_policy',$product->price_policy)===null||old('price_policy',$product->price_policy)==='')>Herdar regra do grupo</option><option value="alert" @selected(old('price_policy',$product->price_policy)==='alert')>Somente alertas · manter preço atual</option><option value="automatic" @selected(old('price_policy',$product->price_policy)==='automatic')>Automático · atualizar pelo custo médio</option></select><small class="hint" id="effective-policy" aria-live="polite"></small></div><div class="field"><label>Preço de venda (R$)</label><input id="sale_price" type="number" step="0.01" min="0" max="999999999999.99" name="sale_price" value="{{ old('sale_price',$product->sale_price) }}" required aria-describedby="price-policy-note"><small class="hint" id="price-policy-note"></small></div><div class="field"><label>Preço sugerido</label><strong id="suggested" role="status" aria-live="polite">—</strong><br><button type="button" class="text-button" id="apply-price">Usar sugestão</button><small class="hint" id="pricing-cost-base">A base de custo depende do controle de estoque. Sem impostos e despesas.</small></div>
@@ -58,6 +58,19 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     </div>
 </details>
 <div class="actions"><button class="primary">Salvar cadastro</button><a href="{{ route('products',['company'=>$tenant->slug]) }}">Voltar</a></div></form>
+@if($product->exists && $product->type==='product')
+<form class="panel" method="post" action="{{ route('product.units',['company'=>$tenant->slug,'id'=>$product->id]) }}">
+@csrf
+<h2>Unidades de compra e de venda</h2>
+<p>Informe quanto uma unidade representa em {{ $product->unit }}. Por exemplo, se o estoque está em KG, 1 T corresponde a 1000 KG.</p>
+<input type="hidden" name="base" value="{{ $product->unit }}">
+<div class="form-grid">
+<div class="field"><label for="linked-unit">Unidade</label><select id="linked-unit" name="code" required>@foreach(\App\Services\MeasureUnits::catalog($operationConfig) as $code=>$label)@if($code!==$product->unit)<option value="{{ $code }}">{{ $code }} · {{ $label }}</option>@endif @endforeach</select></div>
+<div class="field"><label for="unit-factor">Quantidade em {{ $product->unit }}</label><input id="unit-factor" name="factor" type="number" step="0.000001" min="0.000001" value="1" required></div>
+<div class="field"><label for="unit-purpose">Usar em</label><select id="unit-purpose" name="purpose"><option value="both">Compras e vendas</option><option value="purchase">Compras</option><option value="sale">Vendas</option><option value="remove">Remover vínculo</option></select></div></div>
+<button class="primary">Salvar equivalência</button>
+<ul>@foreach(($operationConfig['unit_links'][$product->id]['units']??[]) as $code=>$link)<li>1 {{ $code }} = {{ rtrim(rtrim($link['factor'],'0'),'.') }} {{ $product->unit }} · {{ $link['sale'] && $link['purchase']?'Compras e vendas':($link['sale']?'Vendas':'Compras') }}</li>@endforeach</ul></form>
+@endif
 @endsection
 @push('scripts')
 <script>

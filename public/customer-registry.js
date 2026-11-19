@@ -48,9 +48,7 @@ document.querySelectorAll('[data-registry-url]').forEach(registryButton => {
                 const input = form.elements.namedItem(name);
                 if (input instanceof HTMLInputElement && !input.value.trim()) input.value = value;
             }
-            status.textContent = form.closest('dialog')
-                ? 'Consulta concluída. Confira nome e contato antes de salvar.'
-                : 'Dados da BrasilAPI inseridos nos campos vazios. Revise o cadastro e informe a IE, se houver.';
+            status.textContent = 'Dados da BrasilAPI inseridos nos campos vazios. Revise o cadastro e informe a IE, se houver.';
         } catch {
             if (requestGeneration !== generation) return;
             status.textContent = 'Consulta indisponível. Preencha manualmente ou tente novamente.';

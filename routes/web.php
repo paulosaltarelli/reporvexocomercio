@@ -120,6 +120,9 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('reports/export/{kind}', [ReportController::class, 'csv'])->name('report.csv');
         Route::get('products', [CommerceController::class, 'products'])->name('products');
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
+        Route::get('measure-units', [\App\Http\Controllers\MeasureUnitController::class,'index'])->name('units');
+        Route::post('measure-units', [\App\Http\Controllers\MeasureUnitController::class,'store'])->name('units.store');
+        Route::post('products/{id}/units', [\App\Http\Controllers\MeasureUnitController::class,'store'])->whereNumber('id')->name('product.units');
         Route::get('products/{id}/edit', [CommerceController::class, 'productForm'])->whereNumber('id')->name('product.edit');
         Route::post('products/save/{id?}', [CommerceController::class, 'saveProduct'])->whereNumber('id')->name('product.save');
         Route::post('catalog/customers/cnpj', [CommerceController::class, 'lookupCustomerRegistry'])

@@ -117,6 +117,41 @@ class CommerceTest extends TestCase
         return ['request_key' => (string) Str::uuid(), 'payment_method' => 'pix', 'paid' => true, 'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => $qty, 'unit_price' => '100']]];
     }
 
+    public function test_purchase_by_tonne_sale_by_bag_and_reversal_in_kilograms(): void
+    {
+        $this->product->update(['unit'=>'KG']);
+        $id = $this->product->id;
+        $supplier = \App\Models\Supplier::create(['name'=>'Fornecedor']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->post('/app/a/measure-units', ['code'=>'SC','label'=>'Saco'])->assertSessionHasNoErrors();
+        foreach ([['T','1000','purchase'],['SC','25','sale']] as [$code,$factor,$purpose]) {
+            $this->post("/app/a/products/$id/units", compact('code','factor','purpose')+['base'=>'KG'])->assertSessionHasNoErrors();
+        }
+        $this->get("/app/a/products/$id/edit")->assertOk()->assertSee('Unidades de compra e de venda');
+        $this->get('/app/a/purchases/new')->assertOk()->assertSee('Unidade de compra');
+        $this->get('/app/a/measure-units')->assertOk()->assertSee('Saco');
+        $this->post('/app/a/purchases', ['request_key'=>(string)Str::uuid(),'supplier_id'=>$supplier->id,
+            'purchased_on'=>now()->toDateString(),'payment_method'=>'invoice','due_date'=>now()->toDateString(),'paid'=>0,
+            'items'=>[['product_id'=>$id,'quantity'=>'1','unit_cost'=>'2500','measure_unit'=>'T','factor_seen'=>'1000.000000']]])->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('1000.000',$this->product->fresh()->quantity);
+        $this->assertSame('2.5000',$this->product->fresh()->average_cost);
+        $payload = $this->saleData('2');
+        $payload['items'][0] += ['measure_unit'=>'SC','factor_seen'=>'25.000000'];
+        $this->post('/app/a/sales',$payload)->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $sale = Sale::firstOrFail();
+        $this->assertSame('5000.00',$sale->total);
+        $this->assertSame('950.000',$this->product->fresh()->quantity);
+        $this->assertStringContainsString('2.000 SC = 50.000 KG',$sale->items()->firstOrFail()->description);
+        $this->post("/app/a/products/$id/units", ['code'=>'SC','base'=>'KG','factor'=>'20','purpose'=>'sale'])->assertSessionHasNoErrors();
+        $payload['request_key']=(string)Str::uuid();
+        $this->post('/app/a/sales',$payload)->assertSessionHasErrors('items');
+        app(TenantConnection::class)->connect($this->a);
+        app(Checkout::class)->cancel($sale->id,$this->user->id,true);
+        $this->assertSame('1000.000',$this->product->fresh()->quantity);
+    }
+
     public function test_weighted_average_and_outgoing_cost(): void
     {
         $this->move('in', '10', '10');
@@ -3018,6 +3053,26 @@ class CommerceTest extends TestCase
 
     private function quickItem(array $changes=[]): array
     {return array_replace(['request_key'=>(string)Str::uuid(),'name'=>'Item rápido QA','product_group_id'=>$this->product->product_group_id,'unit'=>'UN','sale_price'=>'75.00','controls_stock'=>0],$changes);}
+    public function test_quick_customer_has_full_form_and_persists_fiscal_details(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id, 'user_id'=>$this->user->id]);
+        $form = $this->get('/app/a/documents/new?type=work_order')->assertOk();
+        foreach (array_keys(\App\Services\CustomerFields::RULES) as $field) {
+            $form->assertSee('id="quick-customer-'.$field.'"', false);
+        }
+        $fields = ['name'=>'Empresa de teste', 'trade_name'=>'Loja', 'legal_nature'=>'LTDA',
+            'registration_status'=>'ATIVA', 'opened_on'=>'2020-01-02','primary_cnae'=>'1234-5/67',
+            'fiscal_postal_code'=>'01234-567','fiscal_street'=>'Rua A','fiscal_number'=>'2','fiscal_complement'=>'Sala 1',
+            'fiscal_district'=>'Centro','fiscal_city'=>'São Paulo','fiscal_state'=>'sp','fiscal_municipality_code'=>'3550308',
+            'fiscal_state_registration'=>'123.456','address'=>'Referência'];
+        $result = $this->postJson('/app/a/quick-create/customers',$fields+['request_key'=>(string)Str::uuid()])->assertOk();
+        app(TenantConnection::class)->connect($this->a);
+        $customer = \App\Models\Customer::findOrFail($result->json('item.id'));
+        foreach (\App\Services\CustomerFields::normalize($fields) as $key=>$value) {
+            $this->assertSame($value,$customer->$key);
+        }
+    }
+
     public function test_quick_customer_is_saved_selected_by_id_and_retries_do_not_duplicate(): void
     {
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);$data=['request_key'=>(string)Str::uuid(),'name'=>'Cliente rápido','document'=>'529.982.247-25','phone'=>'35999999999'];

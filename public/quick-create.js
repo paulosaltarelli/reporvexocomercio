@@ -12,8 +12,11 @@
  document.querySelectorAll('[data-quick-create]').forEach(button=>{
   button.hidden=false;button.addEventListener('click',()=>{
    if(pending)return;kind=button.dataset.quickCreate;targetForm=button.closest('form');trigger=button;form.reset();form.elements.request_key.value=crypto.randomUUID();error.hidden=true;error.replaceChildren();
-   const title={customers:'Novo cliente',products:'Novo produto',services:'Novo serviço'}[kind];dialog.querySelector('h2').textContent=title;form.querySelector('#quick-name-label').textContent=kind==='customers'?'Nome / razão social':'Nome do item';
-   const stock=form.querySelector('#quick-stock');if(stock)stock.checked=kind==='products'&&dialog.dataset.inventory==='1';visibility();dialog.showModal();form.elements.name.focus();
+   const title={customers:'Novo cliente',products:'Novo produto',services:'Novo serviço'}[kind];dialog.querySelector('h2').textContent=title;
+   const itemName=form.querySelector('#quick-name'),customerName=form.querySelector('#quick-customer-name');
+   if(itemName)itemName.name=kind==='customers'?'':'name';
+   if(customerName)customerName.name=kind==='customers'?'name':'';
+   const stock=form.querySelector('#quick-stock');if(stock)stock.checked=kind==='products'&&dialog.dataset.inventory==='1';visibility();dialog.showModal();(kind==='customers'?form.querySelector('#quick-customer-document'):itemName).focus();
   });
  });
  form.querySelector('#quick-stock')?.addEventListener('change',visibility);

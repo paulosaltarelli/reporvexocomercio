@@ -15,9 +15,10 @@ final class QuickCreate
         abort_unless($user->allows($kind==='customers'?'customers.manage':'products.manage'),403);
         foreach(['name','sku','barcode','document','email','phone'] as $field)if(is_string($input[$field]??null))$input[$field]=trim($input[$field]);
         $rules=['request_key'=>'required|uuid','name'=>'required|string|max:180'];
-        $rules+=$kind==='customers'?['document'=>'nullable|string|max:20','email'=>'nullable|email|max:180','phone'=>'nullable|string|max:30']:[
+        if ($kind === 'customers') $input = CustomerFields::normalize($input);
+        $rules+=$kind==='customers'?CustomerFields::RULES:[
             'sku'=>'nullable|string|max:80','barcode'=>'nullable|string|max:80','product_group_id'=>'required|integer|exists:tenant.product_groups,id',
-            'unit'=>'required|in:UN,KG,M,L,CX,PC,PAR','sale_price'=>'required|numeric|min:0|max:999999999999.99|decimal:0,2',
+            'unit'=>['required',Rule::in(array_keys(\App\Services\MeasureUnits::catalog(app(\App\Services\CompanyOperations::class)->current())))],'sale_price'=>'required|numeric|min:0|max:999999999999.99|decimal:0,2',
             'controls_stock'=>'required|boolean','initial_quantity'=>'nullable|numeric|min:0|max:999999999|decimal:0,3',
             'initial_cost'=>'nullable|numeric|min:0|max:999999999.9999|decimal:0,4'];
         $data=Validator::make($input,$rules)->validate();$key=$data['request_key'];unset($data['request_key']);ksort($data);
@@ -39,7 +40,8 @@ final class QuickCreate
                     $existing=Customer::whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(document, '.', ''), '/', ''), '-', ''), ' ', '') = ?",[$document])->first();
                     if($existing)throw ValidationException::withMessages(['document'=>'Este CPF/CNPJ já está cadastrado em '.$existing->name.'. Selecione o cliente existente no atendimento.']);
                 }
-                $row=Customer::create(['name'=>$data['name'],'document'=>$document?:null,'email'=>$data['email']??null,'phone'=>$data['phone']??null]);
+                $data['document'] = $document ?: null;
+                $row = Customer::create($data);
             }else{
                 $type=$kind==='services'?'service':'product';$configuration=app(CompanyOperations::class)->current();app(CompanyOperations::class)->assertItem($type,$configuration);
                 $stock=(bool)$data['controls_stock'];$qty=(string)($data['initial_quantity']??'0');
