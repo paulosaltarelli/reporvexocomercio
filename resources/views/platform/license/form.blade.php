@@ -2,6 +2,7 @@
 @section('title',$contract->exists?'Editar contrato #'.$contract->id:'Novo contrato')
 @section('subtitle',$company->name)
 @section('content')
+@include('platform.company-navigation')
 <form class="panel form-panel" method="post" action="{{ $contract->exists ? route('platform.license.update',['id'=>$company->id,'contract'=>$contract->id]) : route('platform.license.store',['id'=>$company->id]) }}">
     @csrf
     @if($contract->exists)<input type="hidden" name="expected_version" value="{{ old('expected_version',$contract->version) }}">@endif
@@ -13,7 +14,7 @@
         <div class="field"><label for="monthly-amount">Mensalidade (R$)</label><input type="number" id="monthly-amount" name="monthly_amount" min="0.01" step="0.01" value="{{ old('monthly_amount',$contract->monthly_amount) }}" required></div>
         <div class="field"><label for="due-day">Dia do vencimento</label><input type="number" id="due-day" name="due_day" min="1" max="31" value="{{ old('due_day',$contract->due_day) }}" required></div>
     </div>
-    <fieldset>
+    <fieldset class="central-fieldset">
         <legend>Carências do contrato</legend>
         <div class="form-grid">
             <div class="field">
@@ -28,7 +29,7 @@
             </div>
         </div>
     </fieldset>
-    <fieldset><legend>Recursos sujeitos à restrição por atraso</legend>
+    <fieldset class="central-fieldset"><legend>Recursos sujeitos à restrição por atraso</legend>
         <p class="hint">Selecione os recursos que podem ser limitados após a tolerância das parcelas vencidas. Deixe a lista vazia para manter todos disponíveis.</p>
         @php($selected = session()->hasOldInput() ? old('restricted_modules',[]) : ($contract->restricted_modules ?? []))
         @foreach($modules as $key => $label)

@@ -1,0 +1,63 @@
+.central-list.panel{padding:0;overflow:hidden}
+.central-list-heading{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.central-list-heading h2{margin:0}
+.central-list>.central-list-heading{padding:1.2rem 1.4rem;border-bottom:1px solid #e5eaf0}
+.central-count{display:inline-grid;place-items:center;min-width:1.7rem;padding:.1rem .5rem;border-radius:6px;background:#edf1f6;color:#405267;font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums}
+.central-list .central-toolbar{display:flex;align-items:flex-end;gap:.75rem;flex-wrap:wrap;margin:0;padding:1rem 1.4rem;background:#f8fafc;border-bottom:1px solid #e1e7ee}
+.central-toolbar .field{flex:1;min-width:6.5rem}.central-toolbar .field:first-child{flex:2}
+.central-toolbar .button{min-width:5rem}
+.central-list .page-controls{margin:0;border-top:1px solid #e5eaf0;padding:.45rem 1rem}
+.central-list .pagination{margin:0}.central-list table tr:last-child td{border-bottom:0}
+.central-list th:first-child,.central-list td:first-child{padding-left:1.4rem}
+.central-list table small{display:block;color:#526678;font-size:.78rem;line-height:1.45}
+.central-list td,.central-list th{vertical-align:middle}
+a.central-record{display:inline-block;white-space:normal;font-weight:650}
+.central-status,.central-source{display:inline-flex;align-items:center;gap:.45rem;padding:.15rem .55rem;border-radius:5px;background:#edf1f4;color:#46566a;font-weight:600;font-size:.75rem;line-height:1.6;white-space:normal}
+.central-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.central-status[data-tone=good]{background:#e5f4ef;color:#17634b}.central-status[data-tone=bad]{background:#fbe9e8;color:#a13232}.central-status[data-tone=wait]{background:#fff1d9;color:#815009}
+.central-company-nav{display:flex;flex-wrap:wrap;gap:.45rem;margin:0 0 1.1rem;border-bottom:1px solid #cdd8e2}
+.central-company-nav a{display:flex;align-items:center;min-height:44px;padding:.45rem .8rem;color:#415064;font-weight:600;border-bottom:3px solid transparent}
+.central-company-nav a[aria-current]{color:#124da7;border-bottom-color:currentColor}
+.central-profile>.central-list-heading{justify-content:space-between}
+.central-profile .detail-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:1.1rem;margin:1.1rem 0}
+.central-profile-links,.central-access-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem 1.5rem}
+.central-profile-links{justify-content:flex-start;border-top:1px solid #e1e7ee;padding-top:.7rem}
+.central-profile-links a,.central-access-summary a{display:inline-flex;align-items:center;gap:.4rem;min-height:36px}
+.central-access-summary{margin:0 0 .9rem}
+.central-disclosure.panel{padding:0}.central-disclosure>summary,.central-row-edit>summary{cursor:pointer;font-weight:650;color:#204b73}
+.central-disclosure>summary{padding:1rem 1.25rem}.central-disclosure[open]>summary{border-bottom:1px solid #e2e8ee}
+.central-disclosure>p,.central-disclosure>form{margin:1rem 1.25rem}.central-row-edit>summary{padding:.4rem 0}.central-row-edit form{min-width:9rem}
+.central-list .access-list .field{margin:.65rem 0}.central-list .access-list .checkbox-line{margin:.65rem 0}
+.central-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:0 0 1.2rem}
+.central-metrics div{padding:1rem 1.25rem;background:white;border:1px solid #dbe3ec;border-top:3px solid #4b77a9;border-radius:8px}
+.central-metrics div[data-metric=overdue]{border-top-color:#b66539}.central-metrics div[data-metric=paid]{border-top-color:#32866b}
+.central-metrics dt{font-size:.82rem;color:#4a5c6d}.central-metrics dd{font-size:clamp(1.15rem,2vw,1.65rem);letter-spacing:-.04em;font-weight:650;margin:.3rem 0 0;font-variant-numeric:tabular-nums}
+.central-ledger th:nth-child(n+4),.central-ledger td:nth-child(n+4),.central-contracts .table-scroll td:nth-child(3):has(+td){font-variant-numeric:tabular-nums}
+.central-ledger th:nth-child(n+4),.central-ledger td:nth-child(n+4){text-align:right;white-space:nowrap}
+.central-ledger td:last-child{font-weight:650}
+.central-settings{max-width:55rem}.central-settings>.central-list-heading{justify-content:space-between}
+.central-fieldset{border:0;padding:0;margin:1.3rem 0 0;min-width:0}
+.central-fieldset legend{width:100%;border-bottom:1px solid #dfe6ed;padding:0 0 .4rem;font-weight:650}
+@media(max-width:650px){
+ .central-list>.central-list-heading,.central-list .central-toolbar{padding:.9rem 1rem}
+ .central-list .central-toolbar{display:grid;grid-template-columns:1fr auto;gap:.6rem}
+ .central-toolbar .field:first-child{grid-column:1/-1}.central-toolbar .field{min-width:0}.central-toolbar>.button{width:auto}
+ .central-directory thead,.central-ledger thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+ .central-directory,.central-directory tbody,.central-ledger,.central-ledger tbody{display:block}
+ .central-directory tr,.central-ledger tr{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.4rem .65rem;padding:.9rem 1rem;border-bottom:1px solid #e1e7ee}
+ .central-list .central-directory td,.central-list .central-ledger td{padding:0;min-width:0;border:0;text-align:left;overflow-wrap:anywhere}
+ .central-directory tr td:nth-child(even){justify-self:end}.central-directory tr td[colspan],.central-ledger tr td[colspan]{grid-column:1/-1}
+ .central-directory td[data-caption]::before{content:attr(data-caption) " ";color:#607184;font-size:.76rem}
+ .central-directory td:last-child{font-size:.8rem}
+ .central-company-nav{gap:0}.central-company-nav a{padding:.35rem .5rem;font-size:.82rem}
+ .central-profile .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .central-metrics{gap:.45rem}.central-metrics div{padding:.55rem .5rem}.central-metrics dt{font-size:.72rem;line-height:1.25}.central-metrics dd{font-size:1rem;overflow-wrap:anywhere}
+ .central-ledger tr{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem}
+ .central-ledger td:nth-child(1){grid-column:1}.central-ledger td:nth-child(3){grid-column:2;grid-row:1}
+ .central-ledger td:nth-child(2)::before{content:"Vencimento"}.central-ledger td:nth-child(4)::before{content:"Valor"}.central-ledger td:nth-child(5)::before{content:"Recebido"}.central-ledger td:nth-child(6)::before{content:"Saldo a receber"}
+ .central-ledger td:nth-child(n+2)::before{display:block;font-weight:400;font-size:.72rem;color:#526678}
+}
+.central-bank-connection{border-block:1px solid #dfe6ed;margin:.85rem 0}
+.central-bank-connection>summary{cursor:pointer;padding:.65rem 0;font-weight:650;color:#264766}
+.central-contracts [aria-label="Contratos de licença"] :is(td,th):nth-child(3),
+.central-contracts [aria-label="Parcelas de licença"] :is(td,th):is(:nth-child(4),:nth-child(5),:nth-child(6)){text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}

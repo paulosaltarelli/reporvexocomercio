@@ -1,8 +1,48 @@
 @extends('platform.layout')
 @section('title','Empresas')
-@section('subtitle','Gerencie o cadastro e a disponibilidade de acesso das empresas.')
+@section('subtitle','Cadastro das lojas e solicitações de implantação.')
 @section('actions')<a class="button" href="{{ route('platform.companies.create') }}">Solicitar implantação</a>@endsection
 @section('content')
-<section class="panel"><form class="platform-filters" method="get" action="{{ route('platform.index') }}"><div class="field"><label for="companies-search">Buscar empresa</label><input id="companies-search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome ou identificação de acesso"></div><div class="field"><label for="companies-status">Situação</label><select id="companies-status" name="status"><option value="">Todas</option><option value="active" @selected(request('status')==='active')>Ativas</option><option value="inactive" @selected(request('status')==='inactive')>Inativas</option></select></div><button class="button secondary">Filtrar</button>@if(request()->filled('q')||request()->filled('status'))<a href="{{ route('platform.index') }}">Limpar filtros</a>@endif</form><div class="section-heading"><h2>Empresas cadastradas</h2><span class="muted">{{ $companies->total() }} registros</span></div><div class="table-scroll" tabindex="0" role="region" aria-label="Empresas cadastradas"><table><thead><tr><th>Empresa</th><th>Identificação e URL de acesso</th><th>Situação</th><th>Cadastro</th><th></th></tr></thead><tbody>@forelse($companies as $company)<tr><td><strong><a href="{{ route('platform.companies.show',['id'=>$company->id]) }}">{{ $company->name }}</a></strong>@if($company->is_demonstration??false)<br><span class="badge demonstration">Demonstração</span>@endif</td><td>{{ $company->slug }}<br><a class="company-access-url" href="{{ \App\Tenancy\CompanyHosts::url($company->slug, 'login') }}" target="_blank" rel="noopener noreferrer">{{ \App\Tenancy\CompanyHosts::url($company->slug, 'login') }}</a></td><td><span class="badge {{ $company->active?'active':'inactive' }}">{{ $company->active?'Ativa':'Inativa' }}</span></td><td>{{ $company->created_at?->format('d/m/Y')??'Não informado' }}</td><td><a href="{{ route('platform.companies.show',['id'=>$company->id]) }}">Gerenciar empresa</a></td></tr>@empty<tr><td colspan="5" class="empty">{{ request()->filled('q') || request()->filled('status') ? 'Nenhuma empresa corresponde aos filtros.' : 'Nenhuma empresa cadastrada.' }}</td></tr>@endforelse</tbody></table></div><div class="pagination">{{ $companies->links('platform.pagination',['label'=>'Páginas de empresas']) }}</div></section><p class="muted small">URLs abrem o login da loja. O acesso global DBA está disponível em Gerenciar empresa, com identidade de suporte e auditoria.</p>
-<section class="panel"><h2>Solicitações de implantação</h2><p class="hint">Pedidos na fila não representam empresas já criadas ou ativas.</p><div class="table-scroll" tabindex="0" role="region" aria-label="Solicitações de implantação"><table><thead><tr><th>Empresa solicitada</th><th>Responsável inicial</th><th>Situação do pedido</th><th>Solicitação</th><th></th></tr></thead><tbody>@forelse($requests as $job)<tr><td>{{ $job->name }}<br><span class="muted">{{ $job->slug }}</span>@if($job->is_demonstration)<br><span class="badge demonstration">Demonstração</span>@endif</td><td>{{ $job->admin_name }}</td><td><span class="badge {{ $job->status==='completed'?'active':'inactive' }}">{{ ['pending'=>'Na fila','provisioning'=>'Em implantação','completed'=>'Implantação concluída','failed'=>'Falha na implantação'][$job->status]??'Aguardando conferência' }}</span></td><td>{{ $job->created_at->format('d/m/Y H:i') }}</td><td><a href="{{ route('platform.requests.show',['id'=>$job->id]) }}">Acompanhar pedido</a></td></tr>@empty<tr><td colspan="5" class="empty">Nenhuma solicitação registrada.</td></tr>@endforelse</tbody></table></div><div class="pagination">{{ $requests->appends(request()->only(['page','q','status']))->links('platform.pagination',['label'=>'Páginas de solicitações']) }}</div></section>
+<section class="panel central-list">
+    <div class="central-list-heading"><h2>Empresas cadastradas</h2><span class="central-count">{{ $companies->total() }}</span></div>
+    <form class="platform-filters central-toolbar" method="get" action="{{ route('platform.index') }}">
+        <div class="field"><label for="companies-search">Buscar empresa</label><input type="search" id="companies-search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nome ou identificação de acesso"></div>
+        <div class="field"><label for="companies-status">Situação</label><select id="companies-status" name="status"><option value="">Todas</option><option value="active" @selected(request('status')==='active')>Ativas</option><option value="inactive" @selected(request('status')==='inactive')>Inativas</option></select></div>
+        <button class="button secondary">Filtrar</button>
+        @if(request()->filled('q')||request()->filled('status'))<a href="{{ route('platform.index') }}">Limpar filtros</a>@endif
+    </form>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Empresas cadastradas">
+        <table class="central-directory"><thead><tr><th>Empresa</th><th>Situação</th><th>Cadastro</th><th>Acesso da loja</th></tr></thead><tbody>
+        @forelse($companies as $company)
+            <tr>
+                <td><a class="central-record" href="{{ route('platform.companies.show',$company->id) }}">{{ $company->name }}</a><small>{{ $company->slug }}</small>
+                    @if($company->is_demonstration??false)<span class="badge demonstration">Demonstração</span>@endif</td>
+                <td><span class="central-status" data-tone="{{ $company->active?'good':'neutral' }}">{{ $company->active?'Ativa':'Inativa' }}</span></td>
+                <td data-caption="Cadastro">{{ $company->created_at?->format('d/m/Y')??'Não informado' }}</td>
+                <td><a href="{{ \App\Tenancy\CompanyHosts::url($company->slug, 'login') }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir login de {{ $company->name }} em outra aba">Abrir login <span aria-hidden="true">↗</span></a></td>
+            </tr>
+        @empty
+            <tr><td colspan="4" class="empty">{{ request()->filled('q') || request()->filled('status') ? 'Nenhuma empresa corresponde aos filtros.' : 'Nenhuma empresa cadastrada.' }}</td></tr>
+        @endforelse
+        </tbody></table>
+    </div>
+    {{ $companies->links('platform.pagination',['label'=>'Páginas de empresas']) }}
+</section>
+<section class="panel central-list">
+    <div class="central-list-heading"><h2>Solicitações de implantação</h2><span class="central-count">{{ $requests->total() }}</span></div>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Solicitações de implantação">
+        <table class="central-directory"><thead><tr><th>Empresa solicitada</th><th>Situação do pedido</th><th>Responsável</th><th>Solicitação</th></tr></thead><tbody>
+        @forelse($requests as $job)
+            <tr>
+                <td><a class="central-record" href="{{ route('platform.requests.show',$job->id) }}">{{ $job->name }}</a><small>{{ $job->slug }}</small>@if($job->is_demonstration)<span class="badge demonstration">Demonstração</span>@endif</td>
+                <td><span class="central-status" data-tone="{{ match($job->status){'completed'=>'good','failed'=>'bad',default=>'wait'} }}">{{ ['pending'=>'Na fila','provisioning'=>'Em implantação','completed'=>'Implantação concluída','failed'=>'Falha na implantação'][$job->status]??'Aguardando conferência' }}</span></td>
+                <td data-caption="Responsável">{{ $job->admin_name }}</td><td data-caption="Solicitação">{{ $job->created_at->format('d/m/Y H:i') }}</td>
+            </tr>
+        @empty
+            <tr><td colspan="4" class="empty">Nenhuma solicitação registrada.</td></tr>
+        @endforelse
+        </tbody></table>
+    </div>
+    {{ $requests->appends(request()->only(['page','q','status']))->links('platform.pagination',['label'=>'Páginas de solicitações']) }}
+</section>
 @endsection

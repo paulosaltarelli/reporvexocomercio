@@ -1,13 +1,14 @@
 @extends('platform.layout')
 @section('title','Gerenciar acessos')
+@section('subtitle',$company->name)
 @section('content')
-<p><a href="{{ route('platform.companies.show',['id'=>$company->id]) }}">Voltar à ficha de {{ $company->name }}</a></p>
-<section class="panel">
-    <h2>Implantação de {{ $company->name }}</h2>
-    <p>O vendedor recebe por e-mail um link de uso único, válido por 24 horas, e escolhe sua senha. Após o aceite, o acesso continua enquanto estiver habilitado nesta loja.</p>
-    <p><strong>Login da loja</strong> <a href="{{ \App\Tenancy\CompanyHosts::url($company->slug) }}" target="_blank" rel="noopener noreferrer">{{ \App\Tenancy\CompanyHosts::url($company->slug) }}</a></p>
-    @if($company->active)
-    <p><strong>Situação da implantação</strong> {{ $open ? 'Em andamento' : 'Concluída' }}</p>
+@include('platform.company-navigation')
+<div class="central-access-summary"><span class="central-status" data-tone="{{ $company->active ? 'good':'neutral' }}">{{ !$company->active ? 'Empresa suspensa' : ($open ? 'Implantação em andamento' : 'Implantação concluída') }}</span>
+<a href="{{ \App\Tenancy\CompanyHosts::url($company->slug) }}" target="_blank" rel="noopener noreferrer">Login da loja <span aria-hidden="true">↗</span></a></div>
+@if($company->active)
+<details class="panel central-disclosure" @if($invitations->isEmpty() || old('email') || old('name')) open @endif>
+    <summary>Convidar vendedor</summary>
+    <p>O convite vale por 24 horas. Após o aceite, o acesso permanece enquanto estiver habilitado.</p>
     <form method="post" action="{{ route('platform.company-access.create',['id'=>$company->id]) }}">
         @csrf
         <div class="form-grid">
@@ -25,14 +26,12 @@
         @include('platform.accesses.mfa',['fieldId'=>'invite-mfa'])
         <button class="button">Enviar convite</button>
     </form>
-    @else
-        <p>A empresa está suspensa.</p>
-    @endif
-</section>
-<section class="panel">
-    <h2>Vendedores implantadores</h2>
+</details>
+@endif
+<section class="panel central-list">
+    <div class="central-list-heading"><h2>Vendedores implantadores</h2><span class="central-count">{{ $invitations->total() }}</span></div>
     @if($invitations->isEmpty())
-        <p>Nenhum convite registrado para esta empresa.</p>
+        <p class="empty">Nenhum convite registrado para esta empresa.</p>
     @else
         <div class="table-scroll access-list" role="region" aria-label="Vendedores implantadores" tabindex="0"><table>
             <thead><tr><th>Vendedor</th><th>Situação</th><th>Convite</th><th>Ações</th></tr></thead>
@@ -50,6 +49,7 @@
                         </form>
                         @endif
                         @if($invite->accepted_at && $invite->user_id && $company->active)
+                        <details class="central-row-edit"><summary>Editar acesso</summary>
                         <form method="post" action="{{ route('platform.company-access.update',['id'=>$company->id,'invitation'=>$invite->id]) }}">
                             @csrf<input type="hidden" name="expected_version" value="{{ $invite->version }}">
                             <div class="field"><label for="profile-{{ $invite->id }}">Perfil de {{ $invite->name }}</label>
@@ -64,6 +64,7 @@
                             @include('platform.accesses.mfa',['fieldId'=>'grant-'.$invite->id])
                             <button class="button secondary">Salvar acesso</button>
                         </form>
+                        </details>
                         @elseif($invite->status!=='revoked')
                         <form method="post" action="{{ route('platform.company-access.revoke',['id'=>$company->id,'invitation'=>$invite->id]) }}">
                             @csrf<input type="hidden" name="expected_version" value="{{ $invite->version }}">

@@ -52,3 +52,96 @@
 .bank-environments .panel{max-width:none;margin:0}.bank-environments .bank-toggle{margin:.5rem 0}
 .bank-environments .bank-toggle label{display:flex;align-items:center;min-height:40px;gap:.5rem;margin:0;cursor:pointer}
 .bank-environments .bank-toggle input{margin:0}
+
+/* Central Vexo */
+@font-face {
+    font-family: Inter;
+    src: url("/fonts/inter-variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+}
+:root {
+    --navy: #101d32;
+    --blue: #195fcf;
+    --cyan: #3989e8;
+    --text: #18283c;
+    --muted: #596b80;
+    --line: #d8e1eb;
+    --background: #f4f6f9;
+    --rail-width: 221px;
+}
+body { font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+.platform-shell { display: grid; grid-template-columns: var(--rail-width) minmax(0,1fr); min-height: 100vh; }
+.platform-rail { position: sticky; top: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--navy); color: #fff; }
+.rail-head { display: flex; align-items: center; min-height: 74px; border-bottom: 1px solid #2c394c; padding: 0 22px; }
+.platform-brand .vexo-central-logo { width: 118px; height: auto; display: block; mix-blend-mode: lighten; }
+.rail-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: space-between; }
+.rail-body[hidden], .rail-toggle[hidden] { display: none; }
+.rail-group { margin: 24px 12px 0; }
+.rail-group a, .rail-logout button, .rail-toggle { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 5px; font: inherit; font-weight: 550; line-height: 20px; color: #d9e3ee; }
+.platform-rail svg { width: 18px; height: 18px; flex: none; stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rail-group a + a { margin-top: 3px; }
+.rail-group a:hover, .rail-logout button:hover { color: white; background: #23334c; text-decoration: none; }
+.rail-group a[aria-current] { background: #23406a; color: white; box-shadow: inset 3px 0 #6cacf9; }
+.rail-group a[aria-current] svg { color: #9bcaff; }
+.rail-logout { margin: 24px 12px 12px; padding-top: 10px; border-top: 1px solid #324055; }
+.rail-logout button, .rail-toggle { background: transparent; border: 0; cursor: pointer; }
+.rail-logout button { width: 100%; }
+.platform-workspace { min-width: 0; }
+.platform-bar { height: 57px; padding: 0 clamp(20px,3vw,48px); display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #fff; border-bottom: 1px solid var(--line); }
+.platform-context, .platform-identity { display: flex; align-items: center; gap: 10px; font-size: 12px; min-width: 0; }
+.platform-context { color: var(--muted); white-space: nowrap; }
+.platform-context [aria-hidden] { color: #a4b2c4; }
+.platform-context a { font-weight: 650; color: var(--text); }
+.platform-identity { font-weight: 600; }
+.platform-identity > span:last-child { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.account-avatar { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: #e6eef9; color: #244874; font-size: 12px; font-weight: 700; }
+.platform-main { max-width: 1540px; padding: 30px clamp(20px,3vw,48px) 48px; min-height: 0; }
+.platform-page-heading { margin-bottom: 23px; gap: 16px; }
+.platform-page-heading h1 { font-size: clamp(25px,2.4vw,34px); letter-spacing: -.04em; line-height: 1.16; margin: 0; font-weight: 700; }
+.platform-page-heading p { margin: 5px 0 0; }
+.panel { border-color: var(--line); border-radius: 8px; padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 2px #18283c08; }
+.panel h2 { font-size: 17px; letter-spacing: -.024em; }
+.button { min-height: 40px; padding: 8px 15px; font-size: 13px; border-radius: 5px; }
+.button.secondary:hover { background: #f0f4f9; }
+.field label { color: #32455d; font-size: 12px; }
+input, select { min-height: 40px; padding: 8px 11px; border-radius: 5px; }
+textarea { border-radius: 5px; }
+.platform-main th { color: #4a5c70; background: #f3f6fa; font-size: 11px; }
+.platform-main td, .platform-main th { padding: 11px 12px; }
+.platform-main tbody tr:hover { background: #f8faff; }
+.badge { line-height: 1.4; }
+.guest-brand { width: fit-content; margin: 7vh auto 16px; }
+.guest-brand img { width: 144px; height: auto; display: block; }
+.platform-guest .platform-main { max-width: 480px; padding: 0 20px 35px; }
+.platform-guest .platform-page-heading { text-align: center; justify-content: center; }
+.platform-guest .platform-page-heading h1 { font-size: 27px; }
+.platform-guest .login-panel { margin: 20px auto; padding: 26px; }
+@media(max-width: 840px) {
+    .platform-shell { display: block; }
+    .platform-rail { height: auto; position: relative; }
+    .rail-head { min-height: 56px; padding: 0 16px; justify-content: space-between; }
+    .platform-brand .vexo-central-logo { width: 88px; }
+    .rail-toggle { min-height: 44px; }
+    .rail-body { padding: 0 5px 6px; }
+    .rail-group { margin: 15px 8px 0; }
+    .rail-group a, .rail-logout button { min-height: 44px; }
+    .rail-logout { margin: 12px 8px 0; }
+    .platform-bar { height: 44px; padding-inline: 16px; }
+    .platform-main { padding: 22px 16px 36px; }
+    .platform-identity { max-width: 44%; gap: 6px; }
+    .account-avatar { width: 24px; height: 24px; }
+    .platform-page-heading { gap: 10px; margin-bottom: 16px; }
+    .platform-page-heading > .button { width: auto; }
+    .panel { padding: 16px; }
+    input, select, textarea { min-height: 44px; font-size: 16px; }
+    input[type="checkbox"] { min-height: 18px; }
+    .button { min-height: 44px; }
+}
+@media print {
+    .platform-shell { display: block; }
+    .platform-rail, .platform-bar, .guest-brand { display: none; }
+    .platform-main { max-width: none; padding: 0; }
+    .panel { box-shadow: none; }
+}

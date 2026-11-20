@@ -8,15 +8,17 @@
     <div class="bank-environments">
     @foreach($environments as $environment => $label)
         @php($profile = $profiles->get($bank.':'.$environment))
-        <section class="panel form-panel">
+        <section class="panel form-panel central-bank">
             <h2>{{ $name }} · {{ $label }}</h2>
-            <p>{{ $profile ? 'Configuração salva na Central' : 'Usando configuração do servidor' }}</p>
+            <p class="central-source">{{ $profile ? 'Configuração salva na Central' : 'Usando configuração do servidor' }}</p>
             @unless($ready[$bank][$environment] ?? false)
                 <p role="status">Aguardando habilitação bancária e configuração privada no servidor.</p>
             @endunless
             <form method="post" action="{{ route('platform.settings.banks.save', [$bank, $environment]) }}">
                 @csrf
                 @php($connection = $connections[$bank][$environment] ?? [])
+                <details class="central-bank-connection" @if($errors->any()) open @endif>
+                    <summary>Conexão e credenciais</summary>
                 <div class="form-grid">
                     @foreach(['api_url' => 'URL base da API Pix', 'token_url' => 'URL de autenticação', 'scope' => 'Escopos OAuth'] as $field => $title)
                         <div class="field">
@@ -47,6 +49,7 @@
                         </select>
                     </div>
                 </div>
+                </details>
                 @foreach(['enabled' => 'Ambiente habilitado', 'issue' => 'Permitir emissão na loja', 'reconcile' => 'Conciliar automaticamente', 'auto_issue' => 'Emitir automaticamente'] as $field => $caption)
                     @if($field !== 'auto_issue' || $environment === 'production')
                         <input type="hidden" name="{{ $field }}" value="0">

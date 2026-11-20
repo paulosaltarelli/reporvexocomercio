@@ -3,8 +3,9 @@
 @section('subtitle','Consulte as tentativas de envio registradas desde a implantação do histórico.')
 @section('content')
 @include('platform.settings-navigation')
-<section class="panel" aria-label="Filtrar envios">
-    <form class="platform-filters" method="get" action="{{ route('platform.settings.emails.index') }}">
+<section class="panel central-list">
+    <div class="central-list-heading"><h2>Histórico de envios</h2><span class="central-count">{{ $attempts->total() }}</span></div>
+    <form class="platform-filters central-toolbar" method="get" action="{{ route('platform.settings.emails.index') }}">
         <div class="field"><label for="mail-recipient">Destinatário</label>
             <input id="mail-recipient" type="search" name="recipient" maxlength="254" placeholder="Endereço de e-mail" value="{{ $filters['recipient'] ?? '' }}">
         </div>
@@ -19,9 +20,6 @@
         <button class="button secondary">Filtrar</button>
         @if(array_filter($filters))<a href="{{ route('platform.settings.emails.index') }}">Limpar filtros</a>@endif
     </form>
-</section>
-<section class="panel">
-    <div class="section-heading"><h2>Histórico de envios</h2><span>{{ $attempts->total() }} {{ $attempts->total() === 1 ? 'registro' : 'registros' }}</span></div>
     <div class="table-scroll" role="region" aria-label="Histórico de envios" tabindex="0">
         <table><thead><tr><th>Data e hora</th><th>Assunto</th><th>Destinatário</th><th>Empresa</th><th>Situação</th></tr></thead>
         <tbody>
@@ -30,7 +28,7 @@
                 <td>{{ $attempt->created_at->format('d/m/Y H:i') }}</td>
                 <td><a href="{{ route('platform.settings.emails.show', ['id'=>$attempt->id] + request()->only(['recipient','status','page'])) }}">{{ $attempt->subject }}</a></td>
                 <td>{{ $attempt->recipient }}</td><td>{{ $attempt->company_name }}</td>
-                <td>{{ $statuses[$attempt->status] ?? 'Desconhecido' }}</td>
+                <td><span class="central-status" data-tone="{{ match($attempt->status){'sent'=>'good','failed'=>'bad',default=>'wait'} }}">{{ $statuses[$attempt->status] ?? 'Desconhecido' }}</span></td>
             </tr>
         @empty
             <tr><td class="empty" colspan="5">{{ array_filter($filters) ? 'Nenhum envio corresponde aos filtros.' : 'Nenhum envio registrado.' }}</td></tr>

@@ -2,8 +2,14 @@
 @section('title','Financeiro')
 @section('subtitle','Acompanhe as parcelas dos contratos das lojas.')
 @section('content')
-<section class="panel" aria-label="Filtros de parcelas">
-    <form method="get" class="platform-filters">
+<dl class="central-metrics" aria-label="Totais das parcelas selecionadas">
+    @foreach(['upcoming'=>'Saldo a vencer','overdue'=>'Saldo em atraso','paid'=>'Recebido nas parcelas selecionadas'] as $key=>$caption)
+        <div data-metric="{{ $key }}"><dt>{{ $caption }}</dt><dd>R$ {{ number_format($totals[$key] ?? 0,2,',','.') }}</dd></div>
+    @endforeach
+</dl>
+<section class="panel central-list" aria-label="Parcelas">
+    <div class="central-list-heading"><h2>Parcelas</h2><span class="central-count">{{ $installments->total() }}</span></div>
+    <form method="get" class="platform-filters central-toolbar">
         <div class="field">
             <label for="company-query">Empresa</label>
             <input id="company-query" name="q" value="{{ $filters['q'] ?? '' }}" maxlength="100" placeholder="Nome ou identificação">
@@ -24,29 +30,20 @@
         <button class="button secondary">Filtrar</button>
         @if(array_filter($filters))<a href="{{ route('platform.receivables') }}">Limpar filtros</a>@endif
     </form>
-    <dl class="detail-grid">
-        @foreach(['upcoming'=>'A vencer','overdue'=>'Em atraso','paid'=>'Recebido'] as $key => $caption)
-            <div><dt>{{ $caption }}</dt><dd>R$ {{ number_format($totals[$key] ?? 0, 2, ',', '.') }}</dd></div>
-        @endforeach
-    </dl>
-</section>
-<section class="panel">
-    <div class="section-heading"><h2>Parcelas</h2><span>{{ $installments->total() }} {{ $installments->total() === 1 ? 'parcela' : 'parcelas' }}</span></div>
     <div class="table-scroll" role="region" aria-label="Parcelas por empresa" tabindex="0">
-        <table><thead><tr><th>Empresa</th><th>Contrato</th><th>Vencimento</th><th>Valor</th><th>Recebido</th><th>Saldo a receber</th><th>Situação</th></tr></thead>
+        <table class="central-ledger"><thead><tr><th>Empresa / contrato</th><th>Vencimento</th><th>Situação</th><th>Valor</th><th>Recebido</th><th>Saldo a receber</th></tr></thead>
         <tbody>
         @forelse($installments as $row)
             <tr>
-                <td><a href="{{ route('platform.license.index',['id'=>$row->tenant_id]) }}">{{ $row->company_name }}</a></td>
-                <td>#{{ $row->contract_id }}</td>
+                <td><a class="central-record" aria-label="Ver contratos e parcelas de {{ $row->company_name }}" href="{{ route('platform.license.index',['id'=>$row->tenant_id]) }}">{{ $row->company_name }}</a><small>Contrato #{{ $row->contract_id }}</small></td>
                 <td>{{ \Illuminate\Support\Carbon::parse($row->due_date)->format('d/m/Y') }}</td>
+                <td><span class="central-status" data-tone="{{ match($row->payment_status){'paid'=>'good','overdue'=>'bad','partial'=>'wait',default=>'neutral'} }}">{{ $labels[$row->payment_status] }}</span></td>
                 <td>R$ {{ number_format($row->amount, 2, ',', '.') }}</td>
                 <td>R$ {{ number_format($row->paid_amount, 2, ',', '.') }}</td>
                 <td>R$ {{ number_format($row->payment_status === 'cancelled' ? 0 : bcsub($row->amount,$row->paid_amount,2), 2, ',', '.') }}</td>
-                <td>{{ $labels[$row->payment_status] }}</td>
             </tr>
         @empty
-            <tr><td class="empty" colspan="7">Nenhuma parcela encontrada.</td></tr>
+            <tr><td class="empty" colspan="6">Nenhuma parcela encontrada.</td></tr>
         @endforelse
         </tbody></table>
     </div>
