@@ -18,6 +18,7 @@ final class MailHistoryController extends Controller
     private const TYPES = [
         'installer_invitation' => 'Convite de implantação',
         'company_activation' => 'Ativação da loja',
+        'password_reset' => 'Redefinição de senha',
     ];
 
     public function index(Request $request)

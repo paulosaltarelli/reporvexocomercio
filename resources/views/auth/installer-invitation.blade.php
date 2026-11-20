@@ -15,10 +15,10 @@
     <p>Crie sua senha para acessar a loja <strong>{{ $tenant->name }}</strong>.</p>
     <p>O link vale por 24 horas e pode ser usado uma vez. Depois do aceite, seu acesso continua enquanto a Central o mantiver habilitado.</p>
     @if($errors->any())<div class="notice error" role="alert"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
-    <form action="{{ route('installer.invite.accept',['company'=>$tenant->slug]) }}" method="post">
+    <form action="{{ route('installer.invite.accept',['company'=>$tenant->slug]) }}" method="post" data-password-form>
         @csrf
         <div class="field"><label for="invitation-email">E-mail que recebeu o convite</label><input id="invitation-email" type="email" name="email" value="{{ old('email') }}" required maxlength="180" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
-        <div class="field" id="invitation-code-field">
+        <div class="field" id="invitation-code-field" data-token-field>
             <label for="invitation-code">Código do convite</label>
             <input id="invitation-code" type="password" name="token" required minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" autocomplete="off" aria-describedby="invitation-code-help">
             <small class="hint" id="invitation-code-help">Abra o link recebido por e-mail para preencher o código ou cole os 64 caracteres do convite.</small>
@@ -29,6 +29,6 @@
     </form>
     <p><a href="{{ route('login',['company'=>$tenant->slug]) }}">Já aceitei o convite. Entrar na loja</a></p>
 </main>
-<script defer src="/installer-invitation.js?v={{ filemtime(public_path('installer-invitation.js')) }}"></script>
+<script defer src="/password-form.js?v={{ filemtime(public_path('password-form.js')) }}"></script>
 </body>
 </html>

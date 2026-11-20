@@ -1,8 +1,9 @@
 @php
     $isInvitation = $kind === 'installer_invitation';
+    $isReset = $kind === 'password_reset';
     $isPreview = $preview ?? false;
-    $heading = $isInvitation ? 'Convite para implantação' : 'Sua loja está pronta';
-    $action = $isInvitation ? 'Aceitar convite' : 'Ativar minha conta';
+    $heading = match ($kind) { 'installer_invitation' => 'Convite para implantação', 'password_reset' => 'Redefina sua senha', default => 'Sua loja está pronta' };
+    $action = match ($kind) { 'installer_invitation' => 'Aceitar convite', 'password_reset' => 'Redefinir minha senha', default => 'Ativar minha conta' };
     $logo = $isPreview ? '/brand/vexo-logo-dark.png' : $message->embed(public_path('brand/vexo-logo-dark.png'));
 @endphp
 <!doctype html>
@@ -14,7 +15,7 @@
 </head>
 <body style="margin:0;padding:0;background-color:#eef3f8;color:#142640;font-family:Arial,Helvetica,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">
-        {{ $isInvitation ? 'Aceite o convite para acessar a loja' : 'Crie sua senha para administrar a loja' }} {{ $companyName }} no Vendra.
+        {{ match ($kind) { 'installer_invitation' => 'Aceite o convite para acessar a loja', 'password_reset' => 'Crie uma nova senha para a loja', default => 'Crie sua senha para administrar a loja' } }} {{ $companyName }} no Vendra.
     </div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef3f8">
         <tr><td align="center" style="padding:24px 12px;">
@@ -25,8 +26,10 @@
                 </td></tr>
                 <tr><td style="padding:26px 24px 22px;color:#142640;font:16px/1.55 Arial,Helvetica,sans-serif;">
                     <h1 style="font:700 27px/1.2 Arial,Helvetica,sans-serif;color:#10213d;margin:0 0 20px;">{{ $heading }}</h1>
-                    <p style="margin:0 0 12px;">Olá, {{ $recipientName }}.</p>
-                    @if($isInvitation)
+                    <p style="margin:0 0 12px;">@if($isReset)Olá!@else Olá, {{ $recipientName }}.@endif</p>
+                    @if($isReset)
+                        <p style="margin:0 0 18px;">Recebemos uma solicitação para redefinir sua senha de acesso à loja <strong>{{ $companyName }}</strong>. Abra o link abaixo e informe o e-mail da sua conta para criar uma nova senha.</p>
+                    @elseif($isInvitation)
                         <p style="margin:0 0 18px;">A Vexo convidou você para acessar a loja <strong>{{ $companyName }}</strong> no Vendra. Abra o convite, informe o e-mail que recebeu esta mensagem e crie sua senha.</p>
                     @else
                         <p style="margin:0 0 16px;">A loja <strong>{{ $companyName }}</strong> está pronta no Vendra. Para ativar seu acesso de administrador, abra a página de ativação, informe o e-mail que recebeu esta mensagem e o código abaixo. Em seguida, crie sua senha.</p>
@@ -50,7 +53,7 @@
                             @endif
                         </td></tr>
                     </table>
-                    <p style="margin:18px 0 0;color:#40516a;font:14px/1.55 Arial,Helvetica,sans-serif;">{{ $isInvitation ? 'O convite vale por 24 horas e pode ser usado uma vez. Após o aceite, seu acesso a esta loja continua enquanto a Central o mantiver habilitado, inclusive após a conclusão da implantação.' : 'O código vale por 24 horas e pode ser usado uma vez. Depois de ativar a conta, entre no Vendra com seu e-mail e a senha escolhida.' }}</p>
+                    <p style="margin:18px 0 0;color:#40516a;font:14px/1.55 Arial,Helvetica,sans-serif;">@if($isReset)O link vale por 30 minutos e pode ser usado uma vez.@else {{ $isInvitation ? 'O convite vale por 24 horas e pode ser usado uma vez. Após o aceite, seu acesso a esta loja continua enquanto a Central o mantiver habilitado, inclusive após a conclusão da implantação.' : 'O código vale por 24 horas e pode ser usado uma vez. Depois de ativar a conta, entre no Vendra com seu e-mail e a senha escolhida.' }} @endif</p>
                 </td></tr>
                 <tr><td style="padding:18px 24px;border-top:1px solid #e5ebf3;color:#50617a;font:13px/1.55 Arial,Helvetica,sans-serif;">
                     <p style="margin:0 0 4px;">Se você não reconhece esta solicitação, ignore esta mensagem.</p>

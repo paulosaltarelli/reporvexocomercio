@@ -31,6 +31,12 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
     Route::post('ativar', [\App\Http\Controllers\CompanyActivationController::class, 'activate'])->middleware('throttle:6,1');
     Route::get('convite-implantacao', [\App\Http\Controllers\InstallerInvitationController::class, 'form'])->name('installer.invite');
     Route::post('convite-implantacao', [\App\Http\Controllers\InstallerInvitationController::class, 'accept'])->middleware('throttle:6,1')->name('installer.invite.accept');
+    Route::controller(\App\Http\Controllers\TenantPasswordResetController::class)->group(function () {
+        Route::get('recuperar-senha', 'forgot')->name('password.request');
+        Route::post('recuperar-senha', 'send')->middleware('throttle:10,1,password-request:')->name('password.email');
+        Route::get('redefinir-senha', 'form')->name('password.reset');
+        Route::post('redefinir-senha', 'update')->middleware('throttle:12,1,password-reset:')->name('password.update');
+    });
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
     Route::middleware([TenantAuthenticated::class, EnforceContractAccess::class])->group(function () {

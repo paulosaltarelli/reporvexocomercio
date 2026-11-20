@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Mail\CompanyActivationMail;
 use App\Mail\InstallerInvitationMail;
+use App\Mail\TenantPasswordResetMail;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -16,7 +17,10 @@ final class TransactionalMailTest extends TestCase
         $activationCode = bin2hex(random_bytes(16));
         $inviteUrl = 'https://a.example.test/app/a/convite-implantacao#token='.$installerToken;
         $activateUrl = 'https://a.example.test/app/a/ativar';
+        $resetToken = bin2hex(random_bytes(32));
+        $resetUrl = 'https://a.example.test/app/a/redefinir-senha#token='.$resetToken;
         $cases = [
+            [new TenantPasswordResetMail($company, $resetUrl), $resetUrl, $resetToken],
             [new InstallerInvitationMail($company, 'Pessoa QA', $inviteUrl), $inviteUrl, $installerToken],
             [new CompanyActivationMail($company, 'Pessoa QA', $activateUrl, $activationCode), $activateUrl, $activationCode],
         ];

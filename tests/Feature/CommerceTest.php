@@ -23,6 +23,7 @@ use Tests\TestCase;
 class CommerceTest extends TestCase
 {
     use \Tests\Support\InstallerAccessCases;
+    use \Tests\Support\TenantPasswordResetCases;
     use \Tests\Support\PurchaseInvoiceCases;
     use \Tests\Support\ContractIntegrationCases;
     use \Tests\Support\C6RenewalCases;

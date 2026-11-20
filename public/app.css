@@ -59,3 +59,5 @@ aside{padding:24px 16px}.sidebar-heading{padding:0 8px}.company{overflow-wrap:an
 .split.without-inventory,.desk-primary-grid.without-quotes{grid-template-columns:minmax(0,1fr)}
 @media(min-width:1051px){.cards.without-inventory{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:761px){.desk-metrics.without-quotes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.work-order-signatures{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:72px;text-align:center;break-inside:avoid}.work-order-signatures>div{display:flex;flex-direction:column;gap:8px}.signature-line{border-top:1px solid #334155}.work-order-signatures span{font-size:12px}@media print{body:has(.work-order-copy) main>.notice,body:has(.work-order-copy) .page-top .muted{display:none!important}.work-order-signatures{margin-top:72px;gap:40px}}
