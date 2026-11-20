@@ -1382,6 +1382,9 @@ class FiscalTest extends TestCase
     public function test_internal_simulation_exports_are_non_fiscal_and_enforce_admin_tenant_and_integrity(): void
     {
         $this->forbidSimulationTransport();
+        $phone = '(31) 90000-0303';
+        $customer = \App\Models\Customer::create(['name' => 'Comprador do cupom QA', 'phone' => $phone]);
+        $this->sale->update(['customer_id' => $customer->id]);
         $service = app(\App\Fiscal\SimulationFiscal::class);
         $simulation = $service->create($this->tenant, $this->sale->id, $this->user->id, (string) Str::uuid());
         $this->login();
@@ -1389,11 +1392,16 @@ class FiscalTest extends TestCase
         $this->get($base)->assertOk()->assertSee('SIMULAÇÃO INTERNA');
         $receipt = $this->get($base.'/receipt')->assertOk()->assertSee('SEM VALOR FISCAL')->assertSee('NÃO É DANFE')->assertSee('15,03');
         $this->assertStringContainsString('text/html', $receipt->headers->get('Content-Type'));
+        $receipt->assertSee($phone);
+        app(TenantConnection::class)->connect($this->tenant);
+        $customer->update(['phone' => null]);
+        $this->get($base.'/receipt')->assertOk()->assertDontSee($phone)->assertDontSee('Telefone do cliente');
         $this->assertStringContainsString('private', $receipt->headers->get('Cache-Control'));
         $download = $this->get($base.'/download')->assertOk()->assertHeader('Content-Type', 'application/json')->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertJsonPath('schema', 'VendraSimulation')->assertJsonPath('snapshot.environment', 'internal');
         $this->assertStringContainsString('.json', $download->headers->get('Content-Disposition'));
         $this->assertStringNotContainsString('<NFe', $download->getContent());
+        $this->assertStringNotContainsString($phone, $download->getContent());
         foreach (['access_key', 'protocol', 'number'] as $field) { $this->assertArrayNotHasKey($field, $download->json()); }
         $this->post('/app/a/sales/'.$this->sale->id.'/fiscal/simulate', ['request_key' => (string) Str::uuid(), 'scenario' => 'accepted',
             'tenant_id' => 999, 'state' => 'authorized', 'access_key' => str_repeat('1', 44), 'protocol' => '135260000000001'])

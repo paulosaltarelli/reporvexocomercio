@@ -77,6 +77,8 @@ class SimulationFiscalController extends Controller
     public function receipt(Request $r, string $company, int $id, SimulationFiscal $service)
     {
         [$tenant, $userId] = $this->context($r, $service);
-        return response()->view('fiscal.simulations.receipt', ['simulation' => $service->find($tenant, $id, $userId)])->withHeaders(['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        $simulation = $service->find($tenant, $id, $userId);
+        $simulation->sale?->load('customer:id,phone');
+        return response()->view('fiscal.simulations.receipt', ['simulation' => $simulation])->withHeaders(['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
     }
 }

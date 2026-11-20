@@ -1,0 +1,65 @@
+* { box-sizing: border-box; }
+:root { --roll: 80mm; --print-width: 72mm; }
+:root[data-roll="58"] { --roll: 58mm; --print-width: 52mm; }
+body { margin: 0; padding: 20px 12px 48px; background: #eef2f6; color: #101820; font: 11px/1.35 Arial, sans-serif; }
+.print-tools { max-width: 620px; margin: 0 auto 22px; padding: 16px 18px; background: white; border: 1px solid #d4deea; border-radius: 9px; color: #1b3048; font: 14px/1.45 system-ui, sans-serif; }
+.print-actions, .roll-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.print-actions { justify-content: space-between; }
+.print-tools label { font-size: 12px; font-weight: 600; color: #40566d; }
+.print-tools select, .print-tools button, .return-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 1px solid #c5d1df; border-radius: 6px; padding: 7px 12px; background: #fff; color: #21334b; font: inherit; }
+.print-tools button { color: white; background: #195cc4; border-color: #195cc4; font-weight: 650; cursor: pointer; }
+.print-tools button:hover { background: #104da9; }
+.return-link { text-decoration: none; font-weight: 550; }
+.return-link:hover { background: #f0f4f8; }
+.print-tools :focus-visible { outline: 3px solid #176bc0; outline-offset: 3px; }
+.print-tools p { margin: 10px 0 0; color: #53677e; font-size: 12px; }
+.ticket { margin: 0 auto; width: var(--roll); max-width: 100%; padding: 4mm calc((var(--roll) - var(--print-width)) / 2); background: white; color: black; overflow-wrap: anywhere; box-shadow: 0 2px 8px #192b421a; }
+.ticket header { text-align: center; }
+.ticket h1 { margin: 0 0 4px; font-size: 16px; }
+.ticket h2 { margin: 0 0 4px; font-size: 12px; }
+.ticket p { margin: 2px 0; }
+.block { margin-top: 8px; padding-top: 6px; border-top: 1px dashed; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.entry, .total, .ticket header { break-inside: avoid; }
+.entry + .entry { margin-top: 5px; }
+.total { font-size: 13px; font-weight: bold; }
+@media(max-width: 470px) {
+    .print-tools { padding: 12px; }
+    .print-actions { column-gap: 5px; }
+    .roll-control { flex-direction: column; align-items: start; gap: 1px; }
+    .print-tools button, .print-tools select, .return-link { min-height: 44px; }
+}
+@page { margin: 0; }
+@media print {
+    body { background: white; padding: 0; }
+    .print-tools { display: none; }
+    .ticket { box-shadow: none; padding-top: 2mm; padding-bottom: 2mm; }
+}
+
+/* Customer copy. Millimetres control the paper, point sizes control legibility. */
+.sale-ticket { font-size: 8.5pt; line-height: 1.34; color: #101010; }
+.sale-ticket .receipt-company { text-align: center; }
+.sale-ticket .receipt-logo { display: block; object-fit: contain; width: auto; height: auto; max-width: 43mm; max-height: 13mm; margin: 0 auto 1.8mm; filter: grayscale(1); }
+.sale-ticket .receipt-company h1 { font-size: 12pt; line-height: 1.17; margin: 0 0 1mm; }
+.sale-ticket .receipt-company p { font-size: 8pt; margin: .6mm 0; }
+.sale-ticket .receipt-id { padding: 2.5mm 0; margin-top: 2mm; border-top: 1px solid; }
+.sale-ticket h2 { font-size: 10pt; line-height: 1.2; margin: 0 0 1.4mm; }
+.sale-ticket .receipt-id h2 { margin: 1mm 0 .8mm; font-size: 12pt; letter-spacing: -.25pt; }
+.sale-ticket .receipt-nonfiscal { font-size: 8pt; font-weight: 600; }
+.sale-ticket .block { border-top: 1px solid #555; margin-top: 2.5mm; padding-top: 2mm; }
+.sale-ticket .row { gap: 1.4mm; }
+.sale-ticket .row > :first-child { min-width: 0; }
+.sale-ticket .entry + .entry { margin-top: 1.8mm; }
+.sale-ticket .receipt-items > .item-detail { margin: 1mm 0 1.6mm; border-bottom: 1px dotted #888; padding-bottom: 1mm; }
+.sale-ticket .item-title { display: block; font-weight: 700; line-height: 1.25; }
+.sale-ticket .item-detail { font-size: 8pt; line-height: 1.25; }
+.sale-ticket .item-values { font-size: 8.5pt; margin-top: .7mm; }
+.sale-ticket .entry .amount { font-weight: 650; }
+.sale-ticket .total { border-top: 1px solid; padding-top: 1.5mm; margin: 1.4mm 0; font-size: 11pt; line-height: 1.15; }
+.sale-ticket .receipt-totals > .total:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.sale-ticket .receipt-footer { margin-top: 3mm; font-size: 8pt; text-align: center; }
+.sale-ticket .block h2 { break-after: avoid; }
+[data-roll="58"] .sale-ticket .receipt-logo { max-width: 36mm; max-height: 11mm; }
+[data-roll="58"] .sale-ticket { font-size: 8pt; }
+[data-roll="58"] .sale-ticket .item-values { font-size: 8pt; }

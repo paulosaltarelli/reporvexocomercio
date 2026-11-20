@@ -5,6 +5,7 @@
     </p>
     <dl>
         <div><dt>Cliente</dt><dd>{{ $document->customer?->name ?: 'Não informado' }}</dd></div>
+        @if(filled($document->customer?->phone))<div><dt>Telefone do cliente</dt><dd>{{ $document->customer->phone }}</dd></div>@endif
         <div><dt>Situação</dt><dd>{{ ['draft'=>'Aberta','approved'=>'Aberta','in_progress'=>'Em serviço','completed'=>'Finalizada','invoiced'=>'Venda gerada','cancelled'=>'Cancelada'][$document->status] }}</dd></div>
         @if($document->asset)<div><dt>Equipamento</dt><dd>{{ $document->asset }}</dd></div>@endif
         @if($document->technician)<div><dt>Técnico</dt><dd>{{ $document->technician }}</dd></div>@endif

@@ -3178,6 +3178,58 @@ class CommerceTest extends TestCase
         $this->postJson('/app/a/sales/'.$sale->id.'/receive',[])->assertUnprocessable();
     }
 
+    public function test_thermal_sale_receipt_shows_its_company_and_the_outstanding_split_payment(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->post('/app/a/business', [
+            'legal_name' => 'Oficina Aurora QA', 'trade_name' => 'Oficina Aurora QA',
+            'logo' => \Illuminate\Http\UploadedFile::fake()->image('oficina.png', 140, 64),
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $phone = '(11) 90000-0101';
+        $otherPhone = '(21) 90000-0202';
+        $customer = \App\Models\Customer::create(['name' => 'Cliente da oficina QA', 'phone' => $phone]);
+        app(TenantConnection::class)->connect($this->b);
+        \App\Models\Customer::forceCreate(['id' => $customer->id, 'name' => $customer->name, 'phone' => $otherPhone]);
+        app(TenantConnection::class)->connect($this->a);
+        $paths = [];
+        foreach (['quote', 'work_order'] as $type) {
+            $document = app(Documents::class)->create([
+                'type' => $type, 'request_key' => (string) Str::uuid(), 'customer_id' => $customer->id,
+                'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '100']],
+            ], $this->user->id);
+            $paths[] = '/app/a/documents/'.$document->id;
+        }
+        $sale = $this->commissionSale('100', false, null, ['customer_id' => $customer->id, 'payments' => [
+            ['payment_option' => 'pix', 'amount' => '30.00', 'paid' => 1],
+            ['payment_option' => 'credit', 'amount' => '70.00', 'paid' => 0,
+                'due_date' => today()->addDay()->toDateString(), 'installments' => 2],
+        ]]);
+        $uri = '/sales/'.$sale->id.'?termica=1';
+        $receipt = $this->get('/app/a'.$uri)->assertOk()->assertSee('Oficina Aurora QA')
+            ->assertSee('Documento não fiscal')->assertSee('/app/a/business/logo', false)
+            ->assertSee('Produto teste')->assertDontSee('Descontos')->assertDontSee('Comissão interna');
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($receipt->getContent());
+        $xpath = new \DOMXPath($dom);
+        $settlement = $xpath->evaluate('string(//*[contains(concat(" ",normalize-space(@class)," ")," receipt-settlement ")])');
+        $this->assertMatchesRegularExpression('/Recebido.*?R\$\s*30,00/is', $settlement);
+        $this->assertMatchesRegularExpression('/Saldo.*?R\$\s*70,00/is', $settlement);
+        $this->assertStringContainsString('R$ 100,00', $xpath->evaluate('string(//*[contains(concat(" ",normalize-space(@class)," ")," receipt-totals ")])'));
+        $paths[] = '/app/a/sales/'.$sale->id;
+        $paths[] = '/app/a'.$uri;
+        foreach ($paths as $path) {
+            $this->get($path)->assertOk()->assertSee($phone)->assertDontSee($otherPhone);
+        }
+        app(TenantConnection::class)->connect($this->a);
+        $customer->update(['phone' => null]);
+        foreach ($paths as $path) {
+            $this->get($path)->assertOk()->assertDontSee($phone)->assertDontSee('Telefone do cliente');
+        }
+        $this->get('/app/b'.$uri)->assertRedirect('/app/b/login')->assertDontSee('Oficina Aurora QA');
+    }
+
     public function test_split_paid_cash_and_pix_support_change_fiscal_evidence_and_refund(): void
     {
         config(['fiscal.product_invoices_enabled' => true]);

@@ -267,7 +267,15 @@ class CommerceController extends Controller
 
     public function sale(Request $r, string $company, int $id)
     {
-        return view('sales.show', ['fiscalDocuments'=>config('fiscal.product_invoices_enabled')?\App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get():collect(), 'sale' => Sale::with('items', 'customer','creator')->findOrFail($id), 'received' => FinancialEntry::where('sale_id', $id)->sum('paid_amount')]);
+        $sale = Sale::with('items','customer','creator')->findOrFail($id);
+        $ledger = FinancialEntry::where('sale_id',$id)->where('direction','in')
+            ->selectRaw('COUNT(*) AS entry_count, COALESCE(SUM(paid_amount), 0) AS received,
+                COALESCE(SUM(CASE WHEN cancelled_at IS NULL THEN amount - paid_amount ELSE 0 END), 0) AS outstanding')
+            ->first();
+        return view('sales.show', [
+            'sale'=>$sale, 'received'=>$ledger->received, 'receiptLedger'=>$ledger,
+            'fiscalDocuments'=>config('fiscal.product_invoices_enabled') ? \App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get() : collect(),
+        ]);
     }
 
     public function cancel(Request $r, string $company, int $id)
