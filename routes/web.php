@@ -53,6 +53,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('cash/close', [CashController::class, 'close'])->name('cash.close');
         Route::get('cashflow', [CashflowController::class, 'index'])->name('cashflow');
         Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');
+        Route::post('business/cnpj', [BusinessController::class, 'lookupRegistry'])
+            ->middleware('throttle:10,1')->name('business.cnpj');
         Route::get('business', [BusinessController::class, 'form'])->name('business');
         Route::get('setup', [\App\Http\Controllers\CompanySetupController::class,'index'])->name('setup');
         Route::post('setup', [\App\Http\Controllers\CompanySetupController::class,'save'])->name('setup.save');

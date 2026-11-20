@@ -20,6 +20,30 @@ class BusinessController extends Controller
         app(\App\Access\AccessProfiles::class)->authorize($r);
     }
 
+    public function lookupRegistry(Request $request, \App\Services\CustomerRegistryLookup $registry)
+    {
+        $this->admin($request);
+        $data = $request->validate(['document' => 'required|string|max:24']);
+        $customer = $registry->find($data['document']);
+        $mapping = [
+            'name' => 'legal_name', 'trade_name' => 'trade_name', 'email' => 'email', 'phone' => 'phone',
+            'fiscal_street' => 'street', 'fiscal_number' => 'number', 'fiscal_district' => 'district',
+            'fiscal_city' => 'city', 'fiscal_state' => 'state', 'fiscal_postal_code' => 'postal_code',
+            'fiscal_municipality_code' => 'municipality_code',
+        ];
+        $fields = [];
+        foreach ($mapping as $source => $target) {
+            if (isset($customer[$source])) {
+                $fields[$target] = $customer[$source];
+            }
+        }
+        if (isset($fields['number']) && mb_strlen($fields['number']) > 20) {
+            unset($fields['number']);
+        }
+
+        return response()->json(['fields' => $fields])->header('Cache-Control', 'no-store');
+    }
+
     public function fiscal(Request $r)
     {
         return $this->form($r);

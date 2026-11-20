@@ -1,6 +1,17 @@
 <form class="panel" method="post" enctype="multipart/form-data" action="{{ $companyFormAction ?? url('/app/'.$tenant->slug.'/business') }}">@csrf<fieldset style="border:0;padding:0;margin:0;min-width:0" @disabled(!$currentUser->allows('administration'))><h2>Identificação</h2><div class="form-grid">
 @foreach(['legal_name'=>'Razão social','trade_name'=>'Nome fantasia','document'=>'CNPJ','email'=>'E-mail','phone'=>'Telefone'] as $field=>$label)
-<div class="field"><label>{{ $label }}</label><input name="{{ $field }}" value="{{ old($field,$profile->$field) }}" type="{{ $field==='email'?'email':'text' }}" @required($field==='legal_name') maxlength="{{ ['document'=>18,'phone'=>30][$field]??180 }}"></div>
+<div class="field">
+    <label for="company-{{ $field }}">{{ $label }}</label>
+    @if($field === 'document')<div class="control-with-action">@endif
+    <input id="company-{{ $field }}" name="{{ $field }}" value="{{ old($field,$profile->$field) }}" type="{{ $field==='email'?'email':'text' }}" @required($field==='legal_name') maxlength="{{ ['document'=>18,'phone'=>30][$field]??180 }}"
+        @if($field === 'legal_name' && !old('legal_name') && !$profile->document && $profile->legal_name === $tenant->name) data-registry-default="{{ $tenant->name }}" @endif>
+    @if($field === 'document')
+        @if($currentUser->allows('administration'))
+            <button type="button" class="button secondary" data-registry-url="{{ route('business.cnpj',['company'=>$tenant->slug]) }}" hidden>Buscar CNPJ</button>
+        @endif
+        </div><small class="hint" role="status"></small>
+    @endif
+</div>
 @endforeach</div>
 <section class="company-logo-editor" aria-labelledby="company-logo-title">
     <h2 id="company-logo-title">Logotipo da empresa</h2>
@@ -27,6 +38,7 @@
 @endforeach</select></div></div></details><p class="hint">Confira os dados cadastrais com o responsável contábil da empresa.</p><div class="actions"><button class="primary">{{ $companySubmitLabel ?? 'Salvar dados da empresa' }}</button></div></fieldset></form>
 
 @push('scripts')
+<script src="/customer-registry.js?v={{ filemtime(public_path('customer-registry.js')) }}" defer></script>
 <script>
 (() => {
     const upload=document.querySelector('#company-logo-upload');

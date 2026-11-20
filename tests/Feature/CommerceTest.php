@@ -366,6 +366,44 @@ class CommerceTest extends TestCase
         $this->post('/app/a/login', ['email'=>$this->user->email, 'password'=>$input['password']])->assertRedirect()->assertSessionHas('user_id', $this->user->id);
     }
 
+    public function test_business_cnpj_lookup_prefills_both_company_forms_without_writing_the_profile(): void
+    {
+        $http = \Illuminate\Support\Facades\Http::class;
+        $http::preventStrayRequests();
+        $http::fake(['https://brasilapi.com.br/api/cnpj/v1/00000000000191' => $http::response([
+            'cnpj' => '00000000000191', 'razao_social' => 'Empresa de teste Ltda.', 'nome_fantasia' => 'Loja QA',
+            'ddd_telefone_1' => '1133334444', 'email' => 'contato@example.test', 'logradouro' => 'Rua de teste',
+            'numero' => '12A', 'bairro' => 'Centro', 'municipio' => 'São Paulo', 'uf' => 'SP',
+            'cep' => '01234-567', 'codigo_municipio_ibge' => 3550308,
+        ])]);
+        $profile = \App\Models\BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'Empresa anterior']);
+        $before = $profile->fresh()->getRawOriginal();
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
+        $uri = route('business.cnpj', ['company' => 'a'], false);
+        $this->assertSame('/app/a/business/cnpj', $uri);
+        foreach (['/app/a/business', '/app/a/setup?step=1'] as $form) {
+            $response = $this->get($form)->assertOk();
+            $this->assertStringContainsString($uri, str_replace('\/', '/', $response->getContent()));
+        }
+        $this->postJson($uri, ['document' => '00.000.000/0001-90'])
+            ->assertUnprocessable()->assertJsonValidationErrors('document');
+        $http::assertNothingSent();
+        $this->postJson($uri, ['document' => '00.000.000/0001-91'])->assertOk()->assertJson([
+            'fields' => [
+                'legal_name' => 'Empresa de teste Ltda.', 'trade_name' => 'Loja QA', 'phone' => '1133334444',
+                'email' => 'contato@example.test', 'street' => 'Rua de teste', 'number' => '12A',
+                'district' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP',
+                'postal_code' => '01234567', 'municipality_code' => '3550308',
+            ],
+        ]);
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame($before, $profile->fresh()->getRawOriginal());
+        $this->assertSame(0, \App\Models\CompanyOperation::count());
+        $this->user->update(['role' => 'operator']);
+        $this->postJson($uri, ['document' => '00.000.000/0001-91'])->assertForbidden();
+        $http::assertSentCount(1);
+    }
+
     public function test_customer_cnpj_lookup_prefills_without_saving_and_catalog_persists_the_details(): void
     {
         $cnpj = '00000000000191';

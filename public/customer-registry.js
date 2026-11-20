@@ -46,9 +46,12 @@ document.querySelectorAll('[data-registry-url]').forEach(registryButton => {
             }
             for (const [name, value] of Object.entries(data.fields)) {
                 const input = form.elements.namedItem(name);
-                if (input instanceof HTMLInputElement && !input.value.trim()) input.value = value;
+                if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement)) continue;
+                if (input.value.trim() && input.value !== input.dataset.registryDefault) continue;
+                if (input instanceof HTMLSelectElement && !Array.from(input.options).some(option => option.value === value)) continue;
+                input.value = value;
             }
-            status.textContent = 'Dados da BrasilAPI inseridos nos campos vazios. Revise o cadastro e informe a IE, se houver.';
+            status.textContent = 'Consulta concluída. Confira os dados antes de salvar.';
         } catch {
             if (requestGeneration !== generation) return;
             status.textContent = 'Consulta indisponível. Preencha manualmente ou tente novamente.';
