@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="/brand.css?v=20261116-vexo1">
     <link rel="stylesheet" href="/platform.css?v={{ filemtime(public_path('platform.css')) }}">
     <link rel="stylesheet" href="/platform-content.css?v={{ filemtime(public_path('platform-content.css')) }}">
+    @if(request()->routeIs('platform.license.installments.show'))
+        <link rel="stylesheet" href="/license-payment.css?v={{ filemtime(public_path('license-payment.css')) }}">
+    @endif
     @isset($platformAdmin)<script src="/platform-shell.js?v={{ filemtime(public_path('platform-shell.js')) }}" defer></script>@endisset
 </head>
 <body class="{{ isset($platformAdmin) ? 'platform-shell' : 'platform-guest' }}">

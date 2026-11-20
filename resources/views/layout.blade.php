@@ -15,6 +15,9 @@
 @if(request()->routeIs('document.show') && ($document->type ?? null) === 'work_order')
     <link rel="stylesheet" href="/work-order-print.css?v={{ filemtime(public_path('work-order-print.css')) }}" media="print">
 @endif
+@if(request()->routeIs('license.installments.show'))
+    <link rel="stylesheet" href="/license-payment.css?v={{ filemtime(public_path('license-payment.css')) }}">
+@endif
 </head>
 <body @if($wizardMode??false) class="onboarding-shell" @endif>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
