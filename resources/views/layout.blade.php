@@ -18,13 +18,15 @@
 @if(request()->routeIs('license.installments.show'))
     <link rel="stylesheet" href="/license-payment.css?v={{ filemtime(public_path('license-payment.css')) }}">
 @endif
+<link rel="stylesheet" href="/company-brand.css?v={{ filemtime(public_path('company-brand.css')) }}">
+<script defer src="/company-brand.js?v={{ filemtime(public_path('company-brand.js')) }}"></script>
 </head>
 <body @if($wizardMode??false) class="onboarding-shell" @endif>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 @if(!($wizardMode??false))@include('partials.company-navigation')@endif
 <div class="workspace">
     <header>
-        <div class="workspace-location"><button type="button" class="menu-toggle" aria-controls="company-navigation" aria-expanded="true" aria-label="Abrir menu"><x-navigation-icon name="menu"/></button><span class="workspace-section">@yield('navigation-section','Gestão')</span><x-navigation-icon name="chevron"/><span class="workspace-page">@yield('title','Visão geral')</span></div>
+        <div class="workspace-location"><button type="button" class="menu-toggle" aria-controls="company-navigation" aria-expanded="true" aria-label="Abrir menu"><x-navigation-icon name="menu"/></button>@if(($companyProfile ?? null)?->logo_path)<div class="tenant-brand-mobile">@include('components.tenant-brand-mark')</div>@endif<span class="workspace-section">@yield('navigation-section','Gestão')</span><x-navigation-icon name="chevron"/><span class="workspace-page">@yield('title','Visão geral')</span></div>
         <div class="workspace-account"><span class="user-avatar" aria-hidden="true">{{ mb_substr($currentUser?->name ?? 'U',0,1) }}</span><span class="current-user">{{ $currentUser?->name }}</span><a class="account-link" href="{{ route('account.password',['company'=>$tenant->slug]) }}">Minha senha</a><form method="post" action="{{ route('logout',['company'=>$tenant->slug]) }}">@csrf<button class="text-button">Sair</button></form></div>
     </header>
     <main id="main-content" tabindex="-1">

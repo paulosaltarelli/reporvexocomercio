@@ -9,9 +9,12 @@
 @php($mainFields=array_diff_key($visibleFields,array_flip($commercialKeys)))
 @if(in_array($kind, ['customers', 'suppliers'], true))
 <form class="panel" method="get" action="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}" role="search">
-    <label for="catalog-search">Buscar por nome, CPF ou CNPJ</label>
-    <div class="actions"><input id="catalog-search" name="q" maxlength="100" type="search" value="{{ $search }}">
-        <button class="secondary">Buscar</button>
+    <div class="toolbar seller-list-filter">
+        <div>
+            <label for="catalog-search">Buscar por nome, CPF ou CNPJ</label>
+            <input id="catalog-search" name="q" maxlength="100" type="search" value="{{ $search }}">
+        </div>
+        <button type="submit" class="button secondary">Buscar</button>
         @if($search !== '')<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}">Limpar busca</a>@endif
     </div>
 </form>

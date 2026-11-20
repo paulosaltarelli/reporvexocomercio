@@ -41,7 +41,7 @@
         <div><label for="finance-status">Situação</label><select id="finance-status" name="status"><option value="">Todas</option>@foreach(['pending'=>'Pendentes e parciais','overdue'=>'Vencidas','paid'=>'Liquidadas','cancelled'=>'Canceladas'] as $value=>$label)<option value="{{ $value }}" @selected(($statusFilter??'')===$value)>{{ $label }}</option>@endforeach</select></div>
         <div><label for="finance-from">Vencimento a partir de</label><input id="finance-from" name="from" type="date" value="{{ $from??'' }}"></div>
         <div><label for="finance-to">Vencimento até</label><input id="finance-to" name="to" type="date" value="{{ $to??'' }}"></div>
-        <button class="primary">Aplicar filtros</button>
+        <button type="submit" class="button secondary">Aplicar filtros</button>
         @if(request()->hasAny(['q','direction','status','from','to','sale']))<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
     </form>
     <p class="hint report-period">{{ $entries->total() }} contas e parcelas encontradas · página {{ $entries->currentPage() }} de {{ $entries->lastPage() }}. @if($from??null)Vencimento a partir de {{ \Carbon\Carbon::parse($from)->format('d/m/Y') }}.@endif @if($to??null)Até {{ \Carbon\Carbon::parse($to)->format('d/m/Y') }}.@endif A impressão inclui esta página da listagem.</p>

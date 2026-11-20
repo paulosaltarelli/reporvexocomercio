@@ -6,3 +6,24 @@
 @media print{.icon-button,.document-guidance{display:none!important}}
 .workspace .pos-payment .form-grid,.workspace .card-fee-fields .form-grid,.workspace .split-payment-row .form-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:14px}.workspace [hidden]{display:none!important}
 .workspace .card-rate-grid{grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr))}.workspace .icon-button:focus-visible{outline-color:#1463eb}.document-form #items:empty~.sale-totals,.document-form #items:empty~.sale-totals+p{display:none}
+
+/* Action variants in the store workspace. */
+.workspace button:is(.secondary,.danger):not(.button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 10px 16px;
+    border-radius: 7px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.workspace button.secondary:not(.button) { color: var(--text); border: 1px solid #c7d5e5; background: white; }
+.workspace button.danger:not(.button) { border: 1px solid #aa2538; background: #aa2538; color: white; }
+.workspace :is([class="button"],.button.primary,button.primary):not(:disabled):hover { background-color: #1056c1; color: white; text-decoration: none; }
+.workspace :is(.button.secondary,button.secondary):not(:disabled):hover { background-color: #eef4fb; color: #233d59; text-decoration: none; }
+.workspace :is(.button.danger,button.danger):not(:disabled):hover { background-color: #8b1d2e; color: white; text-decoration: none; }
+.workspace :is(.button,button.primary,button.secondary,button.danger,.text-button,.icon-button):focus-visible { outline: 3px solid #2173c7; outline-offset: 3px; }
+.workspace button:disabled { cursor: not-allowed; }

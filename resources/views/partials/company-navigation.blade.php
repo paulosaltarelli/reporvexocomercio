@@ -68,7 +68,13 @@
 @section('navigation-section', $navigationSection)
 <aside class="app-sidebar" aria-label="Navegação da empresa">
     <div class="sidebar-heading">
+        @if(($companyProfile ?? null)?->logo_path)
+            <a class="tenant-brand" href="{{ route($isAdmin ? 'dashboard' : app(\App\Access\AccessProfiles::class)->landing($currentUser), ['company' => $tenant->slug]) }}" aria-label="{{ $tenant->name }}, início">
+                @include('components.tenant-brand-mark')
+            </a>
+        @else
         <a class="brand" href="{{ route($isAdmin ? 'dashboard' : app(\App\Access\AccessProfiles::class)->landing($currentUser), ['company' => $tenant->slug]) }}" aria-label="Vendra por Vexo, início">vendra<span class="brand-endorsement">por <img src="/brand/vexo-logo-light.png" width="2172" height="724" alt="Vexo"></span></a>
+        @endif
         <button type="button" class="sidebar-close" aria-label="Fechar menu"><x-navigation-icon name="close"/></button>
     </div>
     <div class="company"><span class="company-symbol"><x-navigation-icon name="building"/></span><div><span class="company-caption">SUA EMPRESA</span><strong>{{ $tenant->name }}</strong></div></div>

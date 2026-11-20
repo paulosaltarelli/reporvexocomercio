@@ -17,14 +17,14 @@
 <section class="company-logo-editor" aria-labelledby="company-logo-title">
     <h2 id="company-logo-title">Logotipo da empresa</h2>
     <div class="company-logo-edit-grid">
-        <div class="company-logo-preview"><img id="company-logo-preview" src="{{ route('business.logo',['company'=>$tenant->slug,'v'=>$profile->updated_at?->timestamp??0]) }}" alt="{{ $profile->logo_path?'Logotipo atual da empresa':'Marca Vendra usada como padrão' }}" width="200" height="80"></div>
+        <div class="company-logo-preview"><img id="company-logo-preview" src="{{ route('business.logo',['company'=>$tenant->slug,'v'=>$profile->logoVersion()]) }}" alt="{{ $profile->logo_path?'Logotipo atual da empresa':'Marca Vendra usada como padrão' }}" width="200" height="80"></div>
         <div>
             <div class="field"><label for="company-logo-upload">Escolher logotipo</label><input id="company-logo-upload" name="logo" type="file" accept="image/png,image/jpeg,image/webp"><small class="hint">PNG, JPEG ou WebP, até 2 MB. Dimensões entre 48 × 48 e 4096 × 4096 pixels. A imagem é ajustada pelo sistema.</small></div>
             @if($profile->logo_path)
                 <input type="hidden" name="remove_logo" value="0"><label class="checkbox-line" style="margin-top:14px"><input id="remove-company-logo" type="checkbox" name="remove_logo" value="1" @checked(old('remove_logo'))> Remover o logotipo atual e usar a marca Vendra</label>
             @endif
             <p class="hint" id="company-logo-status" role="status">{{ $profile->logo_path?'O logotipo atual será mantido se você não escolher outro arquivo.':'Sem logotipo próprio, a marca Vendra é usada como padrão.' }}</p>
-            <p class="hint">A alteração será aplicada ao salvar os dados da empresa.</p>
+            <p class="hint">Ao salvar, o logotipo aparece no login, no menu da loja e nos documentos e relatórios.</p>
         </div>
     </div>
 </section>

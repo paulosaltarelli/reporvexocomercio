@@ -2492,7 +2492,10 @@ class CommerceTest extends TestCase
     public function test_company_logo_is_sanitized_private_and_scoped_to_its_tenant(): void
     {
         \Illuminate\Support\Facades\Storage::fake('local');
-        $this->get('/app/a/business/logo')->assertRedirect('/app/a/login');
+        $this->get('/app/a/business/logo')->assertOk()->assertHeader('Content-Type', 'image/svg+xml');
+        $this->get('/app/a/login')->assertOk()->assertDontSee('/app/a/business/logo', false);
+        $this->get('/app/a/business')->assertRedirect('/app/a/login');
+        $this->freezeTime();
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
         $svg = \Illuminate\Http\UploadedFile::fake()->createWithContent('unsafe.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
         $this->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'logo' => $svg])->assertSessionHasErrors('logo');
@@ -2515,7 +2518,26 @@ class CommerceTest extends TestCase
         $this->get('/app/a/reports')->assertOk()->assertSee('/app/a/business/logo', false)->assertSee('Cliente A QA');
         $brandedCsv = $this->get('/app/a/reports/export/stock')->assertOk()->streamedContent();
         $this->assertStringContainsString('Cliente A QA', $brandedCsv);
-        $this->get('/app/b/business/logo')->assertRedirect('/app/b/login');
+        $logoSource = function (string $page): string {
+            $response = $this->get($page)->assertOk();
+            $dom = new \DOMDocument();
+            @$dom->loadHTML($response->getContent());
+            $images = (new \DOMXPath($dom))->query('//*[contains(concat(" ",normalize-space(@class)," ")," tenant-brand-mark ")]//img');
+            $this->assertGreaterThan(0, $images->length, $page);
+            $source = $images->item(0)->getAttribute('src');
+            foreach ($images as $image) {
+                $this->assertSame($source, $image->getAttribute('src'), $page);
+            }
+            return $source;
+        };
+        $this->flushSession();
+        $loginLogo = $logoSource('/app/a/login');
+        $this->assertSame('/app/a/business/logo', parse_url($loginLogo, PHP_URL_PATH));
+        $this->assertSame($stored, file_get_contents($this->get($loginLogo)->assertOk()->baseResponse->getFile()->getPathname()));
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->assertSame($loginLogo, $logoSource('/app/a/products'));
+        $this->get('/app/b/business/logo')->assertOk()->assertHeader('Content-Type', 'image/svg+xml');
+        $this->get('/app/a/products')->assertOk();
 
         app(TenantConnection::class)->connect($this->b);
         $otherUser = User::forceCreate(['id' => $this->user->id, 'name' => 'Administrador B', 'email' => 'logo-b@example.test', 'password' => 'other-logo-admin-password', 'role' => 'admin']);
@@ -2525,7 +2547,17 @@ class CommerceTest extends TestCase
         if ($otherResponse->getStatusCode() === 200) {
             $this->assertStringStartsWith('image/svg+xml', $otherResponse->headers->get('Content-Type'));
         }
-        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'remove_logo' => '1'])->assertRedirect();
+        $replacement = \Illuminate\Http\UploadedFile::fake()->image('replacement.png', 120, 64);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])
+            ->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'logo' => $replacement])->assertRedirect()->assertSessionHasNoErrors();
+        $newLogo = $logoSource('/app/a/login');
+        $this->assertNotSame($loginLogo, $newLogo);
+        $newFile = $this->get($newLogo)->assertOk()->baseResponse->getFile()->getPathname();
+        $this->assertSame([120, 64], array_slice(getimagesize($newFile), 0, 2));
+        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($path);
+        $this->post('/app/a/business', ['legal_name' => 'Cliente A QA', 'remove_logo' => '1'])->assertRedirect();
+        $this->get($newLogo)->assertOk()->assertHeader('Content-Type', 'image/svg+xml');
+        $this->get('/app/a/login')->assertOk()->assertDontSee('/app/a/business/logo', false);
         app(TenantConnection::class)->connect($this->a);
         $this->assertNull(\App\Models\BusinessProfile::findOrFail(1)->logo_path);
         \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($path);

@@ -6,7 +6,7 @@
 @if($sale->document_id && $currentUser->allows('documents.view') && $sale->document?->type==='work_order')
     @include('components.work-order-print',['orderId'=>$sale->document_id])
 @endif
-@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button class="button secondary no-print" onclick="window.print()">Imprimir</button>
+@if($currentUser->allows('sales.create'))<a class="button no-print" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$currentUser->allows('sales.seller')?$sale->salesperson_id:null]) }}">Nova venda</a>@endif <button type="button" class="button secondary no-print" onclick="window.print()">Imprimir</button>
  <a class="button secondary no-print" href="{{ request()->fullUrlWithQuery(['termica'=>1]) }}">Impressão térmica</a>@endsection
 @section('content')
 @php($passedCardFee=app(\App\Services\SalePayments::class)->passedTotal($sale->id))

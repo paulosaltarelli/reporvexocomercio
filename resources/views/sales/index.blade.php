@@ -11,7 +11,7 @@
         <div><label for="sales-filter-payment">Recebimento</label><select id="sales-filter-payment" name="payment_status"><option value="">Todos</option><option value="paid" @selected(($paymentStatus??'')==='paid')>Recebidas</option><option value="pending" @selected(($paymentStatus??'')==='pending')>A receber</option></select></div>
         <div><label for="sales-filter-from">Venda a partir de</label><input id="sales-filter-from" type="date" name="from" value="{{ $from??'' }}"></div>
         <div><label for="sales-filter-to">Venda até</label><input id="sales-filter-to" type="date" name="to" value="{{ $to??'' }}"></div>
-        <button class="primary">Aplicar filtros</button>
+        <button type="submit" class="button secondary">Aplicar filtros</button>
         @if(request()->filled('q') || request()->filled('status') || request()->filled('payment_status') || request()->filled('from') || request()->filled('to') || $sellerId)<a href="{{ route('sales',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
     </form>
     <p class="hint">{{ $sales->total() }} {{ $sales->total()===1?'venda encontrada':'vendas encontradas' }} · Datas pela realização da venda. Recebimentos e estornos podem ocorrer em outro período.</p>

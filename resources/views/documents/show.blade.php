@@ -2,7 +2,7 @@
 @extends('layout')
 @section('title',($document->type==='quote'?'Orçamento #':'Ordem de serviço #').$document->id)
 @section('subtitle',$document->type==='work_order'?'Acompanhe o atendimento, inicie o serviço e finalize quando estiver pronto.':'Documento interno. Aprovação registrada manualmente pela equipe.')
-@section('actions')<button class="button secondary no-print" onclick="window.print()">{{ $document->type==='work_order'?'Imprimir OS':'Imprimir' }}</button>
+@section('actions')<button type="button" class="button secondary no-print" onclick="window.print()">{{ $document->type==='work_order'?'Imprimir OS':'Imprimir' }}</button>
 @endsection
 @section('content')
 @php

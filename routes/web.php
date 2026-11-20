@@ -37,6 +37,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('redefinir-senha', 'form')->name('password.reset');
         Route::post('redefinir-senha', 'update')->middleware('throttle:12,1,password-reset:')->name('password.update');
     });
+    Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
     Route::middleware([TenantAuthenticated::class, EnforceContractAccess::class])->group(function () {
@@ -61,7 +62,6 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('cash/movement', [CashController::class, 'movement'])->name('cash.movement');
         Route::post('cash/close', [CashController::class, 'close'])->name('cash.close');
         Route::get('cashflow', [CashflowController::class, 'index'])->name('cashflow');
-        Route::get('business/logo',[BusinessController::class,'logo'])->name('business.logo');
         Route::post('business/cnpj', [BusinessController::class, 'lookupRegistry'])
             ->middleware('throttle:10,1')->name('business.cnpj');
         Route::get('business', [BusinessController::class, 'form'])->name('business');

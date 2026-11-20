@@ -105,7 +105,7 @@ class BusinessController extends Controller
         return back()->with('success', 'Dados e identidade da empresa atualizados.');
     }
     public function logo(Request $r){
-        $profile=BusinessProfile::find(1);$tenantId=$r->attributes->get('tenant')->id;$path=$profile?->logo_path;
+        $tenantId=$r->attributes->get('tenant')->id;$path=BusinessProfile::whereKey(1)->value('logo_path');
         if($path&&$this->ownedPath($path,$tenantId)&&Storage::disk('local')->exists($path))return $this->privateImage(Storage::disk('local')->path($path),'image/png');
         return $this->privateImage(public_path('brand/vendra-logo.svg'),'image/svg+xml');
     }

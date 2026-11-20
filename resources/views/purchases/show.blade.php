@@ -1,7 +1,7 @@
 @extends('layout')
 @section('title','Compra #'.$purchase->id)
 @section('subtitle','Recebimento registrado. Os produtos já foram incorporados ao estoque e ao custo médio.')
-@section('actions')<button class="button secondary no-print" onclick="window.print()">Imprimir</button>@endsection
+@section('actions')<button type="button" class="button secondary no-print" onclick="window.print()">Imprimir</button>@endsection
 @section('content')
 <section class="panel">
     <div class="split"><div><h2>{{ $purchase->supplier?->name ?? 'Fornecedor não informado' }}</h2><p>Recebida em {{ \Carbon\Carbon::parse($purchase->purchased_on)->format('d/m/Y') }}</p><p class="muted">Referência: {{ $purchase->reference ?? 'Não informado' }}</p></div><div><span class="badge">Recebida</span><p class="hint">Consulte as parcelas e baixas no financeiro para conferir o pagamento atual.</p></div></div>
