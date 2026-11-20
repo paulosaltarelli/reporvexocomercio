@@ -75,12 +75,12 @@ final class AccessProfiles
     }
     public function landing(User $user): string
     {
-        if ($user->role===User::ROLE_INSTALLER) return 'setup';
+        if ($user->role===User::ROLE_INSTALLER) return \App\Services\InstallerAccess::open() ? 'setup' : 'installer.home';
         foreach(['desk'=>'desk.use','dashboard'=>'dashboard.view','sales'=>'sales.view','finance'=>'finance.view','stock'=>'stock.view','products'=>'products.view','reports'=>'reports.view'] as $route=>$permission)if($this->allows($user,$permission))return $route;
         if($this->allows($user,'commissions.self'))return 'commissions.mine';
         return 'account.password';
     }
-    private function admin(int $actor): void { abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403); }
+    private function admin(int $actor): void { abort_unless(\App\Services\InstallerAccess::adminActor($actor),403); }
     private function locked(int $version): CompanyOperation
     {
         CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>\App\Services\CompanyOperations::DEFAULTS]);

@@ -138,9 +138,6 @@ class CompanyOperations
             if ($row->completed_at) return;
             $configuration=$row->configuration;$configuration['_onboarding_completed_at']??=now()->toIso8601String();
             $row->update(['configuration'=>$configuration,'completed_at'=>now(),'updated_by'=>$actor,'version'=>$row->version+1]);
-            User::where('role',User::ROLE_INSTALLER)->where('active',true)->update([
-                'active'=>false,'auth_version'=>DB::raw('auth_version + 1'),
-            ]);
             $this->audit($row,$actor,'completed',[],['completed_at'=>$row->completed_at->toIso8601String()]);
         },3);
     }

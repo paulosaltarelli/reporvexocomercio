@@ -63,7 +63,10 @@ trait InstallerAccessCases
         $this->flushSession();
         $accept = '/app/a/convite-implantacao';
         $payload = ['email' => $email, 'password' => 'Senha escolhida de QA 123', 'password_confirmation' => 'Senha escolhida de QA 123', 'token' => $original];
-        $this->get($accept)->assertOk()->assertDontSee($original);
+        $this->get($accept)->assertOk()->assertDontSee($original)
+            ->assertSee('aria-controls="invitation-password"', false)->assertSee('aria-controls="invitation-confirm"', false)
+            ->assertDontSee('aria-controls="invitation-code"', false);
+        $this->get('/app/a/login')->assertOk()->assertSee('aria-controls="password"', false);
         $this->postJson('/app/b/convite-implantacao', $payload)->assertUnprocessable();
         $this->postJson($accept, array_replace($payload, ['email' => 'outra@example.test']))->assertUnprocessable();
         $this->travelTo($invitation->expires_at->addMinute());
@@ -176,7 +179,75 @@ trait InstallerAccessCases
         $this->assertFalse(User::where('email', $email)->exists());
     }
 
-    public function test_installer_completes_only_its_store_setup_and_all_its_installer_sessions_are_revoked(): void
+    public function test_legacy_installer_recovery_and_explicit_dba_grant_keep_password_and_scope_to_one_store(): void
+    {
+        $email = 'implantador-perfil@example.test';
+        [$grant, $token, $central] = $this->inviteInstaller($email);
+        $password = 'Senha escolhida da loja 123';
+        $this->flushSession();
+        $this->post('/app/a/convite-implantacao', ['email' => $email, 'token' => $token,
+            'password' => $password, 'password_confirmation' => $password])
+            ->assertRedirect('/app/a/setup')->assertSessionHasNoErrors();
+        $this->post('/app/a/logout')->assertRedirect('/app/a/login');
+        $connect = app(TenantConnection::class);
+        $connect->connect($this->a);
+        $user = User::where('email', $email)->sole();
+        $originalHash = $user->password;
+        $completed = now()->subDay()->startOfMinute();
+        $setup = CompanyOperation::findOrFail(1);
+        $setup->update(['completed_at' => $completed, 'configuration' => $setup->configuration +
+            ['_onboarding_completed_at' => $completed->toIso8601String()]]);
+        \App\Models\OperationRecord::create(['action' => 'completed', 'user_id' => $this->user->id,
+            'version' => $setup->version, 'before' => [], 'after' => ['completed_at' => $completed->toIso8601String()],
+            'created_at' => $completed]);
+        User::whereKey($user->id)->update(['active' => false, 'auth_version' => $user->auth_version + 1,
+            'updated_at' => $completed->copy()->addHour()]);
+        $login = ['email' => strtoupper($email), 'password' => $password];
+        $this->post('/app/a/login', $login)->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+        $connect->connect($this->a);
+        $this->assertFalse($user->fresh()->active);
+        User::whereKey($user->id)->update(['updated_at' => $completed]);
+        $this->post('/app/a/login', array_replace($login, ['password' => 'senha-incorreta']))
+            ->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+        $connect->connect($this->a);
+        $this->assertFalse($user->fresh()->active);
+        $this->post('/app/a/login', $login)->assertRedirect('/app/a/implantacao/situacao')->assertSessionHasNoErrors();
+        $this->get('/app/a/users')->assertForbidden();
+        $connect->connect($this->a);
+        $this->assertTrue($user->fresh()->active);
+        $this->assertSame($originalHash, $user->fresh()->password);
+        $base = "/vexo-admin/companies/{$this->a->id}/accesses/{$grant->id}/update";
+        $dba = ['enabled' => 1, 'access_profile' => 'tenant_dba', 'expected_version' => $grant->fresh()->version];
+        $this->post($base, $dba)->assertRedirect('/vexo-admin/login');
+        $this->withSession($central)->post("/vexo-admin/companies/{$this->b->id}/accesses/{$grant->id}/update", $dba)->assertNotFound();
+        $this->post($base, $dba)->assertRedirect()->assertSessionHasNoErrors();
+        $this->get('/app/a/users')->assertRedirect('/app/a/login');
+        $this->flushSession();
+        $this->post('/app/a/login', $login)->assertRedirect('/app/a')->assertSessionHasNoErrors();
+        $this->get('/app/a/users')->assertOk();
+        $this->get('/app/a/desk')->assertOk();
+        $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
+        $this->get('/app/b/users')->assertRedirect('/app/b/login');
+        $connect->connect($this->a);
+        $this->assertSame(User::ROLE_INSTALLER, $user->fresh()->role);
+        $this->assertSame($originalHash, $user->fresh()->password);
+        $this->post('/app/a/login', $login)->assertRedirect('/app/a');
+        $this->withSession($central)->post($base, ['enabled' => 0, 'access_profile' => 'tenant_dba',
+            'expected_version' => $grant->fresh()->version])->assertRedirect()->assertSessionHasNoErrors();
+        $this->get('/app/a/users')->assertRedirect('/app/a/login');
+        $this->flushSession();
+        $this->post('/app/a/login', $login)->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+        $this->withSession($central)->post($base, ['enabled' => 1, 'access_profile' => 'installer',
+            'expected_version' => $grant->fresh()->version])->assertRedirect()->assertSessionHasNoErrors();
+        $this->flushSession();
+        $this->post('/app/a/login', $login)->assertRedirect('/app/a/implantacao/situacao');
+        $this->get('/app/a/users')->assertForbidden();
+        $connect->connect($this->a);
+        $this->assertSame($originalHash, $user->fresh()->password);
+        $this->assertTrue($this->user->fresh()->active);
+    }
+
+    public function test_installer_can_return_to_read_only_status_after_setup_until_central_revocation(): void
     {
         $attributes = ['name' => 'Implantação QA', 'email' => 'implantacao@example.test',
             'role' => 'installer', 'password' => 'senha-escolhida-em-qa-123', 'must_change_password' => false];
@@ -226,18 +297,31 @@ trait InstallerAccessCases
         $connect->connect($this->a);
         $this->post('/app/a/setup/complete', ['version' => $operation->fresh()->version, 'reviewed' => 1])
             ->assertRedirect()->assertSessionHasNoErrors();
-        $this->get('/app/a/setup')->assertRedirect('/app/a/login');
+        $status = '/app/a/implantacao/situacao';
+        $this->get($status)->assertOk();
         $connect->connect($this->a);
         $this->assertNotNull($operation->fresh()->completed_at);
-        foreach ([$installer, $peer] as $user) {
-            $revoked = $user->fresh();
-            $this->assertFalse($revoked->active);
-            $this->assertGreaterThan($user->auth_version, $revoked->auth_version);
-        }
-        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $peer->id, 'auth_version' => 0])
-            ->get('/app/a/setup')->assertRedirect('/app/a/login');
+        $this->assertTrue($installer->fresh()->active);
+        $this->assertTrue($peer->fresh()->active);
+        $version = $operation->fresh()->version;
+        $this->get('/app/a/desk')->assertForbidden();
+        $this->post('/app/a/setup/company', ['legal_name' => 'Alteração após conclusão'])->assertForbidden();
+        $connect->connect($this->a);
+        $this->assertSame($version, $operation->fresh()->version);
+        $this->post('/app/a/logout')->assertRedirect('/app/a/login');
+        $this->post('/app/a/login', ['email' => $installer->email, 'password' => 'senha-incorreta'])
+            ->assertSessionHasErrors(['email' => 'E-mail ou senha inválidos.'])->assertSessionMissing('user_id');
+        $this->post('/app/a/login', ['email' => strtoupper($installer->email), 'password' => $attributes['password']])
+            ->assertRedirect($status)->assertSessionHasNoErrors();
+        $this->get($status)->assertOk();
+        $grant = InstallerInvitation::where('tenant_id', $this->a->id)->where('user_id', $installer->id)->sole();
+        $this->withSession(['platform_admin_id' => $admin->id, 'platform_auth_version' => $admin->auth_version,
+            'platform_mfa_at' => time()])->post("/vexo-admin/companies/{$this->a->id}/accesses/{$grant->id}/revoke",
+            ['expected_version' => $grant->version])->assertRedirect()->assertSessionHasNoErrors();
+        $this->get($status)->assertRedirect('/app/a/login');
+        $this->flushSession();
         $this->post('/app/a/login', ['email' => $installer->email, 'password' => $attributes['password']])
-            ->assertSessionHasErrors('email');
+            ->assertSessionHasErrors(['email' => 'E-mail ou senha inválidos.'])->assertSessionMissing('user_id');
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $owner->id, 'auth_version' => 0])
             ->get('/app/a/desk')->assertOk();
         $connect->connect($this->b);

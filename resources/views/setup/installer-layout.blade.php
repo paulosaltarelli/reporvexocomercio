@@ -14,7 +14,7 @@
         <div><strong>{{ $tenant->name }}</strong><span class="muted">Implantação</span></div>
         <nav aria-label="Conta de implantação">
             @if(request()->routeIs('account.password'))
-                @unless($currentUser->must_change_password)<a href="{{ route('setup',['company'=>$tenant->slug]) }}">Voltar à implantação</a>@endunless
+                @unless($currentUser->must_change_password)<a href="{{ route(\App\Services\InstallerAccess::open($companySetup ?? null) ? 'setup' : 'installer.home',['company'=>$tenant->slug]) }}">Voltar à implantação</a>@endunless
             @else
                 <a href="{{ route('account.password',['company'=>$tenant->slug]) }}">Minha senha</a>
             @endif

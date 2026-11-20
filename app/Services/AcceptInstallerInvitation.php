@@ -36,9 +36,6 @@ final class AcceptInstallerInvitation
                 // lets the same invitation recover that account without granting access until accepted centrally.
                 $user = DB::connection('tenant')->transaction(function () use ($tenant, $invite, $password) {
                     $setup = InstallerAccess::lockSetup();
-                    if (! InstallerAccess::open($setup)) {
-                        $this->invalid();
-                    }
                     $account = User::where('email', $invite->email)->lockForUpdate()->first();
                     if ($account) {
                         if ($account->role !== User::ROLE_INSTALLER || ! hash_equals(mb_strtolower($account->email), mb_strtolower($invite->email))) {

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Platform\SupportAccess;
+use App\Services\InstallerAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -17,19 +19,26 @@ class AuthController extends Controller
     public function login(Request $r)
     {
         $data = $r->validate(['email' => 'required|email', 'password' => 'required|string']);
-        $key = 'login:'.hash('sha256', $r->ip().'|'.$r->attributes->get('tenant')->id.'|'.strtolower($data['email']));
+        $email = mb_strtolower(trim($data['email']));
+        $key = 'login:'.hash('sha256', $r->ip().'|'.$r->attributes->get('tenant')->id.'|'.$email);
         if (RateLimiter::tooManyAttempts($key, 5)) {
             return back()->withErrors(['email' => 'Muitas tentativas. Aguarde um minuto.']);
         }
-        $user = User::where('email', $data['email'])->where('active', true)->first();
-        if (! $user || \App\Platform\SupportAccess::isManaged($user) || ! Hash::check($data['password'], $user->password)
-            || ($user->role===User::ROLE_INSTALLER && (!\App\Services\InstallerAccess::open() || !\App\Services\InstallerAccess::granted($user)))) {
+        $user = User::where('email', $email)->first();
+        $authenticated = $user && ! SupportAccess::isManaged($user)
+            && mb_strtolower($user->email) === $email && Hash::check($data['password'], $user->password);
+        $installer = $authenticated && $user->role === User::ROLE_INSTALLER;
+        if ($installer) {
+            if (!$user->active) InstallerAccess::restoreAfterCompletion($user);
+            $authenticated = InstallerAccess::applyGrant($user);
+        }
+        if (! $authenticated || ! $user->active) {
             RateLimiter::hit($key, 60);
 
             return back()->withErrors(['email' => 'E-mail ou senha inválidos.']);
         }
         RateLimiter::clear($key);
-        if ($user->role===User::ROLE_INSTALLER) {
+        if ($installer) {
             $r->session()->invalidate();
             $r->session()->regenerateToken();
         } else {

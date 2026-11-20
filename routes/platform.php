@@ -38,6 +38,7 @@ Route::prefix('vexo-admin')->group(function () {
             Route::get('/', [InstallerAccessController::class,'index'])->name('index');
             Route::post('/', [InstallerAccessController::class,'create'])->middleware('throttle:10,1')->name('create');
             Route::post('{invitation}/resend', [InstallerAccessController::class,'resend'])->whereNumber('invitation')->middleware('throttle:6,1')->name('resend');
+            Route::post('{invitation}/update', [InstallerAccessController::class,'update'])->whereNumber('invitation')->middleware('throttle:15,1')->name('update');
             Route::post('{invitation}/revoke', [InstallerAccessController::class,'revoke'])->whereNumber('invitation')->middleware('throttle:15,1')->name('revoke');
         });
         Route::prefix('companies/{id}/license')->whereNumber('id')->name('platform.license.')->group(function () {

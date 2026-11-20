@@ -454,12 +454,24 @@ class SharedDatabaseTest extends TestCase
         $this->postJson('/app/shared-b/convite-implantacao', $payload)->assertUnprocessable();
         $this->post('/app/shared-a/convite-implantacao', $payload)->assertRedirect('/app/shared-a/setup')->assertSessionHasNoErrors();
         $this->get('/app/shared-a/setup')->assertOk();
+        $this->post('/app/shared-a/logout')->assertRedirect('/app/shared-a/login')->assertSessionMissing('user_id');
+        $typedEmail = '  '.strtoupper($email).'  ';
+        $this->from('/app/shared-a/login')->post('/app/shared-a/login', ['email' => $typedEmail, 'password' => 'senha-incorreta'])
+            ->assertRedirect('/app/shared-a/login')->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+        $this->from('/app/shared-b/login')->post('/app/shared-b/login', ['email' => $typedEmail, 'password' => $payload['password']])
+            ->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+        $this->post('/app/shared-a/login', ['email' => $typedEmail, 'password' => $payload['password']])
+            ->assertRedirect('/app/shared-a/setup')->assertSessionHasNoErrors()->assertSessionHas('user_id', $grant->fresh()->user_id);
+        $this->get('/app/shared-a/setup')->assertOk();
         $this->get('/app/shared-a/desk')->assertForbidden();
         $this->connect($this->a);
         $this->assertSame(User::where('email', $email)->sole()->id, (int) $grant->fresh()->user_id);
         $this->get('/app/shared-b/setup')->assertRedirect('/app/shared-b/login');
         $this->connect($this->b);
         $this->assertFalse(User::where('email', $email)->exists());
+        $grant->fresh()->update(['status' => 'revoked', 'revoked_at' => now()]);
+        $this->post('/app/shared-a/login', ['email' => $typedEmail, 'password' => $payload['password']])
+            ->assertSessionHasErrors('email')->assertSessionMissing('user_id');
     }
 
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void

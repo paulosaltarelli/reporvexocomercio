@@ -15,7 +15,7 @@ class TenantAuthenticated
         if (! $user || (int) $r->session()->get('auth_version', 0) !== (int) $user->auth_version) {
             return redirect()->route('login', ['company' => $tenant->slug]);
         }
-        if ($user->role===User::ROLE_INSTALLER && (!\App\Services\InstallerAccess::open() || !\App\Services\InstallerAccess::granted($user))) {
+        if ($user->role===User::ROLE_INSTALLER && !\App\Services\InstallerAccess::applyGrant($user)) {
             $r->session()->invalidate();
             $r->session()->regenerateToken();
             return redirect()->route('login',['company'=>$tenant->slug]);
@@ -32,7 +32,7 @@ class TenantAuthenticated
         view()->share('currentUser', $user);
 
         app(\App\Access\AccessProfiles::class)->authorize($r);
-        if ($user->role===User::ROLE_INSTALLER && $r->isMethod('POST') && $r->routeIs('setup.*','account.password.save')) {
+        if ($user->role===User::ROLE_INSTALLER && $r->isMethod('POST') && $r->routeIs('setup.*')) {
             return \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($r,$user,$next) {
                 $setup = \App\Services\InstallerAccess::lockSetup();
                 $locked = \App\Services\InstallerAccess::wizardActor($user->id,$setup);

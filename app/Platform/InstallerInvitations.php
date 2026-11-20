@@ -17,12 +17,24 @@ final class InstallerInvitations
 {
     public function __construct(private TenantConnection $connection) {}
 
-    public function setupOpen(Tenant $company): bool
+    public function storeState(Tenant $company, \Illuminate\Support\Collection $invitations): array
     {
-        if (!$company->active) return false;
+        if (!$company->active) return ['open'=>false, 'activeUsers'=>collect()];
         try {
             $this->connection->connect($company);
-            return InstallerAccess::open();
+            $users = User::whereIn('id',$invitations->pluck('user_id')->filter())->where('role',User::ROLE_INSTALLER)
+                ->get(['id','email','role','active','auth_version','updated_at'])->keyBy('id');
+            $activeUsers = $users->where('active',true)->pluck('email','id');
+            $open = InstallerAccess::open();
+            if (!$open) {
+                foreach ($invitations as $invitation) {
+                    $user = $users->get($invitation->user_id);
+                    if ($user && !$user->active && InstallerAccess::disabledByCompletion($user,$invitation)) {
+                        $activeUsers->put($user->id,$user->email);
+                    }
+                }
+            }
+            return compact('open','activeUsers');
         } finally {
             $this->connection->disconnect();
         }
@@ -31,9 +43,12 @@ final class InstallerInvitations
     public function change(Request $request, int $companyId, ?int $invitationId, string $operation): InstallerInvitation
     {
         $input = $request->validate($operation === 'create' ? [
-            'name'=>'required|string|max:180','email'=>'required|email|max:180','mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude',
+            'name'=>'required|string|max:180','email'=>'required|email|max:180','access_profile'=>'sometimes|required|in:installer,tenant_dba','mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude',
         ] : ['expected_version'=>'required|integer|min:1','mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude']);
-        $token = $operation === 'revoke' ? null : bin2hex(random_bytes(32));
+        if ($operation === 'update') {
+            $input += $request->validate(['enabled'=>'required|boolean','access_profile'=>'required|in:installer,tenant_dba']);
+        }
+        $token = in_array($operation, ['create','resend'], true) ? bin2hex(random_bytes(32)) : null;
         $challenge = PlatformMfa::needsChallenge((int)$request->session()->get('platform_mfa_at'));
 
         [$invitation,$company,$attempt] = DB::connection('central')->transaction(function () use ($request,$companyId,$invitationId,$operation,$input,$token,$challenge) {
@@ -48,7 +63,10 @@ final class InstallerInvitations
                 throw ValidationException::withMessages(['expected_version'=>'O acesso mudou. Confira a situação atual antes de continuar.']);
             }
             $attempt = null;
-            if ($operation === 'revoke') {
+            $before = ['access_profile'=>$invitation->access_profile, 'status'=>$invitation->status];
+            if ($operation === 'update') {
+                $this->updateGrant($company,$invitation,(bool)$input['enabled'],$input['access_profile']);
+            } elseif ($operation === 'revoke') {
                 if ($invitation->status === 'revoked') return [$invitation,$company,$attempt];
                 $this->revoke($company,$invitation);
             } else {
@@ -61,14 +79,15 @@ final class InstallerInvitations
                     throw ValidationException::withMessages(['email'=>'Já existe um convite ou acesso para este e-mail. Consulte a lista abaixo.']);
                 }
                 $this->checkRecipient($company,$email,$invitation);
-                if (!$invitation->exists) $invitation->fill(['tenant_id'=>$companyId,'name'=>$input['name'],'email'=>$email,'issued_by'=>$admin->id]);
+                if (!$invitation->exists) $invitation->fill(['tenant_id'=>$companyId,'name'=>$input['name'],'email'=>$email,'issued_by'=>$admin->id,'access_profile'=>$input['access_profile']??'installer']);
                 $invitation->fill(['status'=>'pending','delivery_status'=>'sending','delivered_at'=>null,'token_digest'=>hash('sha256',$token),
                     'expires_at'=>now()->addDay(),'version'=>$invitation->exists ? $invitation->version+1 : 1])->save();
                 $attempt = MailAttempt::begin($companyId, $company->name, $invitation->email,
                     InstallerInvitationMail::SUBJECT, 'installer_invitation', $invitation->id);
             }
             PlatformAudit::create(['platform_admin_id'=>$admin->id,'actor_name'=>$admin->name,'tenant_id'=>$companyId,
-                'action'=>'installer.'.$operation,'changes'=>['invitation_id'=>$invitation->id,'email'=>$invitation->email,'version'=>$invitation->version]]);
+                'action'=>'installer.'.$operation,'changes'=>['invitation_id'=>$invitation->id,'email'=>$invitation->email,'version'=>$invitation->version,
+                    'before'=>$before,'after'=>['access_profile'=>$invitation->access_profile,'status'=>$invitation->status]]]);
             return [$invitation,$company,$attempt];
         });
         if ($challenge) $request->session()->put('platform_mfa_at',time());
@@ -82,9 +101,7 @@ final class InstallerInvitations
         try {
             $this->connection->connect($company);
             DB::connection('tenant')->transaction(function () use ($company,$email,$invitation) {
-                if (!InstallerAccess::open(InstallerAccess::lockSetup())) {
-                    throw ValidationException::withMessages(['email'=>'A implantação desta empresa já foi concluída.']);
-                }
+                InstallerAccess::lockSetup();
                 $existing=User::where('email',$email)->lockForUpdate()->first();
                 if (!$existing) return;
                 $recovering=$invitation->exists && InstallerAccess::boundToInvite($existing,(int)$invitation->id);
@@ -95,6 +112,43 @@ final class InstallerInvitations
             });
         } finally {
             $this->connection->disconnect();
+        }
+    }
+
+    /** The caller locks company and invitation, in that order, and audits the actor in the same central transaction. */
+    public function updateGrant(Tenant $company, InstallerInvitation $invitation, bool $enabled, string $profile): void
+    {
+        if (!DB::connection('central')->transactionLevel()) throw new \LogicException('A concessão exige transação central.');
+        abort_unless((int)$invitation->tenant_id === (int)$company->id, 404);
+        if (!$invitation->accepted_at || !$invitation->user_id || !in_array($invitation->status,['accepted','revoked'],true)
+            || !array_key_exists($profile,InstallerInvitation::PROFILES)) {
+            throw ValidationException::withMessages(['grant'=>'Selecione um acesso aceito e um perfil válido.']);
+        }
+        if ($enabled) {
+            abort_unless($company->active,409,'A empresa está suspensa.');
+            $another = InstallerInvitation::where('tenant_id',$company->id)->where('email',$invitation->email)
+                ->where('id','<>',$invitation->id)->where(function ($query) use ($invitation) {
+                    $query->whereIn('status',['accepted','pending'])->orWhere('id','>',$invitation->id);
+                })->exists();
+            if ($another) throw ValidationException::withMessages(['grant'=>'Há outro vínculo para este e-mail. Consulte o registro mais recente.']);
+            try {
+                $this->connection->connect($company);
+                DB::connection('tenant')->transaction(function () use ($invitation) {
+                    InstallerAccess::lockSetup();
+                    $user = User::whereKey($invitation->user_id)->where('role',User::ROLE_INSTALLER)
+                        ->where('email',$invitation->email)->lockForUpdate()->first(['id','active','auth_version','role','email']);
+                    if (!$user) throw ValidationException::withMessages(['grant'=>'A conta vinculada não corresponde a este acesso.']);
+                    $user->update(['active'=>true,'auth_version'=>$user->auth_version+1]);
+                });
+            } finally {
+                $this->connection->disconnect();
+            }
+            $invitation->update(['access_profile'=>$profile,'status'=>'accepted','revoked_at'=>null,'version'=>$invitation->version+1]);
+        } elseif ($invitation->status === 'accepted') {
+            $invitation->access_profile = $profile;
+            $this->revoke($company,$invitation);
+        } else {
+            $invitation->update(['access_profile'=>$profile,'version'=>$invitation->version+1]);
         }
     }
 

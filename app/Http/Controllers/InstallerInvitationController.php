@@ -7,6 +7,14 @@ use Illuminate\Http\Request;
 
 final class InstallerInvitationController extends Controller
 {
+    public function home(Request $request)
+    {
+        if (\App\Services\InstallerAccess::open()) {
+            return redirect()->route('setup', ['company' => $request->route('company')]);
+        }
+        return view('auth.installer-home');
+    }
+
     public function form()
     {
         return response()->view('auth.installer-invitation')->header('Cache-Control', 'no-store, private')->header('Referrer-Policy', 'no-referrer');
@@ -22,6 +30,10 @@ final class InstallerInvitationController extends Controller
         $request->session()->regenerateToken();
         $request->session()->put(['tenant_id' => $tenant->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
-        return redirect()->route('setup', ['company' => $tenant->slug])->header('Cache-Control', 'no-store');
+        abort_unless(\App\Services\InstallerAccess::applyGrant($user), 403);
+        $landing = $user->role === 'admin'
+            ? (app(\App\Services\CompanyOnboarding::class)->required($tenant) ? 'setup' : 'dashboard')
+            : app(\App\Access\AccessProfiles::class)->landing($user);
+        return redirect()->route($landing, ['company' => $tenant->slug])->header('Cache-Control', 'no-store');
     }
 }

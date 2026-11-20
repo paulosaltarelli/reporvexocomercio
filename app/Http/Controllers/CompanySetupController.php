@@ -82,9 +82,7 @@ class CompanySetupController extends Controller
         if(!Seller::where('active',true)->exists())throw ValidationException::withMessages(['team'=>'Cadastre ao menos um responsável pelo caixa na etapa Equipe.']);
         $operations->complete((int)$data['version'],$actor);
         if ($r->attributes->get('currentUser')->role===User::ROLE_INSTALLER) {
-            $r->session()->invalidate();
-            $r->session()->regenerateToken();
-            return redirect()->route('login',['company'=>$company])->with('success','Implantação concluída. Seu acesso temporário à empresa foi encerrado.');
+            return redirect()->route('installer.home',['company'=>$company])->with('success','Implantação concluída.');
         }
         return redirect()->route('dashboard',['company'=>$company])->with('success','Implantação concluída. O sistema está configurado para iniciar seus cadastros e operar.');
     }

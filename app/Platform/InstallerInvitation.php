@@ -16,13 +16,14 @@ final class InstallerInvitation extends Model
         return ['expires_at'=>'datetime','accepted_at'=>'datetime','revoked_at'=>'datetime','delivered_at'=>'datetime','version'=>'integer'];
     }
 
-    public function label(bool $activeCompany, bool $setupOpen): string
+    public const PROFILES = ['installer'=>'Implantação', 'tenant_dba'=>'DBA da loja'];
+
+    public function label(bool $activeCompany, bool $userActive): string
     {
         return match (true) {
             $this->status === 'revoked' => 'Revogado',
             !$activeCompany => 'Empresa suspensa',
-            !$setupOpen => 'Implantação concluída',
-            $this->status === 'accepted' => 'Acesso ativo',
+            $this->status === 'accepted' => $userActive ? 'Acesso ativo' : 'Acesso desabilitado',
             $this->delivery_status === 'failed' => 'Falha no envio do e-mail',
             !$this->expires_at?->isFuture() => 'Convite expirado',
             $this->delivery_status === 'sending' => 'Envio pendente de confirmação',

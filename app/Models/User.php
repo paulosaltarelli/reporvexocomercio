@@ -8,6 +8,22 @@ class User extends Authenticatable
 {
     public const ROLE_INSTALLER = 'installer';
 
+    private bool $tenantDba = false;
+
+    /** The central grant applies only to this in-memory user on the resolved tenant. */
+    public function applyTenantDba(): void
+    {
+        if ($this->getRawOriginal('role') !== self::ROLE_INSTALLER) {
+            throw new \LogicException('Perfil de implantação inválido.');
+        }
+        $this->tenantDba = true;
+    }
+
+    public function getRoleAttribute(?string $value): ?string
+    {
+        return $this->tenantDba ? 'admin' : $value;
+    }
+
     protected $connection = 'tenant';
 
     protected $guarded = ['id'];

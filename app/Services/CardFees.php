@@ -19,7 +19,7 @@ final class CardFees
     }
     public function save(array $input,int $actor): void
     {
-        abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
+        abort_unless(\App\Services\InstallerAccess::adminActor($actor),403);
         $input['name']=trim((string)($input['name']??''));
         $d=Validator::make($input,['id'=>'nullable|uuid','version'=>'required|integer|min:0','name'=>'required|string|min:2|max:80','type'=>'required|in:credit,debit','policy'=>'required|in:absorb,pass','active'=>'required|boolean','rates'=>'required|array','rates.*'=>'nullable|numeric|min:0|max:99.99|decimal:0,2'])->validate();
         $rates=[];

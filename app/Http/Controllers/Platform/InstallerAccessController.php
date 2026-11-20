@@ -13,10 +13,9 @@ final class InstallerAccessController extends Controller
     public function index(int $id, InstallerInvitations $access)
     {
         $company=Tenant::findOrFail($id);
-        return view('platform.accesses.index',[
-            'company'=>$company, 'open'=>$access->setupOpen($company),
-            'invitations'=>InstallerInvitation::where('tenant_id',$id)->latest('id')->paginate(25),
-        ]);
+        $invitations=InstallerInvitation::where('tenant_id',$id)->latest('id')->paginate(25);
+        return view('platform.accesses.index',compact('company','invitations') +
+            $access->storeState($company,$invitations->getCollection()));
     }
 
     public function create(Request $request,int $id,InstallerInvitations $access)
@@ -27,6 +26,13 @@ final class InstallerAccessController extends Controller
     public function resend(Request $request,int $id,int $invitation,InstallerInvitations $access)
     {
         return $this->result($access->change($request,$id,$invitation,'resend'));
+    }
+
+    public function update(Request $request,int $id,int $invitation,InstallerInvitations $access)
+    {
+        $grant=$access->change($request,$id,$invitation,'update');
+        return redirect()->route('platform.company-access.index',['id'=>$id])->with('success',
+            $grant->status==='accepted' ? 'Acesso habilitado e perfil salvo.' : 'Acesso desabilitado.');
     }
 
     public function revoke(Request $request,int $id,int $invitation,InstallerInvitations $access)

@@ -29,7 +29,7 @@ final class PaymentMethods
     }
     public function save(array $input,int $actor): void
     {
-        abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
+        abort_unless(\App\Services\InstallerAccess::adminActor($actor),403);
         if(is_string($input['label']??null))$input['label']=trim($input['label']);
         $d=Validator::make($input,['id'=>'nullable|string|max:60','version'=>'required|integer|min:0','label'=>'required|string|min:2|max:80','type'=>'required|in:'.implode(',',array_keys(self::TYPES)),'active'=>'required|boolean'])->validate();
         DB::connection('tenant')->transaction(function()use($d,$actor){

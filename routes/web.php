@@ -41,6 +41,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
             Route::post('parcelas/{installment}/pix', [LicenseSelfServiceController::class, 'issue'])->whereNumber('installment')->middleware('throttle:10,1')->name('installments.issue');
             Route::post('parcelas/{installment}/consultar', [LicenseSelfServiceController::class, 'refresh'])->whereNumber('installment')->middleware('throttle:20,1')->name('installments.refresh');
         });
+        Route::get('implantacao/situacao', [\App\Http\Controllers\InstallerInvitationController::class, 'home'])->name('installer.home');
         Route::get('account/password', [AccountController::class, 'password'])->name('account.password');
         Route::post('account/password', [AccountController::class, 'changePassword'])->name('account.password.save');
         Route::post('users/{id}', [AccountController::class, 'updateUser'])->whereNumber('id')->name('user.update');
