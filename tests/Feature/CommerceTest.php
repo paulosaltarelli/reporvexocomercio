@@ -507,8 +507,9 @@ class CommerceTest extends TestCase
                 ['kind' => 'product', 'id' => $this->product->id, 'quantity' => '2', 'unit_price' => '100.00', 'discount_percent' => '10'],
             ],
         ], $this->user->id);
+        $openedOn = $order->created_at->format('d/m/Y');
         $response = $this->get('/app/a/documents/'.$order->id)->assertOk()
-            ->assertSee($order->created_at->format('d/m/Y'))->assertSee('29/03/2027')
+            ->assertSee($openedOn)->assertSee('29/03/2027')
             ->assertSee('Assinatura do cliente')->assertSee('Técnico ou vendedor responsável')
             ->assertSee('Técnica da oficina')->assertSee('R$ 200,00')->assertSee('R$ 20,00')->assertSee('R$ 180,00');
         $dom = new \DOMDocument();
