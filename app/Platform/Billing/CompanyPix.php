@@ -19,9 +19,19 @@ final class CompanyPix
 
     public function availableFor(Tenant $tenant): bool
     {
+        return $this->canIssue($tenant, 'issue');
+    }
+
+    public function availableForCentral(Tenant $tenant): bool
+    {
+        return $this->canIssue($tenant, 'enabled');
+    }
+
+    private function canIssue(Tenant $tenant, string $operation): bool
+    {
         $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
-        return !config('c6pix.issuance_paused')
-            && $this->environments->permits('c6', $environment, 'issue')
+        return $tenant->active && !config('c6pix.issuance_paused')
+            && $this->environments->permits('c6', $environment, $operation)
             && (!$this->gateway instanceof C6Bank || C6Bank::enabledForTenant($tenant, $this->connection($tenant)));
     }
 
@@ -96,9 +106,14 @@ final class CompanyPix
         return $this->process($tenantId, $installmentId, $create, $create);
     }
 
+    public function issueFromCentral(int $tenantId, int $installmentId): array
+    {
+        return $this->process($tenantId, $installmentId, true, true, 'enabled');
+    }
+
     public function ensureForWorker(int $tenantId, int $installmentId): array
     {
-        return $this->process($tenantId, $installmentId, true, false);
+        return $this->process($tenantId, $installmentId, true, false, 'auto_issue');
     }
 
     public function reconcile(int $chargeId): array
@@ -112,11 +127,10 @@ final class CompanyPix
         return $this->view($row->tenant_id, $row->installment_id);
     }
 
-    private function process(int $tenantId, int $installmentId, bool $create, bool $renew): array
+    private function process(int $tenantId, int $installmentId, bool $create, bool $renew, string $operation = 'issue'): array
     {
         $tenant = Tenant::findOrFail($tenantId);
-        $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
-        if ($create && (config('c6pix.issuance_paused') || !$this->environments->permits('c6', $environment, 'issue'))) {
+        if ($create && !$this->canIssue($tenant, $operation)) {
             throw C6Bank::error('A emissão de novas cobranças Pix está temporariamente indisponível.');
         }
         $bank = $this->bank($tenantId);

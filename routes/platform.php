@@ -42,6 +42,10 @@ Route::prefix('vexo-admin')->group(function () {
         });
         Route::prefix('companies/{id}/license')->whereNumber('id')->name('platform.license.')->group(function () {
             Route::get('/', [LicenseController::class, 'index'])->name('index');
+            Route::get('installments/{installment}', [LicenseController::class, 'installment'])
+                ->whereNumber('installment')->name('installments.show');
+            Route::post('installments/{installment}/pix', [LicenseController::class, 'issueInstallment'])
+                ->whereNumber('installment')->middleware('throttle:15,1')->name('installments.issue');
             Route::get('new', [LicenseController::class, 'create'])->name('create');
             Route::post('contracts', [LicenseController::class, 'store'])->middleware('throttle:15,1')->name('store');
             Route::get('contracts/{contract}/edit', [LicenseController::class, 'edit'])->whereNumber('contract')->name('edit');

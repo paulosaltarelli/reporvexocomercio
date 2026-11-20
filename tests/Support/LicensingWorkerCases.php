@@ -87,6 +87,51 @@ trait LicensingWorkerCases
         Http::assertNothingSent();
     }
 
+    public function test_central_can_issue_pix_with_store_issuance_disabled(): void
+    {
+        Http::preventStrayRequests();
+        config(['c6pix.key' => 'test-key', 'c6pix.issuance_paused' => false]);
+        app(\App\Platform\Billing\BankEnvironments::class)->table()->insert([
+            'bank' => 'c6', 'environment' => 'production', 'enabled' => true,
+            'issue' => false, 'reconcile' => false, 'auto_issue' => false,
+        ]);
+        $day = today();
+        $contract = Contract::create(['tenant_id' => $this->company->id, 'start_date' => $day,
+            'end_date' => $day, 'due_day' => $day->day, 'monthly_amount' => '39.00']);
+        app(\App\Platform\ContractBilling::class)->generate($this->company->id, $contract->id);
+        $installment = $contract->installments()->sole();
+        $bank = new class implements C6Gateway {
+            public int $issued = 0;
+            public function account(): string { return 'fake-central-account'; }
+            public function charge(string $txid, string $amount, bool $create): array
+            {
+                if ($create) $this->issued++;
+                return ['txid' => $txid, 'valor' => ['original' => $amount], 'chave' => 'test-key',
+                    'status' => 'ATIVA', 'pixCopiaECola' => 'PIX-SIMULADO',
+                    'calendario' => ['criacao' => now('UTC')->toIso8601ZuluString(), 'expiracao' => 3600]];
+            }
+            public function receipt(string $id): array { throw new \LogicException('No receipt expected'); }
+        };
+        $this->app->instance(C6Gateway::class, $bank);
+        $pix = app(\App\Platform\Billing\CompanyPix::class);
+        $this->assertFalse($pix->availableFor($this->company));
+        $this->centralSession();
+        $params = [$this->company->id, $installment->id];
+        $show = route('platform.license.installments.show', $params);
+        $issue = route('platform.license.installments.issue', $params);
+        $this->get($show)->assertOk()->assertSee('Gerar cobrança Pix');
+        config(['c6pix.issuance_paused' => true]);
+        $this->from($show)->post($issue)->assertSessionHasErrors('pix');
+        config(['c6pix.issuance_paused' => false]);
+        $this->post(route('platform.license.installments.issue', [$this->company->id + 1, $installment->id]))->assertNotFound();
+        $this->post($issue)->assertRedirect($show);
+        $this->post($issue)->assertRedirect($show);
+        $this->get($show)->assertOk()->assertSee('PIX-SIMULADO')->assertDontSee('Gerar cobrança Pix');
+        $this->assertSame('PIX-SIMULADO', $pix->view($this->company->id, $installment->id)['code']);
+        $this->assertSame(1, $bank->issued);
+        Http::assertNothingSent();
+    }
+
     public function test_licensing_worker_limits_first_issue_resumes_same_txid_and_does_not_renew_expired_charge(): void
     {
         Http::preventStrayRequests();

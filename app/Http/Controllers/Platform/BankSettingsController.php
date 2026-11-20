@@ -48,8 +48,8 @@ final class BankSettingsController extends Controller
             'reconcile' => 'required|boolean',
             'auto_issue' => 'required|boolean',
         ]);
-        if ($flags['auto_issue'] && ($environment !== 'production' || !$flags['issue'] || !$flags['reconcile'])) {
-            throw ValidationException::withMessages(['auto_issue' => 'A emissão automática exige produção, emissão e conciliação habilitadas.']);
+        if ($flags['auto_issue'] && ($environment !== 'production' || !$flags['reconcile'])) {
+            throw ValidationException::withMessages(['auto_issue' => 'A emissão automática exige produção e conciliação habilitada.']);
         }
         $parameters = $request->validate([
             'api_url' => 'nullable|string|max:512',

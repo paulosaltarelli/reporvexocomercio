@@ -1,6 +1,6 @@
 # Recebimento das licenças por Pix C6
 
-A plataforma cobra uma parcela de contrato por vez, na conta C6 da titular da plataforma. Em Licença, abra a parcela e gere o Pix. O QR e o copia e cola contêm a mesma sequência fornecida pelo banco. O vencimento da parcela vem do contrato. O QR da cobrança imediata tem validade solicitada de uma hora.
+A plataforma cobra uma parcela de contrato por vez, na conta C6 da titular da plataforma. Na Central Vexo, abra a licença da empresa, selecione a parcela e clique em **Gerar cobrança Pix**. A loja pode pagar o Pix já emitido na tela da parcela. Para limitar a emissão aos operadores da Central, deixe **Permitir emissão na loja** e **Emitir automaticamente** desligados. O QR e o copia e cola contêm a mesma sequência fornecida pelo banco. O vencimento da parcela vem do contrato. O QR da cobrança imediata tem validade solicitada de uma hora.
 
 O botão de consulta e o conciliador verificam no servidor a cobrança pelo txid e o recebimento pelo endToEndId. Os dois registros bancários precisam concordar sobre txid, valor integral, horário e identificador de ponta a ponta. A chave da cobrança precisa ser a da conta recebedora. O saldo e o acesso da empresa são recalculados pela baixa de contrato. Confirmação no navegador, cobrança aberta ou pagamento em valor divergente não liquidam a parcela.
 
@@ -70,8 +70,7 @@ auditoria central. Antes de salvar um perfil, valem as configurações do servid
 
 O ambiente só opera com credenciais privadas e a aprovação configuradas no
 servidor. A pausa global de emissão continua prevalecendo sobre as escolhas da
-Central. Para interromper apenas novas cobranças de um ambiente, mantenha-o
-habilitado, desative as emissões e mantenha a conciliação ativa. Desabilitar
+Central. Para interromper novas cobranças também pela Central e preservar a conciliação, use a pausa de emissão do servidor. Desabilitar
 o ambiente também suspende as consultas desse ambiente.
 
 Execute a migração central antes de publicar o código. A identidade do worker
