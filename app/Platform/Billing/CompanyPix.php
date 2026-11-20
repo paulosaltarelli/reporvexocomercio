@@ -19,7 +19,8 @@ final class CompanyPix
 
     public function availableFor(Tenant $tenant): bool
     {
-        return $this->gateway instanceof C6Bank ? C6Bank::enabledForTenant($tenant) : true;
+        return !config('c6pix.issuance_paused')
+            && (!$this->gateway instanceof C6Bank || C6Bank::enabledForTenant($tenant));
     }
 
     private function bank(int $tenantId): C6Gateway
@@ -95,6 +96,9 @@ final class CompanyPix
 
     private function process(int $tenantId, int $installmentId, bool $create, bool $renew): array
     {
+        if ($create && config('c6pix.issuance_paused')) {
+            throw C6Bank::error('A emissão de novas cobranças Pix está temporariamente indisponível.');
+        }
         $bank = $this->bank($tenantId);
         $account = $bank->account();
         $worker = $create && !$renew;

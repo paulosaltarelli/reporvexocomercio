@@ -44,3 +44,18 @@ O worker de licenciamento exige habilitação separada para conciliar e emitir a
 ## Testes locais
 
 A suíte C6 usa respostas HTTP simuladas com chamadas externas bloqueadas. As regressões de contrato exercitam pagamento divergente, consulta autenticada do recebimento, repetição da baixa, isolamento por empresa, expiração, renovação e confirmação tardia de uma tentativa anterior. As verificações locais não substituem a liberação do aplicativo pelo banco.
+
+## Notificações e reversão
+
+A conciliação periódica consulta o banco sem depender de webhook. A
+implementação de notificações aguarda a especificação C6 aplicável à conta
+Vexo, incluindo autenticação, formato, cadastro e reenvio. Uma notificação
+autenticada deve disparar a mesma verificação de cobrança e recebimento usada
+na conciliação. Inclua na homologação a entrega duplicada e a recuperação de
+uma notificação perdida.
+
+Em uma reversão, configure `C6_PLATFORM_PIX_ISSUANCE_PAUSED=true` na aplicação
+e no worker para suspender novas emissões e renovações. Preserve o histórico. Mantenha a conciliação e a configuração bancária
+disponíveis para os Pix já emitidos. A configuração atual de emissão
+automática controla apenas o worker. Valide o procedimento com a frente que
+opera a Hostinger antes da publicação.

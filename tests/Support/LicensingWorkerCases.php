@@ -37,11 +37,29 @@ trait LicensingWorkerCases
         Http::assertNothingSent();
     }
 
+    public function test_licensing_worker_accepts_independent_sandbox_for_reconciliation_only(): void
+    {
+        Http::preventStrayRequests();
+        config([
+            'licensing_worker.reconcile' => true,
+            'licensing_worker.issue' => false,
+            'c6pix.enabled' => false,
+            'c6pix.environment' => 'production',
+            'c6pix.sandbox.enabled' => true,
+            'c6pix.sandbox.approval_reference' => 'sandbox-fixture',
+        ]);
+        $this->assertSame(0, Artisan::call('platform:licensing-work'));
+
+        config(['licensing_worker.issue' => true]);
+        $this->assertSame(1, Artisan::call('platform:licensing-work'));
+        Http::assertNothingSent();
+    }
+
     public function test_licensing_worker_limits_first_issue_resumes_same_txid_and_does_not_renew_expired_charge(): void
     {
         Http::preventStrayRequests();
         config(['licensing_worker.reconcile'=>true, 'licensing_worker.issue'=>true,'c6pix.enabled'=>true,
-            'c6pix.approval_reference'=>'test-fixture','c6pix.key'=>'test-fixture-key']);
+            'c6pix.environment'=>'production','c6pix.approval_reference'=>'test-fixture','c6pix.key'=>'test-fixture-key']);
         $day = today('America/Sao_Paulo');
         $future = $day->copy()->addDays(8);
         foreach ([$day, $future] as $due) {

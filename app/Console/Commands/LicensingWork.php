@@ -54,24 +54,35 @@ final class LicensingWork extends Command
         }
         $this->info("Competências criadas: {$generated}.");
         $reconcile = config('licensing_worker.reconcile');
-        $issue = config('licensing_worker.issue');
+        $issue = config('licensing_worker.issue') && !config('c6pix.issuance_paused');
         if ($reconcile || $issue) {
-            if (!$reconcile || !config('c6pix.enabled') || !filled(config('c6pix.approval_reference'))) {
+            $primary = config('c6pix');
+            $production = ($primary['environment'] ?? null) === 'production' && $this->approved($primary);
+            $sandboxProfile = ($primary['environment'] ?? null) === 'sandbox' ? $primary : ($primary['sandbox'] ?? []);
+            $sandbox = $this->approved($sandboxProfile);
+            if (!$reconcile || (!$production && !$sandbox) || ($issue && !$production)) {
                 $this->error('A automação bancária requer conciliação habilitada e integração C6 homologada.');
                 return self::FAILURE;
             }
             $pix = app(CompanyPix::class);
-            if (!$this->reconcile($db, $pix, $limit)) $failed = true;
+            $environments = array_keys(array_filter(['production' => $production, 'sandbox' => $sandbox]));
+            if (!$this->reconcile($db, $pix, $limit, $environments)) $failed = true;
             if ($issue && !$this->issue($db, $pix, $limit)) $failed = true;
         }
         return $failed ? self::FAILURE : self::SUCCESS;
     }
 
-    private function reconcile(Connection $db, CompanyPix $pix, int $limit): bool
+    private function approved(array $profile): bool
+    {
+        return !empty($profile['enabled']) && filled($profile['approval_reference'] ?? null);
+    }
+
+    private function reconcile(Connection $db, CompanyPix $pix, int $limit, array $environments): bool
     {
         $now = now();
         $expiredSince = now('UTC')->subDays(7)->toDateTimeString();
         $charges = $db->table('platform_c6_pix_charges')
+            ->whereIn('environment', $environments)
             ->where(function ($q) use ($expiredSince) {
                 $q->whereIn('status', ['reserved','pending'])->orWhere(function ($expired) use ($expiredSince) {
                     $expired->where('status','expired')->where('expires_at','>=',$expiredSince);

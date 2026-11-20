@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'issuance_paused' => env('C6_PLATFORM_PIX_ISSUANCE_PAUSED', false),
     'enabled' => env('C6_PLATFORM_PIX_ENABLED', false),
     'environment' => env('C6_PLATFORM_PIX_ENVIRONMENT'),
     'approval_reference' => env('C6_PLATFORM_PIX_APPROVAL_REFERENCE'),

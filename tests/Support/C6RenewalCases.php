@@ -60,6 +60,16 @@ trait C6RenewalCases
         $data = $pix->ensureForWorker($tenantId, $installment->id);
         $this->assertSame('expired', $data['status']);
         $this->assertCount(1, $bank->records);
+        config(['c6pix.issuance_paused' => true]);
+        $this->assertFalse($pix->availableFor($this->a));
+        try {
+            $pix->sync($tenantId, $installment->id, true);
+            $this->fail('A emissão deve ficar suspensa durante a reversão.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('pix', $e->errors());
+        }
+        $this->assertCount(1, $bank->records);
+        config(['c6pix.issuance_paused' => false]);
         $new = $pix->sync($tenantId, $installment->id, true);
         $this->assertNotSame($txid, $new['txid']);
         $this->assertCount(2, $bank->records);
@@ -68,6 +78,7 @@ trait C6RenewalCases
         $bank->records[$txid]['status'] = 'CONCLUIDA';
         $bank->records[$txid]['pix'] = [$bank->credits[$e2e]];
         $oldId = DB::connection('central')->table('platform_c6_pix_charges')->where('txid', $txid)->value('id');
+        config(['c6pix.issuance_paused' => true]);
         $paid = $pix->reconcile($oldId);
         $this->assertSame('paid', $paid['status']);
         $this->assertNull($paid['code']);
