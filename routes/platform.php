@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\CompanyController;
+use App\Http\Controllers\Platform\SettingsController;
 use App\Http\Controllers\Platform\LicenseController;
 use App\Http\Controllers\Platform\InstallerAccessController;
 use App\Http\Middleware\PlatformAuthenticated;
@@ -12,6 +13,9 @@ Route::prefix('vexo-admin')->group(function () {
     Route::get('login', [AuthController::class, 'form'])->name('platform.login');
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:30,1');
     Route::middleware(PlatformAuthenticated::class)->group(function () {
+        Route::get('settings', [SettingsController::class,'index'])->name('platform.settings');
+        Route::post('settings/smtp', [SettingsController::class,'submit'])->middleware('throttle:10,1')->name('platform.settings.smtp.save');
+        Route::post('settings/smtp/test', [SettingsController::class,'submit'])->middleware('throttle:10,1')->name('platform.settings.smtp.test');
         Route::get('admins',[\App\Http\Controllers\Platform\AdminController::class,'index'])->name('platform.admins');
         Route::post('admins',[\App\Http\Controllers\Platform\AdminController::class,'save'])->middleware('throttle:10,1')->name('platform.admins.create');
         Route::post('admins/{id}',[\App\Http\Controllers\Platform\AdminController::class,'save'])->whereNumber('id')->middleware('throttle:20,1')->name('platform.admins.update');

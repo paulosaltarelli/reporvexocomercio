@@ -14,7 +14,7 @@ final class CompanyActivation
     public function send(int $id): void
     {
         // Only a real delivery transport may receive the one-time credential.
-        if (config('mail.mailers.'.config('mail.default').'.transport') !== 'smtp') {
+        if (!app(SmtpSettings::class)->available()) {
             throw new \RuntimeException('activation_smtp_required');
         }
         $code = bin2hex(random_bytes(16));
@@ -28,9 +28,9 @@ final class CompanyActivation
         if (!$job) return;
 
         $url = CompanyHosts::url($job->slug, 'company.activate');
-        Mail::raw("A loja {$job->name} está pronta. Acesse {$url} e informe seu e-mail e o código abaixo para definir sua senha. O código vale por 24 horas.\n\n{$code}", function ($mail) use ($job) {
+        app(SmtpSettings::class)->send(fn()=>Mail::raw("A loja {$job->name} está pronta. Acesse {$url} e informe seu e-mail e o código abaixo para definir sua senha. O código vale por 24 horas.\n\n{$code}", function ($mail) use ($job) {
             $mail->to($job->admin_email)->subject('Ative sua conta de administrador no Vendra');
-        });
+        }));
         ProvisionRequest::whereKey($id)->where('activation_status', 'queued')->where('activation_digest', hash('sha256', $code))
             ->update(['activation_status' => 'sent', 'activation_retry_at' => null]);
     }

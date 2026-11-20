@@ -45,6 +45,7 @@ trait InstallerAccessCases
 
     public function test_platform_installer_invitation_is_scoped_expires_rotates_and_is_accepted_only_once(): void
     {
+        config(['platform.mfa_required'=>true]);
         $a = "/vexo-admin/companies/{$this->a->id}/accesses";
         $b = "/vexo-admin/companies/{$this->b->id}/accesses";
         $email = 'implantador-a@example.test';
@@ -135,8 +136,9 @@ trait InstallerAccessCases
         config(['mail.default' => 'smtp']);
         $email = 'smtp-indisponivel@example.test';
         $admin = $this->licensingAdmin();
-        $this->withSession(['platform_admin_id' => $admin->id, 'platform_auth_version' => 0, 'platform_mfa_at' => time()]);
+        $this->withSession(['platform_admin_id' => $admin->id, 'platform_auth_version' => 0]);
         $base = "/vexo-admin/companies/{$this->a->id}/accesses";
+        $this->get($base)->assertOk()->assertDontSee('name="mfa_code"',false);
         $originalMailer = Mail::getFacadeRoot();
         Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('SMTP indisponível no teste'));
         $response = $this->post($base, ['name' => 'Implantador QA', 'email' => $email]);

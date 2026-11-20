@@ -60,6 +60,12 @@ PY_FILES
 else
  (cd "$vendra_tmp" && sha256sum databases.txt databases.sql application.tar.gz > SHA256SUMS)
 fi
+vendra_smtp=/var/lib/vendra/smtp-admin/settings.enc
+if [ -e "$vendra_smtp" ] || [ -L "$vendra_smtp" ]; then
+ [ "$(realpath "$vendra_smtp")" = "$vendra_smtp" ] && [ -f "$vendra_smtp" ] && [ "$(stat -c '%U:%a:%h' "$vendra_smtp")" = vendra-web:600:1 ] || exit 1
+ tar -C /var/lib/vendra -czf "$vendra_tmp/smtp.tar.gz" smtp-admin/settings.enc
+ (cd "$vendra_tmp" && sha256sum smtp.tar.gz >> SHA256SUMS)
+fi
 vendra_suffix=${vendra_tmp##*.incomplete.}
 vendra_final="$vendra_backup_root/$(date -u +%Y%m%dT%H%M%SZ)-$vendra_suffix"
 mv "$vendra_tmp" "$vendra_final"

@@ -19,7 +19,7 @@ final class PlatformProvisionWorkCommand extends Command
     public function handle(): int
     {
         if (!app()->bound(TenantStorageProvisioner::class) || !config('tenancy.shared.enabled') || CompanyHosts::domain() === ''
-            || config('mail.mailers.'.config('mail.default').'.transport') !== 'smtp') {
+            || !app(\App\Platform\SmtpSettings::class)->available()) {
             $this->error('O worker requer control plane, domínio das lojas e SMTP configurados.');
             return self::FAILURE;
         }

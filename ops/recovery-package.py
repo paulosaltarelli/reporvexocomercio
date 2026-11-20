@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 
 REQUIRED = {"application.tar.gz", "databases.sql", "databases.txt"}
-OPTIONAL = {"controlplane.tar.gz"}
+OPTIONAL = {"controlplane.tar.gz", "smtp.tar.gz"}
 MANIFEST = "SHA256SUMS"
 
 
@@ -40,7 +40,7 @@ def verify(folder):
 
 
 def internal_archives(folder):
-    for filename, prefix in [("application.tar.gz", "reporvexo"), ("controlplane.tar.gz", "controlplane")]:
+    for filename, prefix in [("application.tar.gz", "reporvexo"), ("controlplane.tar.gz", "controlplane"), ("smtp.tar.gz", "smtp-admin")]:
         if (folder / filename).exists():
             yield folder / filename, prefix
 

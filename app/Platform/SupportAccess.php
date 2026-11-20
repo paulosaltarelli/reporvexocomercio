@@ -16,10 +16,10 @@ final class SupportAccess
     }
     public function enter(Request $r,int $tenantId): string
     {
-        $data=$r->validate(['reason'=>'required|string|min:3|max:1000', 'mfa_code'=>'nullable|string|max:32']);
-        $actorId=(int)$r->session()->get('platform_admin_id');$version=(int)$r->session()->get('platform_auth_version');
+        $data=$r->validate(['reason'=>'required|string|min:3|max:1000', 'mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude']);
+        $actorId=(int)$r->session()->get('platform_admin_id');$version=(int)$r->session()->get('platform_auth_version',-1);
         $verifiedAt=(int)$r->session()->get('platform_mfa_at');
-        $needsChallenge=!PlatformMfa::recent($verifiedAt);
+        $needsChallenge=PlatformMfa::needsChallenge($verifiedAt);
         [$tenant,$user]=DB::connection('central')->transaction(function()use($tenantId,$actorId,$version,$data,$needsChallenge){
             $actor=PlatformAdmin::whereKey($actorId)->lockForUpdate()->first();
             abort_unless($actor&&$actor->active&&(int)$actor->auth_version===$version,403);
@@ -46,15 +46,16 @@ final class SupportAccess
             }finally{$connection->disconnect();}
         },3);
         $r->session()->regenerate();
-        $r->session()->put(['platform_mfa_at'=>$needsChallenge ? time() : $verifiedAt,'tenant_id'=>$tenant->id,'user_id'=>$user->id,'auth_version'=>$user->auth_version,'platform_support'=>['admin_id'=>$actorId,'auth_version'=>$version,'tenant_id'=>$tenant->id,'user_id'=>$user->id,'started_at'=>time()]]);
+        if ($needsChallenge) $r->session()->put('platform_mfa_at', time());
+        $r->session()->put(['tenant_id'=>$tenant->id,'user_id'=>$user->id,'auth_version'=>$user->auth_version,'platform_support'=>['admin_id'=>$actorId,'auth_version'=>$version,'tenant_id'=>$tenant->id,'user_id'=>$user->id,'started_at'=>time()]]);
         return $tenant->slug;
     }
     public function validate(Request $r,User $user): ?PlatformAdmin
     {
-        if(!self::isManaged($user) || !$r->session()->get('platform_mfa_at'))return null;
+        if(!self::isManaged($user) || (PlatformMfa::required() && !$r->session()->get('platform_mfa_at')))return null;
         $context=$r->session()->get('platform_support');$tenant=$r->attributes->get('tenant');
         if(!is_array($context)||($context['tenant_id']??0)!==$tenant->id||($context['user_id']??0)!==$user->id||($context['started_at']??0)<time()-7200)return null;
-        if((int)$r->session()->get('platform_admin_id')!==($context['admin_id']??0)||(int)$r->session()->get('platform_auth_version')!==($context['auth_version']??-1))return null;
+        if((int)$r->session()->get('platform_admin_id')!==($context['admin_id']??0)||(int)$r->session()->get('platform_auth_version',-1)!==($context['auth_version']??-1))return null;
         $admin=PlatformAdmin::where('active',true)->find($context['admin_id']);
         if(!$admin||(int)$admin->auth_version!==$context['auth_version'])return null;
         $mapping=CompanyOperation::find(1)?->configuration['_platform_support']??[];

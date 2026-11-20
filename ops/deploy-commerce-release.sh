@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode=${1:-}
-[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 || $mode == --apply-central-settings ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 / --apply-central-settings DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -54,7 +54,11 @@ if nfse and {name for name in new if name.startswith('database/')}!={'database/m
 if sys.argv[3]=='--apply-accesses-v1' and {name for name in new if name.startswith('database/')}!={'database/migrations/2026_11_20_000007_create_platform_installer_invitations.php'}:
     raise SystemExit('A release de acessos requer apenas a migração central de convites.')
 if sys.argv[3]=='--apply-code-only' and any(name.startswith('database/') for name in new):raise SystemExit('Release somente de código não aceita migrações.')
-if sys.argv[3]!='--apply':
+if sys.argv[3]=='--apply-central-settings':
+    if any(name.startswith('database/') for name in new):raise SystemExit('Configurações da Central não aceitam migrações.')
+    expected={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
+    if not expected<=set(new):raise SystemExit('A transição requer os quatro arquivos da autenticação testada.')
+if sys.argv[3] not in ('--apply','--apply-central-settings'):
     legacy={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
     if not legacy<=set(protected):raise SystemExit('Login de transição precisa estar protegido.')
 for name in new:
@@ -85,6 +89,8 @@ journal=$(mktemp -d "$release/attempt.XXXXXX")
 fiscal_resume=0
 web_paused=0
 overlay=0
+smtp_dropin=/etc/systemd/system/vendra.service.d/40-smtp-admin.conf
+smtp_unit_added=0
 clean_exit() {
     local status=$?
     trap - EXIT
@@ -95,6 +101,10 @@ clean_exit() {
             if [[ "$h" == - ]]; then rm -f -- "$live/$p"; else cp -p -- "$journal/previous/$p" "$live/$p" || exit 1; fi
         done < "$release/baseline.sha256"
         cache > "$journal/cache-restore.log" 2>&1 || exit 1
+    fi
+    if ((status && smtp_unit_added)); then
+        rm -f -- "$smtp_dropin"
+        systemctl daemon-reload || exit 1
     fi
     if ((web_paused)); then systemctl start vendra.service && health || exit 1; fi
     if ((fiscal_resume)); then systemctl start vendra-fiscal.timer || exit 1; fi
@@ -116,6 +126,22 @@ backup=$(sed -n 's/^Backup local criado em \(\/var\/backups\/vendra\/[0-9TZ]*-[A
 while read -r h p; do
     if [[ $h != - ]]; then mkdir -p "$journal/previous/$(dirname "$p")"; cp -p "$live/$p" "$journal/previous/$p"; fi
 done < "$release/baseline.sha256"
+if [[ $mode == --apply-central-settings ]]; then
+    smtp_dir=/var/lib/vendra/smtp-admin
+    [[ $(realpath -m "$smtp_dir") == "$smtp_dir" ]]
+    if [[ ! -e $smtp_dir ]]; then install -d -o vendra-web -g vendra-web -m700 "$smtp_dir"; fi
+    [[ $(stat -c '%U:%G:%a' "$smtp_dir") == vendra-web:vendra-web:700 ]]
+    [[ $(realpath -m "$smtp_dropin") == "$smtp_dropin" ]]
+    install -d -m755 "$(dirname "$smtp_dropin")"
+    printf '[Service]\nReadWritePaths=/var/lib/vendra/smtp-admin\n' > "$journal/smtp-admin.conf"
+    if [[ -e $smtp_dropin ]]; then
+        cmp "$journal/smtp-admin.conf" "$smtp_dropin"
+    else
+        smtp_unit_added=1
+        install -m644 "$journal/smtp-admin.conf" "$smtp_dropin"
+        systemctl daemon-reload
+    fi
+fi
 overlay=1
 if [[ $mode == --apply-nfse-v1 ]]; then
     while read -r h p; do rm -- "$live/$p"; done < "$release/removed.sha256"
@@ -132,7 +158,7 @@ if [[ $mode == --apply-licensing-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000001_create_platform_contracts.php database/migrations/2026_11_20_000002_create_platform_contract_installments.php database/migrations/2026_11_20_000003_create_platform_contract_payments.php database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php)
 elif [[ $mode == --apply-accesses-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000007_create_platform_installer_invitations.php)
-elif [[ $mode == --apply-code-only ]]; then
+elif [[ $mode == --apply-code-only || $mode == --apply-central-settings ]]; then
     migrations=()
 elif [[ $mode == --apply-nfse-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000006_add_contract_grace_periods.php)
@@ -140,6 +166,10 @@ fi
 if [[ $mode != --apply ]]; then
     # Check effective configuration without displaying credentials before reopening the application.
     runuser -u vendra-web -- "${phpcli[@]}" -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach (["fiscal.product_invoices_enabled","c6pix.enabled","c6pix.sandbox.enabled","licensing_worker.reconcile","licensing_worker.issue"] as $key) if (config($key)!==false) exit(1);'
+fi
+if [[ $mode == --apply-central-settings ]]; then
+    artisan config:clear > "$journal/settings-config.log"
+    runuser -u vendra-web -- "${phpcli[@]}" -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); if(config("platform.mfa_required")!==false)exit(1);'
 fi
 for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1

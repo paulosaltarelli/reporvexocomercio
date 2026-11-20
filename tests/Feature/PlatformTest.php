@@ -19,6 +19,7 @@ use Tests\TestCase;
 
 class PlatformTest extends TestCase
 {
+    use \Tests\Support\PlatformSmtpCases;
     use \Tests\Support\LicensingWorkerCases;
     use \Tests\Support\ContractBillingCases;
     private static bool $schemaReady = false;
@@ -179,8 +180,33 @@ class PlatformTest extends TestCase
         $this->get('https://'.$alias.'/')->assertNotFound();
     }
 
+    public function test_password_only_login_preserves_enrolled_factor_and_reenabling_mfa_requires_fresh_login(): void
+    {
+        config(['platform.mfa_required'=>false]);
+        $this->get('/vexo-admin/login')->assertOk()->assertDontSee('name="mfa_code"',false);
+        $code = bin2hex(random_bytes(16));
+        $recovery = [hash('sha256', $code)];
+        $this->admin->update(['mfa_secret'=>\App\Platform\Totp::newSecret(),'mfa_recovery'=>$recovery]);
+        $original = $this->admin->fresh()->getRawOriginal('mfa_secret');
+        $data = ['email'=>$this->admin->email,'password'=>'test-central-password-123'];
+        $this->post('/vexo-admin/login',$data)->assertRedirect('/vexo-admin')->assertSessionMissing('platform_mfa_at');
+        $this->get('/vexo-admin')->assertOk();
+        $this->get('/vexo-admin/companies/'.$this->company->id)->assertOk()->assertDontSee('name="mfa_code"',false);
+        $this->post('/vexo-admin/logout');
+        $this->post('/vexo-admin/login',$data + ['mfa_code'=>$code])->assertRedirect('/vexo-admin')->assertSessionMissing('platform_mfa_at');
+        $this->assertSame($original,$this->admin->fresh()->getRawOriginal('mfa_secret'));
+        $this->assertSame($recovery,$this->admin->fresh()->mfa_recovery);
+        $this->assertSame(2,PlatformAudit::where('action','platform.login')->count());
+        config(['platform.mfa_required'=>true]);
+        $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
+        $this->get('/vexo-admin/login')->assertOk()->assertSee('name="mfa_code"',false);
+        $this->post('/vexo-admin/login',$data)->assertSessionHasErrors('email');
+        $this->post('/vexo-admin/login',$data + ['mfa_code'=>$code])->assertRedirect('/vexo-admin')->assertSessionHas('platform_mfa_at');
+    }
+
     public function test_platform_login_is_distinct_from_customer_admin_session_and_logs_out_with_audit(): void
     {
+        config(['platform.mfa_required'=>true]);
         $this->withSession(['tenant_id' => $this->company->id, 'user_id' => $this->admin->id, 'auth_version' => 0, 'role' => 'admin']);
         $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
         $this->get('/vexo-admin/login')->assertOk();
@@ -200,6 +226,7 @@ class PlatformTest extends TestCase
 
     public function test_recovery_code_is_single_use_and_password_only_sessions_are_rejected(): void
     {
+        config(['platform.mfa_required'=>true]);
         $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_auth_version' => 0]);
         $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
         $code = bin2hex(random_bytes(16));

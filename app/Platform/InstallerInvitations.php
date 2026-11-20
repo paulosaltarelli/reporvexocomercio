@@ -31,14 +31,14 @@ final class InstallerInvitations
     public function change(Request $request, int $companyId, ?int $invitationId, string $operation): InstallerInvitation
     {
         $input = $request->validate($operation === 'create' ? [
-            'name'=>'required|string|max:180','email'=>'required|email|max:180','mfa_code'=>'nullable|string|max:32',
-        ] : ['expected_version'=>'required|integer|min:1','mfa_code'=>'nullable|string|max:32']);
+            'name'=>'required|string|max:180','email'=>'required|email|max:180','mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude',
+        ] : ['expected_version'=>'required|integer|min:1','mfa_code'=>PlatformMfa::required() ? 'nullable|string|max:32' : 'exclude']);
         $token = $operation === 'revoke' ? null : bin2hex(random_bytes(32));
-        $challenge = !PlatformMfa::recent((int)$request->session()->get('platform_mfa_at'));
+        $challenge = PlatformMfa::needsChallenge((int)$request->session()->get('platform_mfa_at'));
 
         [$invitation,$company] = DB::connection('central')->transaction(function () use ($request,$companyId,$invitationId,$operation,$input,$token,$challenge) {
             $admin=PlatformAdmin::lockForUpdate()->find($request->session()->get('platform_admin_id'));
-            abort_unless($admin && $admin->active && $admin->auth_version == $request->session()->get('platform_auth_version'),403);
+            abort_unless($admin && $admin->active && $admin->auth_version === (int)$request->session()->get('platform_auth_version',-1),403);
             if ($challenge && !PlatformMfa::consume($admin,$input['mfa_code']??'')) {
                 throw ValidationException::withMessages(['mfa_code'=>'Confirme um código atual do autenticador ou de recuperação.']);
             }
@@ -117,11 +117,9 @@ final class InstallerInvitations
     {
         $sent=false;
         try {
-            if (config('mail.mailers.'.config('mail.default').'.transport')==='smtp') {
-                $url=CompanyHosts::url($company->slug,'installer.invite').'#token='.$token;
-                Mail::to($invitation->email)->send(new InstallerInvitationMail($company->name,$invitation->name,$url));
-                $sent=true;
-            }
+            $url=CompanyHosts::url($company->slug,'installer.invite').'#token='.$token;
+            app(SmtpSettings::class)->send(fn()=>Mail::to($invitation->email)->send(new InstallerInvitationMail($company->name,$invitation->name,$url)));
+            $sent=true;
         } catch (\Throwable) {
             // Transport diagnostics can include the message body. Store only the delivery result.
         }

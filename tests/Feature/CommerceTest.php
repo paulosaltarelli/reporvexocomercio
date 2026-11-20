@@ -2949,6 +2949,7 @@ class CommerceTest extends TestCase
     }
     public function test_global_support_is_identified_audited_and_cannot_be_used_without_central_session(): void
     {
+        config(['platform.mfa_required'=>true]);
         $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte central','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
         $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1,'platform_mfa_at'=>time()]);
         $this->withSession(['platform_mfa_at'=>time()-301]);
@@ -2974,8 +2975,9 @@ class CommerceTest extends TestCase
     public function test_global_support_cannot_jump_store_context_and_preserves_configuration_metadata(): void
     {
         $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
-        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1,'platform_mfa_at'=>time()]);
-        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Configurar loja A'])->assertRedirect('/app/a');
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1]);
+        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Configurar loja A'])->assertRedirect('/app/a')->assertSessionMissing('platform_mfa_at');
+        $this->get('/app/a/desk')->assertOk();
         app(TenantConnection::class)->connect($this->a);
         $version=\App\Models\CompanyOperation::find(1)->version;
         app(\App\Services\CompanyOperations::class)->save($this->operationPayload(['version'=>$version,'commissions'=>false]),$this->user->id);

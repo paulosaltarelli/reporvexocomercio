@@ -4,6 +4,16 @@ namespace App\Platform;
 
 final class PlatformMfa
 {
+    public static function required(): bool
+    {
+        return (bool) config('platform.mfa_required', false);
+    }
+
+    public static function needsChallenge(int $verifiedAt): bool
+    {
+        return self::required() && !self::recent($verifiedAt);
+    }
+
     /** The caller locks the administrator row within a central transaction. */
     public static function consume(PlatformAdmin $admin, string $code): bool
     {
