@@ -59,3 +59,22 @@ e no worker para suspender novas emissões e renovações. Preserve o histórico
 disponíveis para os Pix já emitidos. A configuração atual de emissão
 automática controla apenas o worker. Valide o procedimento com a frente que
 opera a Hostinger antes da publicação.
+
+## Controles na Central
+
+Em **Configurações → Bancos**, um administrador da Central pode salvar
+configurações separadas para homologação e produção. Os controles abrangem
+habilitação do ambiente, emissão na loja, conciliação periódica e emissão
+automática em produção. Cada gravação registra o operador e as opções na
+auditoria central. Antes de salvar um perfil, valem as configurações do servidor.
+
+O ambiente só opera com credenciais privadas e a aprovação configuradas no
+servidor. A pausa global de emissão continua prevalecendo sobre as escolhas da
+Central. Para interromper apenas novas cobranças de um ambiente, mantenha-o
+habilitado, desative as emissões e mantenha a conciliação ativa. Desabilitar
+o ambiente também suspende as consultas desse ambiente.
+
+Execute a migração central antes de publicar o código. A identidade do worker
+precisa de SELECT em `platform_bank_environments`. Endereços aprovados,
+credenciais, certificados e chaves privadas continuam no servidor. O catálogo
+lista os bancos com conector para mensalidades, começando pelo C6.

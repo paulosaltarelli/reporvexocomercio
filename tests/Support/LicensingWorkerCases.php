@@ -55,6 +55,24 @@ trait LicensingWorkerCases
         Http::assertNothingSent();
     }
 
+    public function test_central_operator_saves_independent_bank_environments_and_audits_the_change(): void
+    {
+        Http::preventStrayRequests();
+        $this->centralSession();
+        $url = route('platform.settings.banks.save', ['c6', 'sandbox']);
+        $this->get(route('platform.settings.banks.index'))->assertOk()->assertSee('C6 Bank');
+        $this->post($url, ['enabled' => 1, 'issue' => 1, 'reconcile' => 1, 'auto_issue' => 1])
+            ->assertSessionHasErrors('auto_issue');
+        $this->post($url, ['enabled' => 1, 'issue' => 0, 'reconcile' => 1, 'auto_issue' => 0])
+            ->assertRedirect(route('platform.settings.banks.index'));
+        $banks = app(\App\Platform\Billing\BankEnvironments::class);
+        $this->assertFalse($banks->permits('c6', 'sandbox', 'issue'));
+        $this->assertTrue($banks->permits('c6', 'sandbox', 'reconcile'));
+        $this->assertNull($banks->settings('c6', 'production'));
+        $this->assertSame(1, \App\Platform\PlatformAudit::where('action', 'platform.bank_environment_updated')->count());
+        Http::assertNothingSent();
+    }
+
     public function test_licensing_worker_limits_first_issue_resumes_same_txid_and_does_not_renew_expired_charge(): void
     {
         Http::preventStrayRequests();

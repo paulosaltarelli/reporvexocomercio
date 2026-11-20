@@ -15,18 +15,26 @@ use Illuminate\Validation\ValidationException;
 
 final class CompanyPix
 {
-    public function __construct(private C6Gateway $gateway, private ContractBilling $billing) {}
+    public function __construct(private C6Gateway $gateway, private ContractBilling $billing, private BankEnvironments $environments) {}
 
     public function availableFor(Tenant $tenant): bool
     {
+        $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
         return !config('c6pix.issuance_paused')
+            && $this->environments->permits('c6', $environment, 'issue')
             && (!$this->gateway instanceof C6Bank || C6Bank::enabledForTenant($tenant));
     }
 
     private function bank(int $tenantId): C6Gateway
     {
+        $tenant = Tenant::findOrFail($tenantId);
+        $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
+        if (!$this->environments->permits('c6', $environment, 'enabled')) {
+            throw C6Bank::error('O ambiente bancário da empresa está desabilitado na Central.');
+        }
+
         return $this->gateway instanceof C6Bank
-            ? $this->gateway->forTenant(Tenant::findOrFail($tenantId))
+            ? $this->gateway->forTenant($tenant)
             : $this->gateway;
     }
 
@@ -89,6 +97,9 @@ final class CompanyPix
     public function reconcile(int $chargeId): array
     {
         $row = $this->charges()->where('id', $chargeId)->firstOrFail();
+        if (!$this->environments->permits('c6', $row->environment, 'reconcile')) {
+            throw C6Bank::error('A conciliação deste ambiente está desabilitada na Central.');
+        }
         $bank = $this->bank($row->tenant_id);
         $this->refresh($row, $bank, $bank->account(), false);
         return $this->view($row->tenant_id, $row->installment_id);
@@ -96,7 +107,9 @@ final class CompanyPix
 
     private function process(int $tenantId, int $installmentId, bool $create, bool $renew): array
     {
-        if ($create && config('c6pix.issuance_paused')) {
+        $tenant = Tenant::findOrFail($tenantId);
+        $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
+        if ($create && (config('c6pix.issuance_paused') || !$this->environments->permits('c6', $environment, 'issue'))) {
             throw C6Bank::error('A emissão de novas cobranças Pix está temporariamente indisponível.');
         }
         $bank = $this->bank($tenantId);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Platform\AuthController;
+use App\Http\Controllers\Platform\BankSettingsController;
 use App\Http\Controllers\Platform\CompanyController;
 use App\Http\Controllers\Platform\SettingsController;
 use App\Http\Controllers\Platform\MailHistoryController;
@@ -14,6 +15,9 @@ Route::prefix('vexo-admin')->group(function () {
     Route::get('login', [AuthController::class, 'form'])->name('platform.login');
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:30,1');
     Route::middleware(PlatformAuthenticated::class)->group(function () {
+        Route::get('settings/banks', [BankSettingsController::class, 'index'])->name('platform.settings.banks.index');
+        Route::post('settings/banks/{bank}/{environment}', [BankSettingsController::class, 'save'])
+            ->middleware('throttle:15,1')->name('platform.settings.banks.save');
         Route::get('settings', [SettingsController::class,'index'])->name('platform.settings');
         Route::get('settings/emails', [MailHistoryController::class, 'index'])->name('platform.settings.emails.index');
         Route::get('settings/emails/{id}', [MailHistoryController::class, 'show'])->whereNumber('id')->name('platform.settings.emails.show');

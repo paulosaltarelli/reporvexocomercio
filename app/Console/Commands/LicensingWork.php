@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Platform\Billing\BankEnvironments;
 use App\Platform\Billing\CompanyPix;
 use App\Platform\Contract;
 use App\Platform\ContractBilling;
@@ -53,19 +54,40 @@ final class LicensingWork extends Command
             }
         }
         $this->info("Competências criadas: {$generated}.");
-        $reconcile = config('licensing_worker.reconcile');
-        $issue = config('licensing_worker.issue') && !config('c6pix.issuance_paused');
-        if ($reconcile || $issue) {
-            $primary = config('c6pix');
-            $production = ($primary['environment'] ?? null) === 'production' && $this->approved($primary);
-            $sandboxProfile = ($primary['environment'] ?? null) === 'sandbox' ? $primary : ($primary['sandbox'] ?? []);
-            $sandbox = $this->approved($sandboxProfile);
-            if (!$reconcile || (!$production && !$sandbox) || ($issue && !$production)) {
-                $this->error('A automação bancária requer conciliação habilitada e integração C6 homologada.');
-                return self::FAILURE;
+        $banks = app(BankEnvironments::class);
+        $primary = config('c6pix');
+        $profiles = [
+            'production' => ($primary['environment'] ?? null) === 'production' ? $primary : [],
+            'sandbox' => ($primary['environment'] ?? null) === 'sandbox' ? $primary : ($primary['sandbox'] ?? []),
+        ];
+        $environments = [];
+        $issue = false;
+        foreach ($profiles as $environment => $profile) {
+            $settings = $banks->settings('c6', $environment);
+            if ($settings && !$settings->enabled) {
+                continue;
             }
+            $reconcile = (bool) ($settings?->reconcile ?? config('licensing_worker.reconcile'));
+            $autoIssue = $environment === 'production' && !config('c6pix.issuance_paused')
+                && (bool) ($settings?->auto_issue ?? config('licensing_worker.issue'));
+            if (!$this->approved($profile)) {
+                if ($autoIssue) {
+                    $this->error('A emissão automática requer um perfil de produção aprovado.');
+                    $failed = true;
+                }
+                continue;
+            }
+            if ($reconcile) {
+                $environments[] = $environment;
+            }
+            if ($autoIssue && !$reconcile) {
+                $this->error('A emissão automática requer conciliação ativa em produção.');
+                $failed = true;
+            }
+            $issue = $issue || ($autoIssue && $reconcile);
+        }
+        if ($environments) {
             $pix = app(CompanyPix::class);
-            $environments = array_keys(array_filter(['production' => $production, 'sandbox' => $sandbox]));
             if (!$this->reconcile($db, $pix, $limit, $environments)) $failed = true;
             if ($issue && !$this->issue($db, $pix, $limit)) $failed = true;
         }
