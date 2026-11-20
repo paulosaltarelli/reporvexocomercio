@@ -226,6 +226,7 @@ trait InstallerAccessCases
         $this->post('/app/a/login', $login)->assertRedirect('/app/a')->assertSessionHasNoErrors();
         $this->get('/app/a/users')->assertOk();
         $this->get('/app/a/desk')->assertOk();
+        $this->get('/app/a/implantacao/situacao')->assertForbidden();
         $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
         $this->get('/app/b/users')->assertRedirect('/app/b/login');
         $connect->connect($this->a);

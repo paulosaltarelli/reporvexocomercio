@@ -50,6 +50,7 @@ final class Permissions
         if (in_array($controller,['FiscalController','FiscalEmissionController','NfeEmissionController','FiscalProfileController','SimulationFiscalController','NfseController'],true)) return 'fiscal.manage';
         return match($controller) {
             'AuthController','LicenseHelpController'=>'account.self',
+            'InstallerInvitationController'=>$action==='home'?'account.self':'denied',
             'AccountController'=>$action==='updateUser'?'administration': 'account.self',
             'BusinessController'=>match($action){'logo'=>'account.self','fiscal'=>'fiscal.manage',default=>'administration'},
             'LicenseSelfServiceController','CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',

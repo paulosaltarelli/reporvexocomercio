@@ -9,6 +9,7 @@ final class InstallerInvitationController extends Controller
 {
     public function home(Request $request)
     {
+        abort_unless($request->attributes->get('currentUser')?->role === \App\Models\User::ROLE_INSTALLER, 403);
         if (\App\Services\InstallerAccess::open()) {
             return redirect()->route('setup', ['company' => $request->route('company')]);
         }
