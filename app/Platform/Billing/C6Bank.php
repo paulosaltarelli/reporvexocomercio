@@ -12,7 +12,7 @@ final class C6Bank implements C6Gateway
 {
     public function __construct(private ?array $profile = null) {}
 
-    public function forTenant(Tenant $tenant): self
+    public function forTenant(Tenant $tenant, array $connection = []): self
     {
         $profile = config('c6pix');
         if ($tenant->is_demonstration && ($profile['environment'] ?? '') !== 'sandbox') {
@@ -22,13 +22,47 @@ final class C6Bank implements C6Gateway
         if (($profile['environment'] ?? '') !== $environment) {
             throw self::error('O ambiente bancário configurado não corresponde ao tipo desta empresa.');
         }
-        return new self($profile);
+        if (isset($connection['credential_set'])) {
+            $credentials = self::credentialSets($environment)[$connection['credential_set']] ?? null;
+            if ($credentials === null) {
+                throw self::error('O vínculo de credenciais deste ambiente não está disponível.');
+            }
+            $profile = array_replace($profile, array_intersect_key($credentials, array_flip([
+                'client_id', 'client_secret', 'key', 'cert', 'private_key', 'passphrase',
+            ])) + ['client_id' => null, 'client_secret' => null, 'key' => null,
+                'cert' => null, 'private_key' => null, 'passphrase' => '']);
+        }
+
+        return new self(array_replace($profile, array_intersect_key($connection, array_flip([
+            'api_url', 'token_url', 'auth_method', 'scope',
+        ]))));
     }
 
-    public static function enabledForTenant(Tenant $tenant): bool
+    public static function credentialSets(string $environment): array
+    {
+        $sets = config('c6pix.credential_sets.'.$environment, []);
+
+        return is_array($sets) ? array_filter($sets, 'is_array') : [];
+    }
+
+    public static function validEndpoint(string $value, string $environment): bool
+    {
+        $url = parse_url($value);
+        $host = strtolower($url['host'] ?? '');
+        return ($url['scheme'] ?? '') === 'https' && isset($url['path']) && !preg_match('/[[:space:]\x00-\x1F]/', $value)
+            && preg_match('/^[a-z0-9.-]+$/D', $host)
+            && (str_ends_with($host, '.c6bank.com.br') || str_ends_with($host, '.c6bank.info'))
+            && !isset($url['user']) && !isset($url['pass']) && !isset($url['query']) && !isset($url['fragment'])
+            && ($url['port'] ?? 443) === 443
+            && ($environment === 'sandbox'
+                ? str_contains($host, 'sandbox')
+                : !preg_match('/sandbox|homolog|(?:^|[.-])(?:hml|test|qa|uat|dev)(?:[.-]|$)/i', $host));
+    }
+
+    public static function enabledForTenant(Tenant $tenant, array $connection = []): bool
     {
         try {
-            (new self())->forTenant($tenant)->settings();
+            (new self())->forTenant($tenant, $connection)->settings();
             return true;
         } catch (ValidationException) {
             return false;
@@ -48,18 +82,7 @@ final class C6Bank implements C6Gateway
             throw self::error('Pix C6 indisponível. Confira a habilitação e o ambiente da plataforma.');
         }
         foreach (['api_url', 'token_url'] as $name) {
-            $url = parse_url((string) $config[$name]);
-            $host = strtolower($url['host'] ?? '');
-            if ($config['environment'] === 'sandbox' && !str_contains($host, 'sandbox')) {
-                throw self::error('Os endereços de autenticação e Pix da demonstração devem identificar o sandbox do C6.');
-            }
-            if ($config['environment'] === 'production' && preg_match('/sandbox|homolog|(?:^|[.-])(?:hml|test|qa|uat|dev)(?:[.-]|$)/i', $host)) {
-                throw self::error('Use os endereços bancários de produção confirmados pelo C6 para a conta recebedora.');
-            }
-            if (($url['scheme'] ?? '') !== 'https' || !isset($url['path']) || !preg_match('/^[a-z0-9.-]+$/D', $host)
-                || (!str_ends_with($host, '.c6bank.com.br') && !str_ends_with($host, '.c6bank.info'))
-                || isset($url['user']) || isset($url['pass']) || isset($url['query']) || isset($url['fragment'])
-                || ($url['port'] ?? 443) !== 443) {
+            if (!self::validEndpoint((string) $config[$name], $config['environment'])) {
                 throw self::error('Configure os endereços HTTPS exatos fornecidos pelo C6 para a conta.');
             }
         }

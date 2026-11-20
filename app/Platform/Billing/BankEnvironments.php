@@ -19,6 +19,11 @@ class BankEnvironments
         return $this->table()->where('bank', $bank)->where('environment', $environment)->first();
     }
 
+    public function connection(?object $settings): array
+    {
+        return json_decode($settings?->connection_settings ?? '{}', true, flags: JSON_THROW_ON_ERROR);
+    }
+
     public function permits(string $bank, string $environment, string $operation): bool
     {
         $settings = $this->settings($bank, $environment);

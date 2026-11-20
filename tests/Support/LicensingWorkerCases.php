@@ -69,7 +69,21 @@ trait LicensingWorkerCases
         $this->assertFalse($banks->permits('c6', 'sandbox', 'issue'));
         $this->assertTrue($banks->permits('c6', 'sandbox', 'reconcile'));
         $this->assertNull($banks->settings('c6', 'production'));
-        $this->assertSame(1, \App\Platform\PlatformAudit::where('action', 'platform.bank_environment_updated')->count());
+
+        config(['c6pix.credential_sets.sandbox.qa' => ['client_secret' => 'never-render-this']]);
+        $flags = ['enabled' => 1, 'issue' => 0, 'reconcile' => 1, 'auto_issue' => 0];
+        $this->post($url, $flags + ['token_url' => 'https://baas-api.c6bank.info/v1/auth'])
+            ->assertSessionHasErrors('token_url');
+        $this->post($url, $flags + ['credential_set' => 'missing'])
+            ->assertSessionHasErrors('credential_set');
+        $tokenUrl = 'https://baas-api-sandbox.c6bank.info/v1/auth';
+        $this->post($url, $flags + ['token_url' => $tokenUrl, 'credential_set' => 'qa'])
+            ->assertRedirect(route('platform.settings.banks.index'));
+        $this->assertEquals(['token_url' => $tokenUrl, 'credential_set' => 'qa'],
+            $banks->connection($banks->settings('c6', 'sandbox')));
+        $this->get(route('platform.settings.banks.index'))->assertOk()->assertSee($tokenUrl)
+            ->assertDontSee('never-render-this');
+        $this->assertSame(2, \App\Platform\PlatformAudit::where('action', 'platform.bank_environment_updated')->count());
         Http::assertNothingSent();
     }
 
