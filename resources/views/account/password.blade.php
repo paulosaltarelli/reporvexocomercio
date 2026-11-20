@@ -1,4 +1,4 @@
-@extends('layout')
+@extends($currentUser->role === \App\Models\User::ROLE_INSTALLER ? 'setup.installer-layout' : 'layout')
 @section('title','Minha senha')
 @section('subtitle','Proteja seu acesso. Sua nova senha será usada nas próximas entradas.')
 @section('content')

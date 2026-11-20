@@ -1,7 +1,8 @@
-@extends('layout')
-@section('title','Operação e implantação')
-@section('subtitle','Configure a empresa uma vez. Ajuste os módulos conforme a rotina, sem versões diferentes do sistema.')
+@extends($currentUser->role === \App\Models\User::ROLE_INSTALLER ? 'setup.installer-layout' : 'layout')
+@section('title',$currentUser->role === \App\Models\User::ROLE_INSTALLER ? 'Implantação da loja' : 'Operação e implantação')
+@section('subtitle','Preencha os dados da empresa, configure a operação e revise a equipe responsável.')
 @section('content')
+@php($installer = $currentUser->role === \App\Models\User::ROLE_INSTALLER)
 @php($steps=[1=>'Empresa',2=>'Operação',3=>config('fiscal.product_invoices_enabled')?'Fiscal':null,4=>'Equipe',5=>'Revisão'])
 <nav class="panel setup-steps" aria-label="Etapas de implantação">
 @foreach(array_filter($steps) as $number=>$label)
@@ -47,22 +48,25 @@
 <button class="primary">Salvar e continuar</button>
 </form>
 @elseif($step===3)
-<section class="panel"><h2>Configuração fiscal</h2><p>Preencha e salve os dados nesta etapa. Eles ficam disponíveis nas configurações fiscais definitivas da empresa. A emissão em produção permanece bloqueada.</p>
-@if(!$configuration['nfce']&&!$configuration['nfe'])<p>Nenhum módulo fiscal foi selecionado. Você pode concluir a implantação sem certificado e configurar o fiscal posteriormente.</p>@else<p>Use os dados confirmados pelo responsável fiscal. O certificado e sua senha são enviados apenas pelo formulário seguro abaixo.</p>@endif
+<section class="panel"><h2>Configuração fiscal</h2>
+@unless($installer)<p>Preencha e salve os dados nesta etapa. Eles ficam disponíveis nas configurações fiscais definitivas da empresa. A emissão em produção permanece bloqueada.</p>@endunless
+@if(!$configuration['nfce']&&!$configuration['nfe'])<p>Nenhum módulo fiscal foi selecionado. Você pode concluir a implantação sem certificado e configurar o fiscal posteriormente.</p>@elseif(!$installer)<p>Use os dados confirmados pelo responsável fiscal. O certificado e sua senha são enviados apenas pelo formulário seguro abaixo.</p>@endif
 </section>
-@if($configuration['nfce'] || $configuration['nfe'])
+@if($installer && ($configuration['nfce'] || $configuration['nfe']))
+<p class="notice">O administrador da loja deve conferir as configurações fiscais para concluir esta etapa.</p>
+@elseif($configuration['nfce'] || $configuration['nfe'])
 @include('fiscal.company',['setupFiscal'=>true])
 @endif
 <form class="panel setup-actions" method="post" action="{{ route('setup.fiscal.continue',['company'=>$tenant->slug]) }}">@csrf<a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>2]) }}">Voltar para operação</a><button class="primary">Conferir fiscal e continuar</button><p class="hint">Para avançar, os módulos fiscais selecionados precisam estar preparados. Se não for usar um módulo agora, desabilite-o na etapa Operação.</p></form>
 @elseif($step===4)
-@include('setup.team')
+@include($installer ? 'setup.installer-team' : 'setup.team')
 @else
-<section class="panel"><h2>Revisão da implantação</h2><p>Empresa, operação e equipe serão mantidas nos seus cadastros definitivos. Produtos, serviços, clientes e movimentações serão cadastrados depois.</p><dl><dt>Empresa</dt><dd>{{ $profile?->legal_name }}</dd><dt>CNPJ</dt><dd>{{ $profile?->document }}</dd><dt>Usuários de acesso</dt><dd>{{ $users->count() }}</dd><dt>Responsáveis pelo caixa</dt><dd>{{ $sellers->pluck('name')->implode(', ') ?: 'Cadastre na etapa Equipe' }}</dd></dl>
+<section class="panel"><h2>Revisão da implantação</h2><p>Empresa, operação e equipe serão mantidas nos seus cadastros definitivos. Produtos, serviços, clientes e movimentações serão cadastrados depois.</p><dl><dt>Empresa</dt><dd>{{ $profile?->legal_name }}</dd><dt>CNPJ</dt><dd>{{ $profile?->document }}</dd>@unless($installer)<dt>Usuários de acesso</dt><dd>{{ $users->count() }}</dd>@endunless<dt>Responsáveis pelo caixa</dt><dd>{{ $sellers->pluck('name')->implode(', ') ?: 'Cadastre na etapa Equipe' }}</dd></dl>
 @if($configuration['nfce'] || $configuration['nfe'])<p class="form-note">Emissão fiscal permanece em homologação/preparação; concluir o cadastro não libera produção.</p>@endif
 <dl><dt>Operação</dt><dd>{{ ['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'][$configuration['catalog_mode']] }}</dd><dt>Estoque</dt><dd>{{ $configuration['inventory']?'Habilitado':'Desabilitado' }}</dd><dt>Comissões</dt><dd>{{ $configuration['commissions']?($configuration['commission_basis']==='cash'?'Caixa':'Competência'):'Desabilitadas' }}</dd></dl>
 @if($pending)<h3>Resolva as pendências para concluir</h3><ul>@foreach($pending as $message=>$targetStep)<li>{{ $message }} <a href="{{ route('setup',['company'=>$tenant->slug,'step'=>$targetStep]) }}">Corrigir na etapa {{ $steps[$targetStep] }}</a></li>@endforeach</ul>@endif
-<form method="post" action="{{ route('setup.complete',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="version" value="{{ $setup?->version??0 }}"><label class="setup-option"><input type="checkbox" name="reviewed" value="1" required @disabled($pending)> Revisei os dados, usuários e escolhas desta empresa.</label><button class="primary" @disabled($pending)>Concluir implantação e abrir sistema</button></form>
+<form method="post" action="{{ route('setup.complete',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="version" value="{{ $setup?->version??0 }}"><label class="setup-option"><input type="checkbox" name="reviewed" value="1" required @disabled($pending)> {{ $installer ? 'Revisei os dados da empresa, a equipe e as escolhas da operação.' : 'Revisei os dados, usuários e escolhas desta empresa.' }}</label><button class="primary" @disabled($pending)>{{ $installer ? 'Concluir implantação e encerrar acesso' : 'Concluir implantação e abrir sistema' }}</button></form>
 </section>
 @endif
-@if($audit->isNotEmpty())<details class="panel"><summary>Histórico recente de configuração</summary><ul>@foreach($audit as $event)<li>{{ \Carbon\Carbon::parse($event->created_at)->format('d/m/Y H:i') }} · versão {{ $event->version }} · {{ match($event->action){'completed'=>'Implantação conferida','company_changed'=>'Dados da empresa alterados',default=>'Configuração alterada'} }}</li>@endforeach</ul></details>@endif
+@if(!$installer && $audit->isNotEmpty())<details class="panel"><summary>Histórico recente de configuração</summary><ul>@foreach($audit as $event)<li>{{ \Carbon\Carbon::parse($event->created_at)->format('d/m/Y H:i') }} · versão {{ $event->version }} · {{ match($event->action){'completed'=>'Implantação conferida','company_changed'=>'Dados da empresa alterados',default=>'Configuração alterada'} }}</li>@endforeach</ul></details>@endif
 @endsection

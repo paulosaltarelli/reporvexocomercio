@@ -18,10 +18,10 @@ final class CompanyOnboarding
     }
     public function advance(int $next,int $actor): void
     {
-        abort_unless(User::whereKey($actor)->where('role','admin')->where('active',true)->exists(),403);
         DB::connection('tenant')->transaction(function()use($next,$actor){
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>CompanyOperations::DEFAULTS]);
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
+            InstallerAccess::wizardActor($actor,$row);
             $config=$row->configuration;$before=(int)($config['_setup_step']??1);
             if($before >= $next)return;
             $config['_setup_step']=$next;

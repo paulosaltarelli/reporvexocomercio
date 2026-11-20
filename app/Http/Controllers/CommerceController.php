@@ -302,7 +302,7 @@ class CommerceController extends Controller
     {
         $this->admin($r);
 
-        return view('users', ['users' => User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'accessState'=>app(\App\Access\AccessProfiles::class)->state(), 'profileService'=>app(\App\Access\AccessProfiles::class)]);
+        return view('users', ['users' => User::where('role','<>', User::ROLE_INSTALLER)->orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'accessState'=>app(\App\Access\AccessProfiles::class)->state(), 'profileService'=>app(\App\Access\AccessProfiles::class)]);
     }
 
     public function saveUser(Request $r)

@@ -29,6 +29,8 @@ Route::get('/', fn () => view('welcome'));
 Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(ResolveTenant::class)->group(function () {
     Route::view('ativar', 'auth.activate')->name('company.activate');
     Route::post('ativar', [\App\Http\Controllers\CompanyActivationController::class, 'activate'])->middleware('throttle:6,1');
+    Route::get('convite-implantacao', [\App\Http\Controllers\InstallerInvitationController::class, 'form'])->name('installer.invite');
+    Route::post('convite-implantacao', [\App\Http\Controllers\InstallerInvitationController::class, 'accept'])->middleware('throttle:6,1')->name('installer.invite.accept');
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
     Route::middleware([TenantAuthenticated::class, EnforceContractAccess::class])->group(function () {

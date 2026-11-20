@@ -41,6 +41,7 @@ final class AccessProfiles
     public function allows(User $user,string $permission): bool
     {
         if (!$user->active) return false;
+        if ($user->role===User::ROLE_INSTALLER) return $permission==='account.self';
         if ($permission==='account.self') return true;
         if ($permission==='commissions.self') return \App\Models\Seller::where('user_id',$user->id)->exists();
         if ($permission==='denied'||(!array_key_exists($permission,Permissions::labels())&&!in_array($permission,['administration','home'],true))) return false;
@@ -52,23 +53,29 @@ final class AccessProfiles
     public function profileId(int $userId): string { return (string)($this->state()['assignments'][(string)$userId]??'operator'); }
     public function permissions(User $user): array
     {
-        if (!$user->active) return [];
+        if (!$user->active || $user->role===User::ROLE_INSTALLER) return [];
         if ($user->role==='admin') return array_keys(Permissions::labels());
         $state=$this->state();$id=(string)($state['assignments'][(string)$user->id]??'operator');
         return $state['profiles'][$id]['permissions']??[];
     }
     public function profileName(User $user): string
     {
+        if ($user->role===User::ROLE_INSTALLER) return 'Implantador';
         if ($user->role==='admin') return 'Administrador — acesso completo';
         $state=$this->state();return $state['profiles'][$this->profileId($user->id)]['name']??'Perfil indisponível — sem funções liberadas';
     }
     public function authorize(Request $request): void
     {
         $user=$request->attributes->get('currentUser');
+        if ($user?->role===User::ROLE_INSTALLER) {
+            abort_unless(\App\Services\InstallerAccess::permits($request),403);
+            return;
+        }
         abort_unless($user && $this->allows($user,Permissions::request($request)),403,'Seu perfil não libera esta função.');
     }
     public function landing(User $user): string
     {
+        if ($user->role===User::ROLE_INSTALLER) return 'setup';
         foreach(['desk'=>'desk.use','dashboard'=>'dashboard.view','sales'=>'sales.view','finance'=>'finance.view','stock'=>'stock.view','products'=>'products.view','reports'=>'reports.view'] as $route=>$permission)if($this->allows($user,$permission))return $route;
         if($this->allows($user,'commissions.self'))return 'commissions.mine';
         return 'account.password';
@@ -118,7 +125,7 @@ final class AccessProfiles
     public function assign(int $userId,string $role,string $profileId,int $actor): bool
     {
         $this->admin($actor);
-        abort_unless(in_array($role,['admin','operator'],true)&&User::whereKey($userId)->exists(),422);
+        abort_unless(in_array($role,['admin','operator'],true)&&User::whereKey($userId)->where('role','<>',User::ROLE_INSTALLER)->exists(),422);
         if(DB::connection('tenant')->transactionLevel()===0)throw new \LogicException('Atribuição exige transação de usuário.');
         CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>\App\Services\CompanyOperations::DEFAULTS]);
         $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();$state=$this->fromRow($row);

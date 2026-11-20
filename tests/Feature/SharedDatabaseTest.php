@@ -441,6 +441,27 @@ class SharedDatabaseTest extends TestCase
         $this->assertSame(0,Product::where('name','Serviço rápido privado')->count());
     }
 
+    public function test_shared_installer_acceptance_binds_the_account_only_in_the_inviting_company(): void
+    {
+        $admin = \App\Platform\PlatformAdmin::create(['name' => 'Central de teste', 'email' => 'central@example.test',
+            'password' => 'senha-local-central-123', 'active' => true]);
+        $email = 'implantacao@example.test';
+        $token = bin2hex(random_bytes(32));
+        $grant = \App\Platform\InstallerInvitation::create(['tenant_id' => $this->a->id, 'issued_by' => $admin->id,
+            'name' => 'Implantação compartilhada', 'email' => $email, 'status' => 'pending', 'delivery_status' => 'sent',
+            'token_digest' => hash('sha256', $token), 'expires_at' => now()->addDay()]);
+        $payload = ['email' => $email, 'token' => $token, 'password' => 'Senha privada escolhida QA', 'password_confirmation' => 'Senha privada escolhida QA'];
+        $this->postJson('/app/shared-b/convite-implantacao', $payload)->assertUnprocessable();
+        $this->post('/app/shared-a/convite-implantacao', $payload)->assertRedirect('/app/shared-a/setup')->assertSessionHasNoErrors();
+        $this->get('/app/shared-a/setup')->assertOk();
+        $this->get('/app/shared-a/desk')->assertForbidden();
+        $this->connect($this->a);
+        $this->assertSame(User::where('email', $email)->sole()->id, (int) $grant->fresh()->user_id);
+        $this->get('/app/shared-b/setup')->assertRedirect('/app/shared-b/login');
+        $this->connect($this->b);
+        $this->assertFalse(User::where('email', $email)->exists());
+    }
+
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
         config(['fiscal.product_invoices_enabled' => true]);

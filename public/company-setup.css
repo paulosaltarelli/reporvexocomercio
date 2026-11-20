@@ -1,3 +1,22 @@
 .setup-steps,.setup-actions{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}.setup-steps{margin-bottom:1.25rem}.setup-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}.setup-option{display:flex;gap:.65rem;align-items:flex-start;padding:.75rem 0;cursor:pointer}.setup-option input{width:1.15rem;height:1.15rem;flex:0 0 auto;margin:.15rem 0 0}.setup-actions{margin:1rem 0}.setup-steps [aria-current=step]{outline:2px solid #1463eb;outline-offset:3px}.setup-steps .button{min-height:44px}fieldset{border:1px solid #dce4ef;border-radius:10px;padding:1rem;margin:1.25rem 0}legend{padding:0 .4rem;font-weight:700}@media(max-width:600px){.setup-steps .button{flex:1 1 42%}.setup-options{grid-template-columns:1fr}}@media print{.setup-steps,.setup-actions{display:none}}
 
 .onboarding-shell{display:block}.onboarding-shell>.workspace{margin-left:0;width:100%;max-width:1280px;margin-inline:auto}.onboarding-shell .menu-toggle{display:none}.onboarding-shell main{padding:30px}.setup-team-list{display:grid;gap:.5rem;padding:0;list-style:none}.setup-team-list li{padding:12px;border:1px solid #dce4ef;border-radius:8px}.setup-summary{overflow-wrap:anywhere}@media(max-width:600px){.onboarding-shell main{padding:18px 12px}.onboarding-shell .workspace{padding-left:0}}
+
+.installer-shell .installer-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1.5rem;
+    height: auto;
+    min-height: 64px;
+}
+.installer-header > div { display: grid; min-width: 0; }
+.installer-header strong { overflow-wrap: anywhere; }
+.installer-header nav { display: flex; align-items: center; gap: 1rem; }
+.installer-header nav a, .installer-header nav button { display: inline-flex; align-items: center; min-height: 44px; }
+.installer-header nav form { margin: 0; }
+.installer-invitation { width: min(100% - 2rem, 32rem); margin: clamp(1rem, 6vh, 4rem) auto; }
+.installer-invitation img { max-width: 100%; object-fit: contain; }
+.installer-invitation form { display: grid; gap: 1rem; margin: 1.5rem 0; }
+.installer-invitation [hidden] { display: none; }

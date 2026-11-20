@@ -3,6 +3,7 @@
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\CompanyController;
 use App\Http\Controllers\Platform\LicenseController;
+use App\Http\Controllers\Platform\InstallerAccessController;
 use App\Http\Middleware\PlatformAuthenticated;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,12 @@ Route::prefix('vexo-admin')->group(function () {
         Route::post('companies', [CompanyController::class, 'store'])->middleware('throttle:10,1')->name('platform.companies.store');
         Route::post('requests/{id}/activation', [CompanyController::class, 'resendActivation'])->whereNumber('id')->middleware('throttle:3,10')->name('platform.requests.activation');
         Route::get('requests/{id}', [CompanyController::class, 'provisionRequest'])->whereNumber('id')->name('platform.requests.show');
+        Route::prefix('companies/{id}/accesses')->whereNumber('id')->name('platform.company-access.')->group(function () {
+            Route::get('/', [InstallerAccessController::class,'index'])->name('index');
+            Route::post('/', [InstallerAccessController::class,'create'])->middleware('throttle:10,1')->name('create');
+            Route::post('{invitation}/resend', [InstallerAccessController::class,'resend'])->whereNumber('invitation')->middleware('throttle:6,1')->name('resend');
+            Route::post('{invitation}/revoke', [InstallerAccessController::class,'revoke'])->whereNumber('invitation')->middleware('throttle:15,1')->name('revoke');
+        });
         Route::prefix('companies/{id}/license')->whereNumber('id')->name('platform.license.')->group(function () {
             Route::get('/', [LicenseController::class, 'index'])->name('index');
             Route::get('new', [LicenseController::class, 'create'])->name('create');

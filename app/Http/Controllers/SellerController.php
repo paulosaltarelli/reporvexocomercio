@@ -17,7 +17,7 @@ class SellerController extends Controller
         app(\App\Access\AccessProfiles::class)->authorize($request);
         $data=$request->validate(['edit'=>'nullable|integer|exists:tenant.sellers,id']);
         return view('sellers',['rows'=>Seller::with('user')->orderBy('name')->paginate(20)->withQueryString(),
-            'editing'=>isset($data['edit'])?Seller::findOrFail($data['edit']):null,'users'=>User::orderBy('name')->get()]);
+            'editing'=>isset($data['edit'])?Seller::findOrFail($data['edit']):null,'users'=>User::where('role','<>',User::ROLE_INSTALLER)->orderBy('name')->get()]);
     }
 
     public function save(Request $request, string $company)
@@ -32,7 +32,7 @@ class SellerController extends Controller
         try {
             DB::connection('tenant')->transaction(function()use($id,$data){
                 $seller=$id?Seller::lockForUpdate()->findOrFail($id):new Seller;
-                if(!empty($data['user_id']))User::whereKey($data['user_id'])->sharedLock()->firstOrFail();
+                if(!empty($data['user_id']))User::whereKey($data['user_id'])->where('role','<>',User::ROLE_INSTALLER)->sharedLock()->firstOrFail();
                 $seller->fill($data)->save();
             },3);
         } catch(UniqueConstraintViolationException $exception) {

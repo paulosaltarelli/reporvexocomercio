@@ -1,4 +1,5 @@
-<form class="panel" method="post" enctype="multipart/form-data" action="{{ $companyFormAction ?? url('/app/'.$tenant->slug.'/business') }}">@csrf<fieldset style="border:0;padding:0;margin:0;min-width:0" @disabled(!$currentUser->allows('administration'))><h2>Identificação</h2><div class="form-grid">
+@php($canEditCompany = (($wizardCompany ?? false) && $currentUser->role === \App\Models\User::ROLE_INSTALLER) || $currentUser->allows('administration'))
+<form class="panel" method="post" enctype="multipart/form-data" action="{{ $companyFormAction ?? url('/app/'.$tenant->slug.'/business') }}">@csrf<fieldset style="border:0;padding:0;margin:0;min-width:0" @disabled(!$canEditCompany)><h2>Identificação</h2><div class="form-grid">
 @foreach(['legal_name'=>'Razão social','trade_name'=>'Nome fantasia','document'=>'CNPJ','email'=>'E-mail','phone'=>'Telefone'] as $field=>$label)
 <div class="field">
     <label for="company-{{ $field }}">{{ $label }}</label>
@@ -6,7 +7,7 @@
     <input id="company-{{ $field }}" name="{{ $field }}" value="{{ old($field,$profile->$field) }}" type="{{ $field==='email'?'email':'text' }}" @required($field==='legal_name') maxlength="{{ ['document'=>18,'phone'=>30][$field]??180 }}"
         @if($field === 'legal_name' && !old('legal_name') && !$profile->document && $profile->legal_name === $tenant->name) data-registry-default="{{ $tenant->name }}" @endif>
     @if($field === 'document')
-        @if($currentUser->allows('administration'))
+        @if($canEditCompany)
             <button type="button" class="button secondary" data-registry-url="{{ route('business.cnpj',['company'=>$tenant->slug]) }}" hidden>Buscar CNPJ</button>
         @endif
         </div><small class="hint" role="status"></small>

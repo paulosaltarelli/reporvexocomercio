@@ -52,7 +52,7 @@ class CompanyOperations
     }
     public function save(array $input, int $actor): CompanyOperation
     {
-        abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
+        abort_unless(User::whereKey($actor)->where('active',true)->whereIn('role',['admin',User::ROLE_INSTALLER])->exists(),403);
         $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual', 'negative_stock'=>'sometimes|required|in:block,warn,allow'];
         $defaults = self::DEFAULTS;
         unset($defaults['nfse']);
@@ -70,6 +70,7 @@ class CompanyOperations
         return DB::connection('tenant')->transaction(function () use ($data,$actor,$defaults) {
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>self::DEFAULTS]);
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
+            InstallerAccess::wizardActor($actor,$row);
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
             $before=array_intersect_key(array_replace($defaults,$row->configuration),$defaults);
             $data['negative_stock'] ??= $before['negative_stock'];
@@ -123,16 +124,23 @@ class CompanyOperations
     }
     public function complete(int $version, int $actor): void
     {
-        abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
+        abort_unless(User::whereKey($actor)->where('active',true)->whereIn('role',['admin',User::ROLE_INSTALLER])->exists(),403);
         DB::connection('tenant')->transaction(function () use ($version,$actor) {
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>self::DEFAULTS]);
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
+            $operator = InstallerAccess::wizardActor($actor,$row);
+            if ($operator->role===User::ROLE_INSTALLER && !\App\Models\Seller::where('active',true)->exists()) {
+                throw ValidationException::withMessages(['team'=>'Cadastre um responsável pelo caixa antes de concluir.']);
+            }
             if ($row->version!==$version) throw ValidationException::withMessages(['version'=>'A configuração mudou. Revise a implantação novamente.']);
             $pending=$this->pending();
             if ($pending) throw ValidationException::withMessages(['configuration'=>array_values($pending)]);
             if ($row->completed_at) return;
             $configuration=$row->configuration;$configuration['_onboarding_completed_at']??=now()->toIso8601String();
             $row->update(['configuration'=>$configuration,'completed_at'=>now(),'updated_by'=>$actor,'version'=>$row->version+1]);
+            User::where('role',User::ROLE_INSTALLER)->where('active',true)->update([
+                'active'=>false,'auth_version'=>DB::raw('auth_version + 1'),
+            ]);
             $this->audit($row,$actor,'completed',[],['completed_at'=>$row->completed_at->toIso8601String()]);
         },3);
     }

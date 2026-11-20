@@ -37,7 +37,7 @@ final class CompanyHosts
     {
         $path = route($route, ['company' => $slug], false);
         if ($slug === self::DEMO_SLUG && self::demoHost() !== '') return 'https://'.self::demoHost().$path;
-        if (self::domain() === '' || self::reserved($slug)) return url($path);
+        if (self::domain() === '' || self::reserved($slug)) return rtrim((string)config('app.url'), '/').$path;
         return 'https://'.$slug.'.'.self::domain().$path;
     }
 }

@@ -6,6 +6,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
+    public const ROLE_INSTALLER = 'installer';
+
     protected $connection = 'tenant';
 
     protected $guarded = ['id'];

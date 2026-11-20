@@ -52,13 +52,14 @@ class AccountController extends Controller
     {
         abort_unless($r->attributes->get('currentUser')->role === 'admin', 403);
         $user = User::findOrFail($id);
-        abort_if(\App\Platform\SupportAccess::isManaged($user),403,'Contas técnicas são gerenciadas pela Central Vexo.');
+        abort_if($user->role===User::ROLE_INSTALLER || \App\Platform\SupportAccess::isManaged($user),403,'Contas técnicas são gerenciadas pela Central Vexo.');
         $d = $r->validate(['name' => 'required|string|max:180', 'email' => ['required', 'email', 'not_regex:/@support\.vexo\.invalid$/i', 'max:180', Rule::unique('tenant.users', 'email')->ignore($id)], 'role' => 'required|in:admin,operator', 'active' => 'required|boolean', 'password' => 'nullable|string|min:12|max:128|confirmed','access_profile'=>'nullable|string|max:60']);
         DB::connection('tenant')->transaction(function () use ($d, $id, $r) {
             // Lock in stable order to protect the last active administrator.
             $users = User::orderBy('id')->lockForUpdate()->get();
             $u = $users->firstWhere('id', $id);
             abort_unless($u, 404);
+            abort_if($u->role===User::ROLE_INSTALLER || \App\Platform\SupportAccess::isManaged($u),403);
             $isLastAdmin = $u->active && $u->role === 'admin' && $users->reject(fn($candidate)=>\App\Platform\SupportAccess::isManaged($candidate))->where('active', true)->where('role', 'admin')->count() === 1;
             if ($isLastAdmin && (! $d['active'] || $d['role'] !== 'admin')) {
                 throw ValidationException::withMessages(['role' => 'Mantenha pelo menos um administrador ativo.']);

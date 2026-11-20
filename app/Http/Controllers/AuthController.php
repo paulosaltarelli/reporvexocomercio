@@ -22,13 +22,19 @@ class AuthController extends Controller
             return back()->withErrors(['email' => 'Muitas tentativas. Aguarde um minuto.']);
         }
         $user = User::where('email', $data['email'])->where('active', true)->first();
-        if (! $user || \App\Platform\SupportAccess::isManaged($user) || ! Hash::check($data['password'], $user->password)) {
+        if (! $user || \App\Platform\SupportAccess::isManaged($user) || ! Hash::check($data['password'], $user->password)
+            || ($user->role===User::ROLE_INSTALLER && (!\App\Services\InstallerAccess::open() || !\App\Services\InstallerAccess::granted($user)))) {
             RateLimiter::hit($key, 60);
 
             return back()->withErrors(['email' => 'E-mail ou senha inválidos.']);
         }
         RateLimiter::clear($key);
-        $r->session()->regenerate();
+        if ($user->role===User::ROLE_INSTALLER) {
+            $r->session()->invalidate();
+            $r->session()->regenerateToken();
+        } else {
+            $r->session()->regenerate();
+        }
         $r->session()->forget('platform_support');
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 

@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode=${1:-}
-[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -51,6 +51,8 @@ if licensing:
     if 'resources/views/welcome.blade.php' not in new:raise SystemExit('Landing da versão ausente.')
 if nfse and {name for name in new if name.startswith('database/')}!={'database/migrations/2026_11_20_000006_add_contract_grace_periods.php'}:
     raise SystemExit('A revisão NFS-e e carências requer somente a migração central dos prazos contratuais.')
+if sys.argv[3]=='--apply-accesses-v1' and {name for name in new if name.startswith('database/')}!={'database/migrations/2026_11_20_000007_create_platform_installer_invitations.php'}:
+    raise SystemExit('A release de acessos requer apenas a migração central de convites.')
 if sys.argv[3]=='--apply-code-only' and any(name.startswith('database/') for name in new):raise SystemExit('Release somente de código não aceita migrações.')
 if sys.argv[3]!='--apply':
     legacy={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
@@ -128,6 +130,8 @@ while read -r h p; do runuser -u vendra-web -- test -r "$live/$p"; done < "$mani
 migrations=(database/migrations/2026_11_20_000001_add_platform_mfa.php database/migrations/2026_11_20_000004_add_company_activation.php)
 if [[ $mode == --apply-licensing-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000001_create_platform_contracts.php database/migrations/2026_11_20_000002_create_platform_contract_installments.php database/migrations/2026_11_20_000003_create_platform_contract_payments.php database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php)
+elif [[ $mode == --apply-accesses-v1 ]]; then
+    migrations=(database/migrations/2026_11_20_000007_create_platform_installer_invitations.php)
 elif [[ $mode == --apply-code-only ]]; then
     migrations=()
 elif [[ $mode == --apply-nfse-v1 ]]; then
