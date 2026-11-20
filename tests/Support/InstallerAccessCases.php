@@ -6,6 +6,7 @@ use App\Models\CompanyOperation;
 use App\Models\Seller;
 use App\Models\User;
 use App\Platform\InstallerInvitation;
+use App\Platform\MailAttempt;
 use App\Mail\InstallerInvitationMail;
 use App\Services\TenantConnection;
 use Illuminate\Support\Facades\Hash;
@@ -140,7 +141,10 @@ trait InstallerAccessCases
         $base = "/vexo-admin/companies/{$this->a->id}/accesses";
         $this->get($base)->assertOk()->assertDontSee('name="mfa_code"',false);
         $originalMailer = Mail::getFacadeRoot();
-        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('SMTP indisponível no teste'));
+        Mail::shouldReceive('to')->once()->andReturnUsing(function () {
+            $this->assertSame('pending', MailAttempt::sole()->status);
+            throw new \RuntimeException('SMTP-QA-ERRO-PRIVADO');
+        });
         $response = $this->post($base, ['name' => 'Implantador QA', 'email' => $email]);
         $this->assertLessThan(500, $response->status());
         $invitation = InstallerInvitation::where('email', $email)->sole();
@@ -157,6 +161,17 @@ trait InstallerAccessCases
         $this->postJson('/app/a/convite-implantacao', ['token' => $token, 'email' => $email,
             'password' => 'Senha de QA após revogação', 'password_confirmation' => 'Senha de QA após revogação'])->assertUnprocessable();
         $this->assertSame('revoked', $invitation->fresh()->status);
+        $attempts = MailAttempt::where('type', 'installer_invitation')->orderBy('id')->get();
+        $this->assertSame(['failed', 'sent'], $attempts->pluck('status')->all());
+        foreach ($attempts as $attempt) {
+            $this->assertSame($email, $attempt->recipient);
+            $this->assertSame($invitation->id, (int) $attempt->source_id);
+            $this->assertSame($this->a->id, (int) $attempt->tenant_id);
+            $raw = json_encode($attempt->getRawOriginal(), JSON_THROW_ON_ERROR);
+            $this->assertStringNotContainsString($token, $raw);
+            $this->assertStringNotContainsString('#token=', $raw);
+            $this->assertStringNotContainsString('SMTP-QA-ERRO-PRIVADO', $raw);
+        }
         app(TenantConnection::class)->connect($this->a);
         $this->assertFalse(User::where('email', $email)->exists());
     }

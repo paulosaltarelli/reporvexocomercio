@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Fiscal\Snapshot;
+use App\Mail\CompanyActivationMail;
+use App\Platform\MailAttempt;
+use Illuminate\Support\Facades\Mail;
 use App\Models\Tenant;
 use App\Platform\PlatformAdmin;
 use App\Platform\PlatformAudit;
@@ -373,6 +376,46 @@ class PlatformTest extends TestCase
         }
     }
 
+    public function test_sent_email_history_is_central_only_and_its_filtered_read_only_preview_has_no_activation_fields(): void
+    {
+        $uri = '/vexo-admin/settings/emails';
+        $recipient = 'destinatario@example.test';
+        $sent = MailAttempt::begin($this->company->id, $this->company->name, $recipient,
+            'Convite de implantação QA', 'installer_invitation', 1);
+        $sent->finish(true);
+        $failed = MailAttempt::begin($this->company->id, $this->company->name, 'outro@example.test',
+            'Ativação falha QA', 'company_activation', 1);
+        $failed->finish(false);
+        MailAttempt::begin($this->company->id, $this->company->name, $recipient,
+            'Tentativa em andamento QA', 'installer_invitation', 2);
+        $this->withSession(['tenant_id' => $this->company->id, 'user_id' => 1, 'auth_version' => 0]);
+        $this->get($uri)->assertRedirect('/vexo-admin/login');
+        $this->get($uri.'/'.$sent->id)->assertRedirect('/vexo-admin/login');
+        $this->flushSession();
+        $this->centralSession();
+        Mail::fake();
+        $this->get('/vexo-admin/settings')->assertOk()->assertSee($uri, false);
+        $this->get($uri)->assertOk()->assertSee('Aceito pelo SMTP')->assertSee('Falha no envio')->assertSee('Resultado não confirmado');
+        $this->get($uri.'?'.http_build_query(['status' => 'sent', 'recipient' => $recipient]))
+            ->assertOk()->assertSee($sent->subject)->assertDontSee($failed->subject)->assertDontSee('Tentativa em andamento QA');
+        foreach ([$sent, $failed] as $attempt) {
+            $response = $this->get($uri.'/'.$attempt->id)->assertOk()->assertSee($attempt->recipient)
+                ->assertSee($attempt->subject)->assertDontSee('#token=')->assertDontSee('name="activation_code"', false);
+            $page = new \DOMDocument();
+            @$page->loadHTML($response->getContent());
+            $frame = $page->getElementsByTagName('iframe')->item(0);
+            $this->assertInstanceOf(\DOMElement::class, $frame);
+            $this->assertTrue($frame->hasAttribute('sandbox'));
+            $source = $frame->getAttribute('srcdoc');
+            $this->assertStringContainsString($this->company->name, $source);
+            $this->assertDoesNotMatchRegularExpression('/<(?:form|input)\b|<a\b[^>]*\bhref\s*=/i', $source);
+        }
+        $this->post($uri.'/'.$sent->id)->assertStatus(405);
+        $this->get($uri.'/999999')->assertNotFound();
+        $this->assertSame(3, MailAttempt::count());
+        Mail::assertNothingSent();
+    }
+
     public function test_company_activation_delivery_retries_and_resend_invalidates_old_code(): void
     {
         config(['tenancy.company_domain' => 'vendra.test', 'mail.default' => 'smtp']);
@@ -383,29 +426,41 @@ class PlatformTest extends TestCase
         $this->company->update(['slug'=>'demo-envio']);
         $job->update(['status'=>'completed', 'active_slug'=>null, 'tenant_id'=>$this->company->id, 'activation_status'=>'queued']);
         $service = app(\App\Platform\CompanyActivation::class);
-        \Illuminate\Support\Facades\Mail::shouldReceive('raw')->once()->andThrow(new \RuntimeException('teste de indisponibilidade SMTP'));
+        $mailer = Mail::getFacadeRoot();
+        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('SMTP-QA-ERRO-PRIVADO'));
         try {
             $service->send($job->id);
             $this->fail('A falha SMTP deve manter o pedido para nova tentativa.');
-        } catch (\RuntimeException $e) {
-            $this->assertSame('teste de indisponibilidade SMTP', $e->getMessage());
+        } catch (\RuntimeException) {
+            $this->assertSame('failed', MailAttempt::sole()->status);
         }
         $this->assertSame('queued', $job->fresh()->activation_status);
         $this->assertTrue($job->fresh()->activation_retry_at->isFuture());
         $this->travel(11)->minutes();
         try {
-            $code = null;
-            \Illuminate\Support\Facades\Mail::shouldReceive('raw')->once()->andReturnUsing(function ($body, $address) use (&$code) {
-                $this->assertStringContainsString('https://demo-envio.vendra.test/app/demo-envio/ativar', $body);
-                $message = new \Illuminate\Mail\Message(new \Symfony\Component\Mime\Email());
-                $address($message);
-                $this->assertSame('dona@example.test', $message->getSymfonyMessage()->getTo()[0]->getAddress());
-                $this->assertSame(1, preg_match('/[a-f0-9]{32}$/D', $body, $match));
-                $code = $match[0];
-            });
+            Mail::swap($mailer);
+            Mail::fake();
             $service->send($job->id);
+            $message = Mail::sent(CompanyActivationMail::class)->sole();
+            $this->assertTrue($message->hasTo('dona@example.test'));
+            $body = html_entity_decode($message->render());
+            $this->assertStringContainsString('https://demo-envio.vendra.test/app/demo-envio/ativar', $body);
+            $code = $message->activationCode;
+            $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $code);
+            $this->assertStringContainsString($code, $body);
             $this->assertSame('sent', $job->fresh()->activation_status);
             $this->assertSame(hash('sha256', $code), $job->fresh()->activation_digest);
+            $attempts = MailAttempt::where('type', 'company_activation')->orderBy('id')->get();
+            $this->assertSame(['failed', 'sent'], $attempts->pluck('status')->all());
+            foreach ($attempts as $attempt) {
+                $this->assertSame($this->company->id, (int) $attempt->tenant_id);
+                $this->assertSame($job->id, (int) $attempt->source_id);
+                $this->assertSame('dona@example.test', $attempt->recipient);
+                $this->assertNotNull($attempt->finished_at);
+                $raw = json_encode($attempt->getRawOriginal(), JSON_THROW_ON_ERROR);
+                $this->assertStringNotContainsString($code, $raw);
+                $this->assertStringNotContainsString('SMTP-QA-ERRO-PRIVADO', $raw);
+            }
             $this->centralSession();
             $this->post('/vexo-admin/requests/'.$job->id.'/activation')->assertRedirect();
             $this->assertSame('queued', $job->fresh()->activation_status);

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\CompanyController;
 use App\Http\Controllers\Platform\SettingsController;
+use App\Http\Controllers\Platform\MailHistoryController;
 use App\Http\Controllers\Platform\LicenseController;
 use App\Http\Controllers\Platform\InstallerAccessController;
 use App\Http\Middleware\PlatformAuthenticated;
@@ -14,6 +15,8 @@ Route::prefix('vexo-admin')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:30,1');
     Route::middleware(PlatformAuthenticated::class)->group(function () {
         Route::get('settings', [SettingsController::class,'index'])->name('platform.settings');
+        Route::get('settings/emails', [MailHistoryController::class, 'index'])->name('platform.settings.emails.index');
+        Route::get('settings/emails/{id}', [MailHistoryController::class, 'show'])->whereNumber('id')->name('platform.settings.emails.show');
         Route::post('settings/smtp', [SettingsController::class,'submit'])->middleware('throttle:10,1')->name('platform.settings.smtp.save');
         Route::post('settings/smtp/test', [SettingsController::class,'submit'])->middleware('throttle:10,1')->name('platform.settings.smtp.test');
         Route::get('admins',[\App\Http\Controllers\Platform\AdminController::class,'index'])->name('platform.admins');

@@ -36,7 +36,7 @@ final class InstallerInvitations
         $token = $operation === 'revoke' ? null : bin2hex(random_bytes(32));
         $challenge = PlatformMfa::needsChallenge((int)$request->session()->get('platform_mfa_at'));
 
-        [$invitation,$company] = DB::connection('central')->transaction(function () use ($request,$companyId,$invitationId,$operation,$input,$token,$challenge) {
+        [$invitation,$company,$attempt] = DB::connection('central')->transaction(function () use ($request,$companyId,$invitationId,$operation,$input,$token,$challenge) {
             $admin=PlatformAdmin::lockForUpdate()->find($request->session()->get('platform_admin_id'));
             abort_unless($admin && $admin->active && $admin->auth_version === (int)$request->session()->get('platform_auth_version',-1),403);
             if ($challenge && !PlatformMfa::consume($admin,$input['mfa_code']??'')) {
@@ -47,8 +47,9 @@ final class InstallerInvitations
             if ($invitation->exists && (int)$input['expected_version'] !== $invitation->version) {
                 throw ValidationException::withMessages(['expected_version'=>'O acesso mudou. Confira a situação atual antes de continuar.']);
             }
+            $attempt = null;
             if ($operation === 'revoke') {
-                if ($invitation->status === 'revoked') return [$invitation,$company];
+                if ($invitation->status === 'revoked') return [$invitation,$company,$attempt];
                 $this->revoke($company,$invitation);
             } else {
                 abort_unless($company->active,409,'A empresa está suspensa.');
@@ -63,13 +64,15 @@ final class InstallerInvitations
                 if (!$invitation->exists) $invitation->fill(['tenant_id'=>$companyId,'name'=>$input['name'],'email'=>$email,'issued_by'=>$admin->id]);
                 $invitation->fill(['status'=>'pending','delivery_status'=>'sending','delivered_at'=>null,'token_digest'=>hash('sha256',$token),
                     'expires_at'=>now()->addDay(),'version'=>$invitation->exists ? $invitation->version+1 : 1])->save();
+                $attempt = MailAttempt::begin($companyId, $company->name, $invitation->email,
+                    InstallerInvitationMail::SUBJECT, 'installer_invitation', $invitation->id);
             }
             PlatformAudit::create(['platform_admin_id'=>$admin->id,'actor_name'=>$admin->name,'tenant_id'=>$companyId,
                 'action'=>'installer.'.$operation,'changes'=>['invitation_id'=>$invitation->id,'email'=>$invitation->email,'version'=>$invitation->version]]);
-            return [$invitation,$company];
+            return [$invitation,$company,$attempt];
         });
         if ($challenge) $request->session()->put('platform_mfa_at',time());
-        if ($token !== null) $this->deliver($company,$invitation,$token);
+        if ($token !== null) $this->deliver($company,$invitation,$token,$attempt);
         return $invitation->fresh();
     }
 
@@ -113,7 +116,7 @@ final class InstallerInvitations
         $invitation->update(['status'=>'revoked','revoked_at'=>now(),'token_digest'=>null,'version'=>$invitation->version+1]);
     }
 
-    private function deliver(Tenant $company,InstallerInvitation $invitation, #[\SensitiveParameter] string $token): void
+    private function deliver(Tenant $company,InstallerInvitation $invitation, #[\SensitiveParameter] string $token, MailAttempt $attempt): void
     {
         $sent=false;
         try {
@@ -123,9 +126,12 @@ final class InstallerInvitations
         } catch (\Throwable) {
             // Transport diagnostics can include the message body. Store only the delivery result.
         }
-        InstallerInvitation::whereKey($invitation->id)->where('version',$invitation->version)->where('status','pending')
-            ->where('token_digest',hash('sha256',$token))->update($sent
-                ? ['delivery_status'=>'sent','delivered_at'=>now()]
-                : ['delivery_status'=>'failed','token_digest'=>null]);
+        DB::connection('central')->transaction(function () use ($attempt, $invitation, $token, $sent) {
+            $attempt->finish($sent);
+            InstallerInvitation::whereKey($invitation->id)->where('version',$invitation->version)->where('status','pending')
+                ->where('token_digest',hash('sha256',$token))->update($sent
+                    ? ['delivery_status'=>'sent','delivered_at'=>now()]
+                    : ['delivery_status'=>'failed','token_digest'=>null]);
+        });
     }
 }

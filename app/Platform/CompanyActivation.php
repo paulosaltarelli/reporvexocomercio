@@ -2,6 +2,7 @@
 
 namespace App\Platform;
 
+use App\Mail\CompanyActivationMail;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Tenancy\CompanyHosts;
@@ -18,21 +19,32 @@ final class CompanyActivation
             throw new \RuntimeException('activation_smtp_required');
         }
         $code = bin2hex(random_bytes(16));
-        $job = DB::connection('central')->transaction(function () use ($id, $code) {
+        $delivery = DB::connection('central')->transaction(function () use ($id, $code) {
             $job = ProvisionRequest::lockForUpdate()->findOrFail($id);
             if ($job->status !== 'completed' || $job->activation_status !== 'queued' || $job->activation_retry_at?->isFuture()) return null;
             if (!Tenant::whereKey($job->tenant_id)->where('active', true)->exists()) return null;
             $job->update(['activation_digest' => hash('sha256', $code), 'activation_expires_at' => now()->addDay(), 'activation_retry_at' => now()->addMinutes(10)]);
-            return $job;
+            $attempt = MailAttempt::begin($job->tenant_id, $job->name, $job->admin_email,
+                CompanyActivationMail::SUBJECT, 'company_activation', $job->id);
+            return [$job, $attempt];
         });
-        if (!$job) return;
+        if (!$delivery) return;
 
-        $url = CompanyHosts::url($job->slug, 'company.activate');
-        app(SmtpSettings::class)->send(fn()=>Mail::raw("A loja {$job->name} está pronta. Acesse {$url} e informe seu e-mail e o código abaixo para definir sua senha. O código vale por 24 horas.\n\n{$code}", function ($mail) use ($job) {
-            $mail->to($job->admin_email)->subject('Ative sua conta de administrador no Vendra');
-        }));
-        ProvisionRequest::whereKey($id)->where('activation_status', 'queued')->where('activation_digest', hash('sha256', $code))
-            ->update(['activation_status' => 'sent', 'activation_retry_at' => null]);
+        [$job, $attempt] = $delivery;
+        try {
+            $url = CompanyHosts::url($job->slug, 'company.activate');
+            $message = new CompanyActivationMail($job->name, $job->admin_name, $url, $code);
+            app(SmtpSettings::class)->send(fn () => Mail::to($job->admin_email)->send($message));
+        } catch (\Throwable) {
+            $attempt->finish(false);
+            throw new \RuntimeException('activation_smtp_failed');
+        }
+
+        DB::connection('central')->transaction(function () use ($attempt, $id, $code) {
+            $attempt->finish(true);
+            ProvisionRequest::whereKey($id)->where('activation_status', 'queued')->where('activation_digest', hash('sha256', $code))
+                ->update(['activation_status' => 'sent', 'activation_retry_at' => null]);
+        });
     }
 
     public function activate(Tenant $tenant, string $email, #[\SensitiveParameter] string $code, #[\SensitiveParameter] string $password): void
