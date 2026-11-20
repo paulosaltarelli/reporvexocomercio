@@ -15,6 +15,37 @@
             @if($issuancePaused)<p role="status">A emissão está pausada no servidor.</p>@endif
             <form method="post" action="{{ route('platform.settings.banks.save', [$bank, $environment]) }}">
                 @csrf
+                @php($connection = $connections[$bank][$environment] ?? [])
+                <div class="form-grid">
+                    @foreach(['api_url' => 'URL base da API Pix', 'token_url' => 'URL de autenticação', 'scope' => 'Escopos OAuth'] as $field => $title)
+                        <div class="field">
+                            <label for="{{ $bank }}-{{ $environment }}-{{ $field }}">{{ $title }}</label>
+                            <input id="{{ $bank }}-{{ $environment }}-{{ $field }}" name="{{ $field }}"
+                                type="{{ $field === 'scope' ? 'text' : 'url' }}" value="{{ $connection[$field] ?? '' }}"
+                                maxlength="{{ $field === 'scope' ? 255 : 512 }}" placeholder="Usar configuração do servidor">
+                        </div>
+                    @endforeach
+                    <div class="field">
+                        <label for="{{ $bank }}-{{ $environment }}-auth">Autenticação OAuth</label>
+                        <select id="{{ $bank }}-{{ $environment }}-auth" name="auth_method">
+                            <option value="">Usar configuração do servidor</option>
+                            <option value="client_secret_basic" @selected(($connection['auth_method'] ?? '') === 'client_secret_basic')>HTTP Basic</option>
+                            <option value="client_secret_post" @selected(($connection['auth_method'] ?? '') === 'client_secret_post')>Credenciais no corpo</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="{{ $bank }}-{{ $environment }}-credentials">Vínculo de credenciais e certificado</label>
+                        <select id="{{ $bank }}-{{ $environment }}-credentials" name="credential_set">
+                            <option value="">Usar credenciais padrão do servidor</option>
+                            @if(isset($connection['credential_set']) && !in_array($connection['credential_set'], $credentialNames[$bank][$environment] ?? [], true))
+                                <option value="{{ $connection['credential_set'] }}" selected>Vínculo indisponível</option>
+                            @endif
+                            @foreach($credentialNames[$bank][$environment] ?? [] as $credentialName)
+                                <option value="{{ $credentialName }}" @selected(($connection['credential_set'] ?? '') === $credentialName)>{{ $credentialName }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
                 @foreach(['enabled' => 'Ambiente habilitado', 'issue' => 'Permitir emissão na loja', 'reconcile' => 'Conciliar automaticamente', 'auto_issue' => 'Emitir automaticamente'] as $field => $caption)
                     @if($field !== 'auto_issue' || $environment === 'production')
                         <input type="hidden" name="{{ $field }}" value="0">

@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'credential_sets' => json_decode((string) env('C6_PLATFORM_PIX_CREDENTIAL_SETS', '{}'), true) ?: [],
     'issuance_paused' => env('C6_PLATFORM_PIX_ISSUANCE_PAUSED', false),
     'enabled' => env('C6_PLATFORM_PIX_ENABLED', false),
     'environment' => env('C6_PLATFORM_PIX_ENVIRONMENT'),

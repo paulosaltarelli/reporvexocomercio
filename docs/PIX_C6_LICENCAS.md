@@ -75,6 +75,27 @@ habilitado, desative as emissões e mantenha a conciliação ativa. Desabilitar
 o ambiente também suspende as consultas desse ambiente.
 
 Execute a migração central antes de publicar o código. A identidade do worker
-precisa de SELECT em `platform_bank_environments`. Endereços aprovados,
-credenciais, certificados e chaves privadas continuam no servidor. O catálogo
+precisa de SELECT em `platform_bank_environments`. Credenciais, certificados e chaves privadas
+continuam no servidor. O catálogo
 lista os bancos com conector para mensalidades, começando pelo C6.
+
+Cada ambiente aceita a URL base Pix, a URL de autenticação, o método OAuth e
+os escopos. Campos vazios usam os valores do servidor. Salvar valida o HTTPS,
+o domínio C6 e o ambiente. A aprovação e a pausa global continuam no servidor.
+
+Para disponibilizar vínculos de credenciais no painel, configure
+`C6_PLATFORM_PIX_CREDENTIAL_SETS` no ambiente privado da aplicação e do
+worker. A variável contém um objeto JSON indexado por ambiente
+(`sandbox` ou `production`) e nome do conjunto. Cada conjunto contém
+`client_id`, `client_secret`, `key` (chave Pix), `cert` (caminho PEM),
+`private_key` (caminho da chave PEM) e, se necessário, `passphrase`.
+Use o mesmo nome nos dois processos, com caminhos acessíveis às respectivas
+identidades. A Central grava o nome escolhido. O próprio material privado
+permanece no servidor.
+
+Aplique também a migração
+`2026_11_20_000010_add_connection_to_platform_bank_environments`.
+Antes de trocar a base Pix, o ID do cliente ou a chave Pix, concilie as
+cobranças pendentes. Esses dados compõem a identificação bancária persistida
+em cada cobrança. A consulta de cobranças com a identificação anterior
+exige a configuração original.

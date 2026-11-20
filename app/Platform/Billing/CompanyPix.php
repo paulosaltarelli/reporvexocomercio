@@ -22,7 +22,7 @@ final class CompanyPix
         $environment = $tenant->is_demonstration ? 'sandbox' : 'production';
         return !config('c6pix.issuance_paused')
             && $this->environments->permits('c6', $environment, 'issue')
-            && (!$this->gateway instanceof C6Bank || C6Bank::enabledForTenant($tenant));
+            && (!$this->gateway instanceof C6Bank || C6Bank::enabledForTenant($tenant, $this->connection($tenant)));
     }
 
     private function bank(int $tenantId): C6Gateway
@@ -34,8 +34,15 @@ final class CompanyPix
         }
 
         return $this->gateway instanceof C6Bank
-            ? $this->gateway->forTenant($tenant)
+            ? $this->gateway->forTenant($tenant, $this->connection($tenant))
             : $this->gateway;
+    }
+
+    private function connection(Tenant $tenant): array
+    {
+        return $this->environments->connection($this->environments->settings(
+            'c6', $tenant->is_demonstration ? 'sandbox' : 'production',
+        ));
     }
 
     private function charges(): Builder
@@ -139,7 +146,7 @@ final class CompanyPix
             if (!$tenant->active || ($worker && $tenant->is_demonstration)) {
                 throw C6Bank::error('A empresa precisa estar ativa. Na demonstração, gere a cobrança manualmente no sandbox.');
             }
-            if ($this->gateway instanceof C6Bank && !hash_equals($account, $this->gateway->forTenant($tenant)->account())) {
+            if ($this->gateway instanceof C6Bank && !hash_equals($account, $this->gateway->forTenant($tenant, $this->connection($tenant))->account())) {
                 throw C6Bank::error('O ambiente bancário da empresa mudou. Atualize a tela.');
             }
             $invoice = $this->billing->lockForCharge($tenantId, $installmentId);
