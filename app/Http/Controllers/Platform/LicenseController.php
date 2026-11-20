@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
+use App\Platform\Billing\CompanyPix;
 use App\Platform\Contract;
+use App\Platform\PlatformAudit;
 use App\Platform\ContractAccess;
 use App\Platform\ContractBilling;
 use App\Platform\ContractInstallment;
@@ -18,6 +20,36 @@ final class LicenseController extends Controller
         $contracts = Contract::where('tenant_id', $id)->orderByDesc('start_date')->paginate(10, ['*'], 'contratos')->withQueryString();
         $installments = ContractInstallment::where('tenant_id', $id)->orderByDesc('due_date')->orderByDesc('id')->paginate(20, ['*'], 'parcelas')->withQueryString();
         return view('platform.license.index', compact('company', 'contracts', 'installments'));
+    }
+
+    public function installment(int $id, int $installment, CompanyPix $pix)
+    {
+        $company = Tenant::findOrFail($id);
+        $row = ContractInstallment::with('contract')->where('tenant_id', $id)->findOrFail($installment);
+        $charge = $pix->view($id, $row->id);
+        $canIssue = $pix->availableForCentral($company)
+            && !in_array($row->status, ['paid', 'cancelled'], true)
+            && !$row->contract->inImplantationGrace();
+
+        return response()->view('platform.license.installment', [
+            'company' => $company, 'installment' => $row, 'charge' => $charge, 'canIssue' => $canIssue,
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function issueInstallment(Request $request, int $id, int $installment, CompanyPix $pix)
+    {
+        ContractInstallment::where('tenant_id', $id)->findOrFail($installment);
+        $charge = $pix->issueFromCentral($id, $installment);
+        $actor = $request->attributes->get('platformAdmin');
+        PlatformAudit::create([
+            'platform_admin_id' => $actor->id,
+            'actor_name' => $actor->name,
+            'action' => 'platform.license_pix_requested',
+            'changes' => ['tenant_id' => $id, 'installment_id' => $installment,
+                'txid' => $charge['txid'], 'environment' => $charge['environment']],
+        ]);
+
+        return redirect()->route('platform.license.installments.show', [$id, $installment]);
     }
 
     public function create(int $id)
