@@ -42,6 +42,7 @@ final class BankSettingsController extends Controller
     public function save(Request $request, string $bank, string $environment, BankEnvironments $banks)
     {
         abort_unless(isset(BankEnvironments::BANKS[$bank], BankEnvironments::ENVIRONMENTS[$environment]), 404);
+        $request->merge(['bank_form' => $bank.'.'.$environment]);
         $flags = $request->validate([
             'enabled' => 'required|boolean',
             'issue' => 'required|boolean',

@@ -38,8 +38,8 @@ class ReceivablesController extends Controller
                 WHEN i.paid_amount > 0 THEN 'partial'
                 ELSE 'pending' END AS payment_status", [$today]);
         if (filled($filters['q'] ?? null)) {
-            $pattern = '%'.trim($filters['q']).'%';
-            $rows->where(fn ($query) => $query->where('t.name', 'like', $pattern)->orWhere('t.slug', 'like', $pattern));
+            $pattern = '%'.strtr(trim($filters['q']), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
+            $rows->where(fn ($query) => $query->whereRaw("t.name LIKE ? ESCAPE '!'", [$pattern])->orWhereRaw("t.slug LIKE ? ESCAPE '!'", [$pattern]));
         }
         if (filled($filters['month'] ?? null)) {
             $month = Carbon::createFromFormat('!Y-m', $filters['month']);
@@ -52,7 +52,7 @@ class ReceivablesController extends Controller
         $totals = (array) (clone $query)->selectRaw("SUM(CASE WHEN payment_status IN ('pending','partial') THEN amount - paid_amount ELSE 0 END) AS upcoming,
             SUM(CASE WHEN payment_status = 'overdue' THEN amount - paid_amount ELSE 0 END) AS overdue,
             SUM(paid_amount) AS paid")->first();
-        $installments = $query->orderBy('due_date')->orderBy('id')->paginate(30)->withQueryString();
+        $installments = $query->orderBy('due_date')->orderBy('id')->paginate(30)->appends($filters);
 
         return view('platform.receivables', compact('filters', 'totals', 'installments', 'labels'));
     }

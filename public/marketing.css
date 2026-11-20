@@ -184,3 +184,35 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline
     background: #182d48;
     border-color: #789ac3;
 }
+
+@font-face {
+    font-family: Inter;
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/fonts/inter-variable.woff2') format('woff2');
+}
+.site-footer .corporate-brand img { mix-blend-mode: lighten; }
+.preview-dialog { width: min(1060px,calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid #c9d5e3; border-radius: 12px; color: var(--ink); }
+.preview-dialog::backdrop { background: #0a182ed9; }
+.dialog-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.dialog-toolbar h2 { font-size: 15px; text-transform: none; letter-spacing: .02em; }
+.dialog-close, .dialog-original { min-height: 44px; font: inherit; font-size: 14px; font-weight: 600; }
+.dialog-close { background: white; color: var(--ink); border: 1px solid #b8c8db; border-radius: 6px; padding: 6px 16px; cursor: pointer; }
+.dialog-close:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.preview-dialog img { display: block; width: 100%; height: auto; max-height: 70dvh; object-fit: contain; background: #f1f5f9; }
+.dialog-original { display: inline-flex; align-items: center; padding: 6px 16px; color: #1054bc; }
+@media(max-width:680px) {
+    .header-inner { gap: 10px; }
+    .login-link { line-height: 1.2; }
+    .mobile-menu nav { max-height: calc(100dvh - 140px); overflow-y: auto; }
+    .faq-list summary, .section[id] { scroll-margin-bottom: 74px; }
+}
+@media print { .preview-dialog { display: none; } }
+
+.mobile-conversion[hidden] { display: none; }
+
+.feature-navigation { display: flex; flex-wrap: wrap; gap: 6px 20px; border-block: 1px solid var(--line); margin: 0 0 28px; }
+.feature-navigation a { display: inline-flex; align-items: center; min-height: 44px; color: #1553a9; font-size: 13px; font-weight: 600; }
+.feature-navigation a:hover { text-decoration: underline; }
+@media print { .feature-navigation { display: none; } }

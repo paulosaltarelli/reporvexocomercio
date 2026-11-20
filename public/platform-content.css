@@ -61,3 +61,12 @@ a.central-record{display:inline-block;white-space:normal;font-weight:650}
 .central-bank-connection>summary{cursor:pointer;padding:.65rem 0;font-weight:650;color:#264766}
 .central-contracts [aria-label="Contratos de licença"] :is(td,th):nth-child(3),
 .central-contracts [aria-label="Parcelas de licença"] :is(td,th):is(:nth-child(4),:nth-child(5),:nth-child(6)){text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+.platform-admin-card > summary, .central-row-edit > summary {
+    min-height: 44px;
+    align-content: center;
+}
+.platform-admin-card > summary:focus-visible, .central-row-edit > summary:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}

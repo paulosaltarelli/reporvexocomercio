@@ -133,6 +133,33 @@ class PlatformTest extends TestCase
         $this->assertStringNotContainsString('test-global-password-9876',PlatformAudit::all()->toJson());
         $this->post('/vexo-admin/admins',['name'=>'Bad','email'=>'bad@example.test','active'=>1,'password'=>'short','password_confirmation'=>'short'])->assertSessionHasErrors('password')->assertSessionMissing('_old_input.password');
     }
+    public function test_invalid_admin_edit_on_page_two_preserves_only_its_own_form(): void
+    {
+        $rows = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $rows[] = ['name' => sprintf('Equipe QA %02d', $i), 'email' => "equipe{$i}@example.test",
+                'active' => true, 'password' => $this->admin->password, 'auth_version' => 0];
+        }
+        PlatformAdmin::insert($rows);
+        $this->centralSession();
+        $page = '/vexo-admin/admins?page=2';
+        $list = $this->get($page)->assertOk()->assertSee('Página 2 de 2');
+        $target = $list->viewData('admins')->sole();
+        $this->assertArrayNotHasKey('password', $target->getAttributes());
+        $this->from($page)->post('/vexo-admin/admins/'.$target->id, [
+            'name' => 'Nome a corrigir', 'email' => 'email-incompleto', 'active' => '1', 'expected_version' => 0,
+        ])->assertRedirect($page)->assertSessionHasErrors('email');
+        $html = $this->get($page)->assertOk()->getContent();
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+        $this->assertSame('', $dom->getElementById('new-admin-name')->getAttribute('value'));
+        $this->assertSame('', $dom->getElementById('new-admin-email')->getAttribute('value'));
+        $this->assertSame('Nome a corrigir', $dom->getElementById('admin-name-'.$target->id)->getAttribute('value'));
+        $this->assertCount(1, $xpath->query('//details[@open]//input[@id="admin-email-'.$target->id.'" and @value="email-incompleto"]'));
+        $this->assertSame($target->name, $target->fresh()->name);
+    }
+
     public function test_central_shows_company_login_and_setup_urls_without_starting_support_on_get(): void
     {
         $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_mfa_at'=>time(),'platform_auth_version'=>$this->admin->auth_version]);

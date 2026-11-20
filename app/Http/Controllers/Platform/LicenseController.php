@@ -17,8 +17,8 @@ final class LicenseController extends Controller
     public function index(int $id)
     {
         $company = Tenant::select('id', 'name', 'slug')->findOrFail($id);
-        $contracts = Contract::where('tenant_id', $id)->orderByDesc('start_date')->paginate(10, ['*'], 'contratos')->withQueryString();
-        $installments = ContractInstallment::where('tenant_id', $id)->orderByDesc('due_date')->orderByDesc('id')->paginate(20, ['*'], 'parcelas')->withQueryString();
+        $contracts = Contract::where('tenant_id', $id)->orderByDesc('start_date')->paginate(10, ['*'], 'contratos')->appends(request()->only('parcelas'));
+        $installments = ContractInstallment::where('tenant_id', $id)->orderByDesc('due_date')->orderByDesc('id')->paginate(20, ['*'], 'parcelas')->appends(request()->only('contratos'));
         return view('platform.license.index', compact('company', 'contracts', 'installments'));
     }
 
@@ -44,6 +44,7 @@ final class LicenseController extends Controller
         PlatformAudit::create([
             'platform_admin_id' => $actor->id,
             'actor_name' => $actor->name,
+            'tenant_id' => $id,
             'action' => 'platform.license_pix_requested',
             'changes' => ['tenant_id' => $id, 'installment_id' => $installment,
                 'txid' => $charge['txid'], 'environment' => $charge['environment']],

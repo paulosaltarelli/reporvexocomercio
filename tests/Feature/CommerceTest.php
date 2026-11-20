@@ -676,6 +676,7 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id'=>$this->a->id, 'user_id'=>$this->user->id]);
         $query = ['salesperson_id'=>$seller->id, 'q'=>'0%', 'status'=>'completed', 'payment_status'=>'pending', 'from'=>'2026-11-10', 'to'=>'2026-11-10'];
         $response = $this->get('/app/a/sales?'.http_build_query($query))->assertOk();
+        $response->assertSee('Página 1 de 2')->assertSee('Próxima')->assertDontSee('Anterior');
         $page = $response->viewData('sales');
         $this->assertSame(22, $page->total());
         $expected = array_reverse($ids);
@@ -3299,6 +3300,14 @@ class CommerceTest extends TestCase
         $this->get($print)->assertOk()->assertSee('Ordem de serviço #'.$doc->id)->assertSee('window.addEventListener', false);
         $this->get('/app/a/documents')->assertOk()->assertSee($print, false);
         app(TenantConnection::class)->connect($this->a);$this->assertSame(1,Sale::count());$this->assertSame(2,\App\Models\Payment::count());$this->assertSame('invoiced',$doc->fresh()->status);
+
+        app(TenantConnection::class)->connect($this->b);
+        $userB = User::create(['name'=>'Operador da loja B', 'email'=>'balcao-b@example.test', 'password'=>'local-testing-only', 'role'=>'admin']);
+        $this->withSession(['tenant_id'=>$this->b->id, 'user_id'=>$userB->id]);
+        $this->get('/app/b/desk?document_number='.$doc->id.'&action=print_os')
+            ->assertRedirect('/app/b/desk')->assertSessionHasErrors('document_number');
+        $this->get('/app/b/desk')->assertOk()->assertSee('Nenhum documento encontrado')
+            ->assertDontSee('Notebook sem itens');
     }
 
     public function test_concurrent_split_checkout_and_cash_opening_are_recorded_once(): void

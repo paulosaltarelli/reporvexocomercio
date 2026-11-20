@@ -4,7 +4,7 @@
 @section('content')
 @include('platform.company-navigation')
 <div class="central-access-summary"><span class="central-status" data-tone="{{ $company->active ? 'good':'neutral' }}">{{ !$company->active ? 'Empresa suspensa' : ($open ? 'Implantação em andamento' : 'Implantação concluída') }}</span>
-<a href="{{ \App\Tenancy\CompanyHosts::url($company->slug) }}" target="_blank" rel="noopener noreferrer">Login da loja <span aria-hidden="true">↗</span></a></div>
+@if($company->active)<a href="{{ \App\Tenancy\CompanyHosts::url($company->slug) }}" target="_blank" rel="noopener noreferrer">Login da loja <span aria-hidden="true">↗</span></a>@endif</div>
 @if($company->active)
 <details class="panel central-disclosure" @if($invitations->isEmpty() || old('email') || old('name')) open @endif>
     <summary>Convidar vendedor</summary>
@@ -18,7 +18,7 @@
         <div class="field"><label for="invite-profile">Perfil nesta loja</label>
             <select name="access_profile" id="invite-profile">
                 @foreach(\App\Platform\InstallerInvitation::PROFILES as $key=>$label)
-                    <option value="{{ $key }}" @selected(old('access_profile','installer')===$key)>{{ $label }}</option>
+                    <option value="{{ $key }}" @selected((old('editing_grant') === null ? old('access_profile','installer') : 'installer')===$key)>{{ $label }}</option>
                 @endforeach
             </select>
             <small class="hint">Implantação permite configurar e, após a conclusão, consultar o resumo. DBA da loja permite administrar toda a operação desta empresa.</small>
@@ -49,18 +49,19 @@
                         </form>
                         @endif
                         @if($invite->accepted_at && $invite->user_id && $company->active)
-                        <details class="central-row-edit"><summary>Editar acesso</summary>
+                        @php($editingGrant = old('editing_grant') === (string)$invite->id)
+                        <details class="central-row-edit" @if($editingGrant) open @endif><summary>Editar acesso</summary>
                         <form method="post" action="{{ route('platform.company-access.update',['id'=>$company->id,'invitation'=>$invite->id]) }}">
                             @csrf<input type="hidden" name="expected_version" value="{{ $invite->version }}">
                             <div class="field"><label for="profile-{{ $invite->id }}">Perfil de {{ $invite->name }}</label>
                                 <select name="access_profile" id="profile-{{ $invite->id }}">
                                     @foreach(\App\Platform\InstallerInvitation::PROFILES as $key=>$label)
-                                        <option value="{{ $key }}" @selected($invite->access_profile===$key)>{{ $label }}</option>
+                                        <option value="{{ $key }}" @selected(($editingGrant ? old('access_profile') : $invite->access_profile)===$key)>{{ $label }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <input type="hidden" name="enabled" value="0">
-                            <label class="checkbox-line"><input type="checkbox" name="enabled" value="1" @checked($invite->status==='accepted' && $activeUsers->get($invite->user_id)===$invite->email)> Acesso habilitado</label>
+                            <label class="checkbox-line"><input type="checkbox" name="enabled" value="1" @checked($editingGrant ? old('enabled') === '1' : ($invite->status==='accepted' && $activeUsers->get($invite->user_id)===$invite->email))> Acesso habilitado</label>
                             @include('platform.accesses.mfa',['fieldId'=>'grant-'.$invite->id])
                             <button class="button secondary">Salvar acesso</button>
                         </form>

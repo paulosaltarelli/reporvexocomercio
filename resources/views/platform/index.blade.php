@@ -19,7 +19,7 @@
                     @if($company->is_demonstration??false)<span class="badge demonstration">Demonstração</span>@endif</td>
                 <td><span class="central-status" data-tone="{{ $company->active?'good':'neutral' }}">{{ $company->active?'Ativa':'Inativa' }}</span></td>
                 <td data-caption="Cadastro">{{ $company->created_at?->format('d/m/Y')??'Não informado' }}</td>
-                <td><a href="{{ \App\Tenancy\CompanyHosts::url($company->slug, 'login') }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir login de {{ $company->name }} em outra aba">Abrir login <span aria-hidden="true">↗</span></a></td>
+                <td>@if($company->active)<a href="{{ \App\Tenancy\CompanyHosts::url($company->slug, 'login') }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir login de {{ $company->name }} em outra aba">Abrir login <span aria-hidden="true">↗</span></a>@else<span class="muted">Acesso suspenso</span>@endif</td>
             </tr>
         @empty
             <tr><td colspan="4" class="empty">{{ request()->filled('q') || request()->filled('status') ? 'Nenhuma empresa corresponde aos filtros.' : 'Nenhuma empresa cadastrada.' }}</td></tr>

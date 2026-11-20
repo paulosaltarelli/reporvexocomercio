@@ -50,7 +50,7 @@
         <tbody>
         @forelse($entries as $entry)
             @php($rawBalance = bcsub((string)$entry->amount,(string)($entry->paid_amount??'0'),2))
-            @php($balance = bccomp($rawBalance,'0',2)>0 ? $rawBalance : '0.00')
+            @php($balance = !$entry->cancelled_at && bccomp($rawBalance,'0',2)>0 ? $rawBalance : '0.00')
             @php($isPending = !$entry->cancelled_at && bccomp($balance,'0',2)>0)
             @php($editingEntry = (string)old('entry_id')===(string)$entry->id)
             <tr>
@@ -94,7 +94,7 @@
                 </td></tr>
             @endif
         @empty
-            <tr><td colspan="8" class="empty">Nenhuma conta encontrada. Compras, vendas e contas manuais aparecerão aqui.</td></tr>
+            <tr><td colspan="8" class="empty">{{ request()->hasAny(['q','direction','status','from','to','sale']) ? 'Nenhuma conta corresponde aos filtros.' : 'Nenhuma conta registrada.' }}</td></tr>
         @endforelse
         </tbody>
     </table></div>

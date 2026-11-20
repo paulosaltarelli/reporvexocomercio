@@ -30,6 +30,7 @@ final class InstallerAccessController extends Controller
 
     public function update(Request $request,int $id,int $invitation,InstallerInvitations $access)
     {
+        $request->merge(['editing_grant' => (string)$invitation]);
         $grant=$access->change($request,$id,$invitation,'update');
         return redirect()->route('platform.company-access.index',['id'=>$id])->with('success',
             $grant->status==='accepted' ? 'Acesso habilitado e perfil salvo.' : 'Acesso desabilitado.');

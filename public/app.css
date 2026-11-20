@@ -61,3 +61,10 @@ aside{padding:24px 16px}.sidebar-heading{padding:0 8px}.company{overflow-wrap:an
 @media(min-width:761px){.desk-metrics.without-quotes{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .work-order-signatures{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:72px;text-align:center;break-inside:avoid}.work-order-signatures>div{display:flex;flex-direction:column;gap:8px}.signature-line{border-top:1px solid #334155}.work-order-signatures span{font-size:12px}@media print{body:has(.work-order-copy) main>.notice,body:has(.work-order-copy) .page-top .muted{display:none!important}.work-order-signatures{margin-top:72px;gap:40px}}
+
+.store-pager{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;margin:16px 0 0}
+.store-pager a,.store-pager [aria-current]{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:40px;padding:4px 10px;border-radius:6px}
+.store-pager [aria-current]{background:#e6effc;color:#174a8a;font-weight:700}
+.store-pager .store-page-position{display:none}
+@media(max-width:600px){.store-pager .store-page-number{display:none}.store-pager .store-page-position{display:inline}.store-pager a{min-height:44px}}
+@media print{.store-pager{display:none}}

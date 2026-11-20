@@ -7,7 +7,10 @@
 @foreach($banks as $bank => $name)
     <div class="bank-environments">
     @foreach($environments as $environment => $label)
-        @php($profile = $profiles->get($bank.':'.$environment))
+        @php
+            $profile = $profiles->get($bank.':'.$environment);
+            $editingBank = old('bank_form') === $bank.'.'.$environment;
+        @endphp
         <section class="panel form-panel central-bank">
             <h2>{{ $name }} · {{ $label }}</h2>
             <p class="central-source">{{ $profile ? 'Configuração salva na Central' : 'Usando configuração do servidor' }}</p>
@@ -16,8 +19,18 @@
             @endunless
             <form method="post" action="{{ route('platform.settings.banks.save', [$bank, $environment]) }}">
                 @csrf
-                @php($connection = $connections[$bank][$environment] ?? [])
-                <details class="central-bank-connection" @if($errors->any()) open @endif>
+                @php
+                    $connection = $connections[$bank][$environment] ?? [];
+                    if ($editingBank) {
+                        foreach (['api_url', 'token_url', 'scope', 'auth_method', 'credential_set'] as $field) {
+                            $value = old($field);
+                            if (in_array($field, ['api_url', 'token_url'], true) && is_string($value) && !\App\Platform\Billing\C6Bank::validEndpoint($value, $environment)) continue;
+                            if (is_string($value) && !$errors->has($field)) $connection[$field] = $value;
+                            if ($value === null) unset($connection[$field]);
+                        }
+                    }
+                @endphp
+                <details class="central-bank-connection" @if($editingBank) open @endif>
                     <summary>Conexão e credenciais</summary>
                 <div class="form-grid">
                     @foreach(['api_url' => 'URL base da API Pix', 'token_url' => 'URL de autenticação', 'scope' => 'Escopos OAuth'] as $field => $title)
@@ -50,14 +63,14 @@
                     </div>
                 </div>
                 </details>
-                @foreach(['enabled' => 'Ambiente habilitado', 'issue' => 'Permitir emissão na loja', 'reconcile' => 'Conciliar automaticamente', 'auto_issue' => 'Emitir automaticamente'] as $field => $caption)
+                @foreach(['enabled' => 'Ambiente habilitado', 'issue' => 'Permitir que a loja gere Pix para pagar a licença', 'reconcile' => 'Conciliar pagamentos de licença automaticamente', 'auto_issue' => 'Gerar Pix automaticamente para parcelas de licença'] as $field => $caption)
                     @if($field !== 'auto_issue' || $environment === 'production')
                         <input type="hidden" name="{{ $field }}" value="0">
-                        <div class="field bank-toggle"><label><input type="checkbox" name="{{ $field }}" value="1" @checked($profile?->{$field} ?? match($field) {
+                        <div class="field bank-toggle"><label><input type="checkbox" name="{{ $field }}" value="1" @checked($editingBank ? old($field) === '1' : ($profile?->{$field} ?? match($field) {
                             'reconcile' => config('licensing_worker.reconcile'),
                             'auto_issue' => config('licensing_worker.issue'),
                             default => $ready[$bank][$environment] ?? false,
-                        })> {{ $caption }}</label></div>
+                        }))> {{ $caption }}</label></div>
                     @else
                         <input type="hidden" name="{{ $field }}" value="0">
                     @endif

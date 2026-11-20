@@ -20,8 +20,8 @@
 </form>
 @endif
 @if($currentUser->allows($kind.'.manage'))
-@if($search !== '' && !$editing)<details class="panel" @if($errors->any()) open @endif><summary>Novo cadastro</summary>@endif
-<form class="panel" method="post">
+@if(!$editing)<details class="panel disclosure" @if($errors->any() || ($rows->total()===0 && $search === '')) open @endif><summary>Novo cadastro</summary>@endif
+<form class="{{ $editing ? 'panel' : 'disclosure-content' }}" method="post">
 @csrf<h2>{{ $editing?'Editar cadastro':'Novo cadastro' }}</h2><input type="hidden" name="id" value="{{ $editing?->id }}">
 @if($kind === 'customers')
 @include('components.customers.registry-fields')
@@ -57,7 +57,7 @@
 @endif</div>
 @if($kind==='groups')<p class="hint">A margem é sobre o valor final da venda, e não um acréscimo sobre o custo. Exemplo: R$ 60,00 de custo com 40% de margem resulta em R$ 100,00. Ao alterar a regra ou a margem, produtos em modo automático com custo válido têm o preço recalculado. Os demais mantêm o preço e recebem um alerta quando houver diferença. Regras próprias do produto continuam valendo; produtos sem custo não têm o preço zerado.</p>
 @endif</form>
-@if($search !== '' && !$editing)</details>@endif
+@if(!$editing)</details>@endif
 @endif
 <section class="panel"><div class="scroll"><table><thead><tr>
 @foreach($visibleFields as $label)<th>{{ $label }}</th>

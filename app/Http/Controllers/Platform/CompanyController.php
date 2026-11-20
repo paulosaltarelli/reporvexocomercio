@@ -25,15 +25,15 @@ class CompanyController extends Controller
     {
         $this->actor($request);
         $data = $request->validate(['q' => 'nullable|string|max:100', 'status' => 'nullable|in:active,inactive']);
-        $companies = Tenant::select(self::PUBLIC_COLUMNS)->orderBy('name');
+        $companies = Tenant::select(self::PUBLIC_COLUMNS)->orderBy('name')->orderBy('id');
         if (filled($data['q'] ?? null)) {
-            $search = trim($data['q']);
-            $companies->where(fn ($q) => $q->where('name', 'like', '%'.$search.'%')->orWhere('slug', 'like', '%'.$search.'%'));
+            $search = '%'.strtr(trim($data['q']), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
+            $companies->where(fn ($q) => $q->whereRaw("name LIKE ? ESCAPE '!'", [$search])->orWhereRaw("slug LIKE ? ESCAPE '!'", [$search]));
         }
         if (filled($data['status'] ?? null)) {
             $companies->where('active', $data['status'] === 'active');
         }
-        return view('platform.index', ['companies' => $companies->paginate(20)->withQueryString(), 'filters' => $data, 'provisionAvailable' => false, 'requestAvailable' => true, 'requests' => ProvisionRequest::latest('id')->paginate(10, ['*'], 'requests_page')]);
+        return view('platform.index', ['companies' => $companies->paginate(20)->appends($data + $request->only('requests_page')), 'filters' => $data, 'provisionAvailable' => false, 'requestAvailable' => true, 'requests' => ProvisionRequest::latest('id')->paginate(10, ['id', 'name', 'slug', 'is_demonstration', 'status', 'admin_name', 'created_at'], 'requests_page')]);
     }
 
     public function create(Request $request)
@@ -68,7 +68,7 @@ class CompanyController extends Controller
     public function show(Request $request, int $id)
     {
         $this->actor($request);
-        return view('platform.show', ['company' => Tenant::select(self::PUBLIC_COLUMNS)->findOrFail($id), 'audits' => PlatformAudit::where('tenant_id', $id)->latest('id')->limit(30)->get(), 'provisionAvailable' => false]);
+        return view('platform.show', ['company' => Tenant::select(self::PUBLIC_COLUMNS)->findOrFail($id), 'audits' => PlatformAudit::where('tenant_id', $id)->latest('id')->paginate(30, ['id','created_at','action','actor_name','reason']), 'provisionAvailable' => false]);
     }
 
     public function status(Request $request, int $id, CompanyAdministration $service)

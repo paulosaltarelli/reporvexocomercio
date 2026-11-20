@@ -18,7 +18,11 @@ class DeskController extends Controller
             $print = $request->input('action') === 'print_os';
             abort_unless($request->attributes->get('currentUser')->allows($print ? 'documents.view' : 'documents.invoice'),403);
             $lookup=$request->validate(['document_number'=>'required|integer|min:1']);
-            $document=Document::findOrFail($lookup['document_number']);
+            $document=Document::find($lookup['document_number']);
+            if (!$document) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['document_number'=>'Nenhum documento encontrado com este número nesta loja.'])
+                    ->redirectTo(route('desk',['company'=>$request->route('company')]));
+            }
             if ($print) {
                 if ($document->type !== 'work_order') throw \Illuminate\Validation\ValidationException::withMessages(['document_number'=>'Este número é de um orçamento. Informe o número da OS.']);
                 return redirect()->route('document.show',['company'=>$request->route('company'),'id'=>$document->id,'imprimir'=>1]);

@@ -128,6 +128,11 @@ window.Vendra = (() => {
                 details.querySelector('input:not([type="hidden"]),select')?.focus();
             });
         });
+        document.addEventListener('invalid', event => {
+            for (let parent = event.target.parentElement; parent; parent = parent.parentElement) {
+                if (parent.tagName === 'DETAILS') parent.open = true;
+            }
+        }, true);
         const errors = document.querySelector('#validation-errors');
         if (errors) {
             const fields = JSON.parse(document.querySelector('#validation-fields')?.textContent || '[]');
@@ -158,9 +163,19 @@ window.Vendra = (() => {
         function markScrollableTables() {
             document.querySelectorAll('.scroll').forEach(region => {
                 if (region.scrollWidth > region.clientWidth && region.clientWidth>0) {
+                    if (!region.hasAttribute('tabindex') && !region.hasAttribute('role') && !region.hasAttribute('aria-label')) {
+                        region.dataset.scrollRegion = 'auto';
+                    }
                     region.tabIndex = 0;
                     region.setAttribute('role', 'region');
-                    if(!region.hasAttribute('aria-label'))region.setAttribute('aria-label', 'Tabela com rolagem horizontal');
+                    if(!region.hasAttribute('aria-label')) {
+                        region.setAttribute('aria-label','Tabela com rolagem horizontal');
+                    }
+                } else if (region.dataset.scrollRegion === 'auto') {
+                    region.removeAttribute('tabindex');
+                    region.removeAttribute('role');
+                    region.removeAttribute('aria-label');
+                    delete region.dataset.scrollRegion;
                 }
             });
         }

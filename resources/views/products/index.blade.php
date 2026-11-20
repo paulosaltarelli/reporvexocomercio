@@ -7,7 +7,7 @@
 @section('content')
 <section class="panel">
     <form class="toolbar" method="get">
-        <input name="q" value="{{ request('q') }}" placeholder="Buscar por nome, SKU ou código de barras" aria-label="Buscar produto ou serviço">
+        <input type="search" name="q" value="{{ request('q') }}" placeholder="Buscar por nome, SKU ou código de barras" aria-label="Buscar produto ou serviço">
         <select name="type" class="catalog-type-filter" aria-label="Filtrar tipo do cadastro"><option value="">Todos os tipos</option><option value="product" @selected(request('type')==='product')>Produtos</option><option value="service" @selected(request('type')==='service')>Serviços</option></select>
         <button type="submit" class="button secondary">Buscar</button>
         @if(request()->filled('q') || request()->filled('type'))<a href="{{ route('products',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
@@ -20,7 +20,7 @@
             @php($isService=($product->type??'product')==='service')
             @php($stockControlled=!$isService && ($product->controls_stock??true))
             <tr>
-                <td class="product-name"><strong>{{ $product->name }}</strong><small class="hint">{{ $product->sku }}</small><span class="badge {{ $isService?'service-type':'' }}">{{ $isService?'Serviço':'Produto' }}</span>@if(!$product->active) <span class="badge bad">Inativo</span>@endif</td>
+                <td class="product-name"><strong>@if($currentUser->allows('products.manage'))<a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">{{ $product->name }}</a>@else{{ $product->name }}@endif</strong><small class="hint">{{ $product->sku }}</small><span class="badge {{ $isService?'service-type':'' }}">{{ $isService?'Serviço':'Produto' }}</span>@if(!$product->active) <span class="badge bad">Inativo</span>@endif</td>
                 <td>{{ $product->group->name }}
                     @if($currentUser->allows('costs.view'))
                         @php($priceMode=$product->price_policy??$product->group->price_policy??'alert')
@@ -37,7 +37,8 @@
                         @php($review=$product->priceReview)
                         @if($review?->state==='ready' && $review->suggested_price!==null){{ number_format($review->suggested_price,2,',','.') }}
                         @elseif(bccomp((string)$baseCost,'0',4)<=0)<span class="muted">Sem custo</span>
-                        @else<a href="{{ route('prices',['company'=>$tenant->slug]) }}">Conferir revisão</a>
+                        @elseif($currentUser->allows('prices.view'))<a href="{{ route('prices',['company'=>$tenant->slug]) }}">Conferir revisão</a>
+                        @else<span class="muted">Sem sugestão</span>
                         @endif
                     </td>
                 @endif
@@ -45,7 +46,7 @@
                 <td>@if($currentUser->allows('products.manage'))<a href="{{ route('product.edit',['company'=>$tenant->slug,'id'=>$product->id]) }}">Editar</a>@endif</td>
             </tr>
         @empty
-            <tr><td colspan="{{ $currentUser->allows('costs.view')?9:6 }}" class="empty">Nenhum cadastro encontrado. @if($currentUser->allows('products.manage'))Cadastre um grupo e adicione seus produtos ou serviços.@endif</td></tr>
+            <tr><td colspan="{{ $currentUser->allows('costs.view')?9:6 }}" class="empty">@if(request()->filled('q') || request()->filled('type'))Nenhum cadastro corresponde aos filtros. @else Nenhum cadastro encontrado. @if($currentUser->allows('products.manage'))Cadastre um grupo e adicione seus produtos ou serviços.@endif @endif</td></tr>
         @endforelse
         </tbody>
     </table></div>

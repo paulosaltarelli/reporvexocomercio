@@ -44,8 +44,8 @@
 </div>
 @if($currentUser->allows('sales.cancel'))
 <details class="disclosure compact no-print" style="margin-top:24px">
-    <summary>Cancelar venda e devolver os produtos ao estoque</summary>
-    <form class="disclosure-content" method="post" action="{{ route('sale.cancel',['company'=>$tenant->slug,'id'=>$sale->id]) }}" onsubmit="return confirm('Confirma o cancelamento desta venda e o estorno do estoque?');">
+    <summary>Cancelar venda</summary>
+    <form class="disclosure-content" method="post" action="{{ route('sale.cancel',['company'=>$tenant->slug,'id'=>$sale->id]) }}" onsubmit="return confirm('Confirma o cancelamento desta venda?');">
         @csrf
         @if(bccomp((string)$received,'0',2)>0)
             <div class="form-note">Esta venda tem R$ {{ number_format($received,2,',','.') }} recebidos. O sistema registra o estorno financeiro, mas não transfere o dinheiro de volta ao cliente.</div>
@@ -58,7 +58,7 @@
 @endif
 @endif
 @if(config('fiscal.product_invoices_enabled'))
-<div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>NFC-e {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->allows('fiscal.manage'))<a href="{{ route('fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente a NFC-e. O cancelamento fiscal é solicitado separadamente.</p></div>
+<div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>{{ (string)$fiscalDocument->model === '55' ? 'NF-e' : 'NFC-e' }} {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->allows('fiscal.manage'))<a href="{{ route((string)$fiscalDocument->model === '55' ? 'nfe.document' : 'fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente o documento fiscal. O cancelamento fiscal é solicitado separadamente.</p></div>
 @endif
 <p class="hint">Este comprovante interno não substitui nota fiscal. Não realiza cobranças ou reembolsos automáticos.</p></section>
 @endif

@@ -162,6 +162,14 @@ trait ContractIntegrationCases
         $contract->installments()->where('period', '2026-11-01')->update(['paid_amount' => '20.00']);
         app(ContractBilling::class)->create($this->b->id, $this->licensingTerms(), $admin->id, 0);
         $this->withSession(['platform_admin_id' => $admin->id, 'platform_mfa_at' => time(), 'platform_auth_version' => 0]);
+        $this->a->update(['name' => 'Empresa 50%_QA']);
+        foreach (['%', '_'] as $literal) {
+            $query = '?q='.rawurlencode($literal);
+            $companies = $this->get('/vexo-admin'.$query)->assertOk()->viewData('companies');
+            $this->assertSame($this->a->id, $companies->sole()->id);
+            $items = $this->get('/vexo-admin/financeiro'.$query.'&month=2026-11')->assertOk()->viewData('installments');
+            $this->assertSame($this->a->id, (int)$items->sole()->tenant_id);
+        }
         $filtered = '/vexo-admin/financeiro?status=overdue&q='.urlencode($this->a->name);
         $page = $this->get($filtered.'&page=2')->assertOk();
         $this->assertSame(31, $page->viewData('installments')->total());
