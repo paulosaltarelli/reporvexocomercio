@@ -15,6 +15,20 @@ final class PurchaseInvoice
 
     public const TREATMENTS = ['cost' => 'Custo de aquisição', 'credit' => 'Crédito recuperável', 'expense' => 'Despesa do período'];
 
+    public static function guardProductInvoiceInputs(array $input): void
+    {
+        if (config('fiscal.product_invoices_enabled', false)) return;
+        $fields = ['invoice', 'invoice_xml', 'source_issuer'];
+        if (array_intersect($fields, array_keys($input))) {
+            throw ValidationException::withMessages(['invoice' => 'Registre a compra com os campos comerciais disponíveis.']);
+        }
+        foreach ((array)($input['items'] ?? []) as $item) {
+            if (is_array($item) && array_intersect(['fiscal_detail','taxes','adjustments','source_name','source_code','source_unit'],array_keys($item))) {
+                throw ValidationException::withMessages(['items' => 'Use os campos de produto, quantidade e custo da compra.']);
+            }
+        }
+    }
+
     public static function rules(): array
     {
         $money = 'nullable|numeric|min:0|max:999999999999.99|decimal:0,2';

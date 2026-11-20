@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\CompanyController;
+use App\Http\Controllers\Platform\LicenseController;
 use App\Http\Middleware\PlatformAuthenticated;
 use Illuminate\Support\Facades\Route;
 
@@ -16,10 +17,18 @@ Route::prefix('vexo-admin')->group(function () {
         Route::post('companies/{id}/support',[\App\Http\Controllers\Platform\SupportController::class,'enter'])->whereNumber('id')->middleware('throttle:20,1')->name('platform.support.enter');
         Route::post('support/leave',[\App\Http\Controllers\Platform\SupportController::class,'leave'])->name('platform.support.leave');
         Route::get('/', [CompanyController::class, 'index'])->name('platform.index');
+        Route::get('financeiro', \App\Http\Controllers\Platform\ReceivablesController::class)->name('platform.receivables');
         Route::get('companies/new', [CompanyController::class, 'create'])->name('platform.companies.create');
         Route::post('companies', [CompanyController::class, 'store'])->middleware('throttle:10,1')->name('platform.companies.store');
         Route::post('requests/{id}/activation', [CompanyController::class, 'resendActivation'])->whereNumber('id')->middleware('throttle:3,10')->name('platform.requests.activation');
         Route::get('requests/{id}', [CompanyController::class, 'provisionRequest'])->whereNumber('id')->name('platform.requests.show');
+        Route::prefix('companies/{id}/license')->whereNumber('id')->name('platform.license.')->group(function () {
+            Route::get('/', [LicenseController::class, 'index'])->name('index');
+            Route::get('new', [LicenseController::class, 'create'])->name('create');
+            Route::post('contracts', [LicenseController::class, 'store'])->middleware('throttle:15,1')->name('store');
+            Route::get('contracts/{contract}/edit', [LicenseController::class, 'edit'])->whereNumber('contract')->name('edit');
+            Route::post('contracts/{contract}', [LicenseController::class, 'update'])->whereNumber('contract')->middleware('throttle:15,1')->name('update');
+        });
         Route::get('companies/{id}', [CompanyController::class, 'show'])->whereNumber('id')->name('platform.companies.show');
         Route::post('companies/{id}/status', [CompanyController::class, 'status'])->whereNumber('id')->middleware('throttle:20,1')->name('platform.companies.status');
         Route::post('logout', [AuthController::class, 'logout'])->name('platform.logout');

@@ -17,6 +17,7 @@ class PurchaseService
 {
     public function receive(array $data, int $userId): Purchase
     {
+        PurchaseInvoice::guardProductInvoiceInputs($data);
         if (! Str::isUuid((string) ($data['request_key'] ?? ''))) {
             throw ValidationException::withMessages(['request_key' => 'Chave da compra inválida.']);
         }

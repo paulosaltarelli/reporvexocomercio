@@ -23,6 +23,8 @@ use Tests\TestCase;
 class CommerceTest extends TestCase
 {
     use \Tests\Support\PurchaseInvoiceCases;
+    use \Tests\Support\ContractIntegrationCases;
+    use \Tests\Support\C6RenewalCases;
     private static bool $schemasReady = false;
 
     private Tenant $a;
@@ -63,6 +65,44 @@ class CommerceTest extends TestCase
         $this->user = User::create(['name' => 'Administrador', 'email' => 'admin@example.test', 'password' => 'test-password-123', 'role' => 'admin']);
         $g = ProductGroup::create(['name' => 'Geral', 'margin' => '40']);
         $this->product = Product::create(['name' => 'Produto teste', 'sku' => 'SKU-1', 'product_group_id' => $g->id, 'sale_price' => '100', 'unit' => 'UN']);
+    }
+
+    public function test_contract_overdue_restricts_only_selected_resources_until_settled(): void
+    {
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->get('/app/a/sales')->assertOk();
+        $newContract = fn($tenant) => \App\Platform\Contract::create([
+            'tenant_id'=>$tenant->id,'start_date'=>today()->subMonth(),'end_date'=>today()->addYear(),
+            'monthly_amount'=>'100.00','due_day'=>1,
+        ]);
+        $newInstallment = fn($contract) => $contract->installments()->create([
+            'tenant_id'=>$contract->tenant_id,'period'=>today()->startOfMonth(),
+            'due_date'=>today()->subDay(),'amount'=>'100.00',
+        ]);
+        $other=$newContract($this->b);
+        $other->update(['restricted_modules'=>array_keys(\App\Platform\ContractAccess::MODULES)]);
+        $newInstallment($other);
+        $contract=$newContract($this->a);
+        $installment=$newInstallment($contract);
+        $this->get('/app/a/sales')->assertOk();
+        $contract->update(['restricted_modules'=>['sales','catalog','fiscal']]);
+        $installment->update(['due_date'=>today()]);
+        $this->get('/app/a/sales')->assertOk();
+        $installment->update(['due_date'=>today()->subDay(),'paid_amount'=>'99.99']);
+        $this->get('/app/a/desk')->assertStatus(402)->assertSee('Como regularizar');
+        $this->postJson('/app/a/sales',[])->assertStatus(402)->assertJsonPath('modules.0','sales');
+        $this->postJson('/app/a/documents/1/invoice',[])->assertStatus(402);
+        $this->postJson('/app/a/quick-create/products',[])->assertStatus(402)->assertJsonPath('modules.0','catalog');
+        $this->postJson('/app/a/nfse/config',[])->assertStatus(402)->assertJsonPath('modules.0','fiscal');
+        $this->get('/app/a/finance')->assertOk()->assertSee('Licença com parcela vencida');
+        $this->get('/app/a/account/password')->assertOk();
+        $this->get(route('license.help',['company'=>'a']))->assertOk();
+        $this->get(route('license.index',['company'=>'a']))->assertOk();
+        $installment->update(['cancelled_at'=>now()]);
+        $this->get('/app/a/sales')->assertOk();
+        $installment->update(['cancelled_at'=>null,'paid_amount'=>'100.00']);
+        $this->get('/app/a/sales')->assertOk()->assertDontSee('Licença com parcela vencida');
+        $this->post('/app/a/logout')->assertRedirect();
     }
 
     public function test_sicoob_charge_and_bank_reconciliation_replay(): void
@@ -425,6 +465,7 @@ class CommerceTest extends TestCase
 
     public function test_experience_navigation_marks_current_fiscal_section_and_hides_admin_links_from_operator(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $customer = \App\Models\Customer::create(['name' => 'Cliente navegação fiscal']);
         $this->product->update(['controls_stock' => false]);
         $sale = app(Checkout::class)->complete($this->saleData(), $this->user->id);
@@ -1721,6 +1762,7 @@ class CommerceTest extends TestCase
 
     public function test_access_profiles_can_delegate_fiscal_and_seller_functions_without_admin_role(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $this->product->update(['controls_stock'=>false]);
         $id=$this->accessProfile(['sales.create','sales.seller','documents.seller','fiscal.manage'],'Supervisor delegado');
         $operator=$this->profiledOperator($id);
@@ -2794,6 +2836,32 @@ class CommerceTest extends TestCase
         $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertForbidden();
     }
 
+    public function test_nfse_only_company_and_setup_preserve_legacy_settings_without_goods_invoice_requirements(): void
+    {
+        config(['fiscal.product_invoices_enabled' => false]);
+        $this->withSession(['tenant_id'=>$this->a->id, 'user_id'=>$this->user->id, 'auth_version'=>0]);
+        $stored = array_replace(\App\Services\CompanyOperations::DEFAULTS, ['nfe'=>true, 'nfce'=>false]);
+        \App\Models\CompanyOperation::forceCreate(['id'=>1, 'version'=>0, 'configuration'=>$stored]);
+        \App\Models\BusinessProfile::forceCreate(['id'=>1, 'legal_name'=>'Empresa QA', 'document'=>'07.396.600/0001-60', 'state_registration'=>'LEGADO']);
+        foreach (['/app/a/business', '/app/a/setup?step=1', '/app/a/setup?step=2', '/app/a/setup?step=3', '/app/a/nfse'] as $url) {
+            $this->get($url)->assertOk()->assertDontSee('NFC-e')->assertDontSee('NF-e')->assertDontSee('CSC');
+        }
+        $this->get('/app/a/setup?step=3')->assertSee('Configuração própria da NFS-e');
+        $this->get('/app/a/fiscal')->assertRedirect('/app/a/nfse');
+        $this->post('/app/a/business', ['legal_name'=>'Nome atualizado'])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('LEGADO', \App\Models\BusinessProfile::findOrFail(1)->state_registration);
+        $form = $this->operationPayload(['version'=>0, 'nfse'=>false]);
+        unset($form['nfce'], $form['nfe']);
+        $this->post('/app/a/setup', $form)->assertRedirect('/app/a/setup?step=3')->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $record = \App\Models\CompanyOperation::findOrFail(1);
+        $this->assertTrue($record->configuration['nfe']);
+        $this->assertFalse($record->configuration['nfce']);
+        $this->assertFalse(app(\App\Services\CompanyOperations::class)->current()['nfe']);
+        $this->post('/app/a/setup/fiscal/continue')->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
+    }
+
     public function test_guided_setup_saves_real_company_team_and_configuration_without_catalog_data(): void
     {
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
@@ -3012,6 +3080,7 @@ class CommerceTest extends TestCase
 
     public function test_split_paid_cash_and_pix_support_change_fiscal_evidence_and_refund(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $sale=$this->commissionSale('100',true,null,['payments'=>[
             ['payment_option'=>'cash','amount'=>'40','paid'=>1,'cash_received'=>'50'],
             ['payment_option'=>'pix','amount'=>'60','paid'=>1],
@@ -3159,6 +3228,7 @@ class CommerceTest extends TestCase
     }
     public function test_concurrent_card_fee_sale_records_one_fee_expense_and_blocks_incomplete_fiscal_total(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $brand=$this->cardBrand();$this->product->update(['controls_stock'=>false]);$input=['request_key'=>(string)Str::uuid(),'payments'=>[$this->cardPayment($brand,['fee_policy'=>'pass','fee_reviewed'=>1,'charged_seen'=>'103.09'])],'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'100']]];
         $ids=$this->race(null,fn()=>app(Checkout::class)->complete($input,$this->user->id)->id);$this->assertSame($ids[0],$ids[1]);$this->assertSame(2,FinancialEntry::count());$this->assertSame(2,\App\Models\Payment::count());
         $sale=Sale::findOrFail($ids[0]);try{app(\App\Fiscal\NfcePayload::class)->build($this->a,$sale,new \App\Models\FiscalIssuer,[]);$this->fail('Surcharge omitted from fiscal total.');}catch(ValidationException $e){$this->assertStringContainsString('acréscimo',$e->errors()['fiscal'][0]);}
@@ -3320,6 +3390,7 @@ class CommerceTest extends TestCase
 
     public function test_disabled_documents_and_fiscal_issuance_are_rejected_without_hiding_history(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $ops=app(\App\Services\CompanyOperations::class);
         $ops->save($this->operationPayload(['quotes'=>false,'work_orders'=>false,'nfce'=>false,'nfe'=>false,'nfse'=>false]),$this->user->id);
         try {app(Documents::class)->create(['type'=>'work_order','request_key'=>(string)Str::uuid()],$this->user->id);$this->fail('Disabled OS accepted');}

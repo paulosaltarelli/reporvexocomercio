@@ -36,18 +36,19 @@
                 $link('cashflow', 'Fluxo de caixa', request()->routeIs('cashflow')),
                 $link('cash', 'Caixa diário', request()->routeIs('cash', 'cash.*')),
             ]],
-            ['label' => 'Fiscal', 'icon' => 'document', 'links' => [
-                $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'fiscal.company', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')),
+            ['label' => 'Fiscal', 'icon' => 'document', 'links' => array_filter([
+                config('fiscal.product_invoices_enabled') ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'fiscal.company', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
                 $link('nfse.index', 'Notas de serviço', request()->routeIs('nfse.*')),
-                $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')),
-                $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')),
-            ]],
+                config('fiscal.product_invoices_enabled') ? $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')) : null,
+                config('fiscal.product_invoices_enabled') ? $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')) : null,
+            ])],
             ['label' => 'Relatórios', 'icon' => 'chart', 'links' => array_filter([
                 $link('reports', 'Relatórios gerenciais', request()->routeIs('reports', 'report.*')),
                 $link('commissions', 'Comissões da equipe', request()->routeIs('commissions','commission.*')),
                 $currentUser->allows('commissions.self') ? $link('commissions.mine','Minhas comissões',request()->routeIs('commissions.mine*')) : null,
             ])],
             ['label' => 'Configurações', 'icon' => 'settings', 'links' => [
+                $link('license.index', 'Minha licença', request()->routeIs('license.index', 'license.installments.*')),
                 $link('business', 'Minha empresa', request()->routeIs('business')),
                 $link('setup', 'Operação e implantação', request()->routeIs('setup*') && request()->integer('step') !== 2),
                 $link('setup', 'Parâmetros de estoque', request()->routeIs('setup') && request()->integer('step') === 2, ['step' => 2]),

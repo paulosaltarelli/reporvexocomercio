@@ -369,6 +369,7 @@ class SharedDatabaseTest extends TestCase
 
     public function test_shared_fiscal_simulation_and_missing_certificate_fail_closed_and_reject_wrong_tenant_context(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $b = $this->catalog($this->b);
         $a = $this->catalog($this->a);
         BusinessProfile::findOrFail(1)->update(['document' => '11222333000181', 'tax_regime' => 'simples', 'municipality_code' => '3550308', 'street' => 'Rua QA', 'number' => '1', 'district' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP', 'postal_code' => '01153000']);
@@ -447,6 +448,7 @@ class SharedDatabaseTest extends TestCase
 
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $owner = $this->connect($this->a);
         $this->assertTrue($owner->must_change_password);
         $this->post('/app/shared-a/login', ['email' => 'owner@example.test', 'password' => self::OWNER_PASSWORD])->assertRedirect('/app/shared-a/setup');

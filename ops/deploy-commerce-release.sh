@@ -2,7 +2,8 @@
 # Scoped Hostinger rollout. The operator supplies the baseline from the preceding release.
 set -Eeuo pipefail
 umask 077
-[[ $EUID == 0 && ${1:-} == --apply ]] || { echo 'Uso: --apply DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+mode=${1:-}
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 ) ]] || { echo 'Uso: --apply ou --apply-licensing-v1 DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -12,9 +13,10 @@ exec 9>/run/lock/vendra-fiscal-deploy.lock
 flock -n 9 || { echo 'Outra implantação em andamento.' >&2; exit 1; }
 [[ $(realpath "$live") == "$live" ]]
 python3 "$stage/ops/qa-release.py" verify "$stage" "$manifest"
-python3 - "$release" "$live" <<'PY'
+python3 - "$release" "$live" "$mode" <<'PY'
 import hashlib,pathlib,re,sys
-release,live=map(pathlib.Path,sys.argv[1:])
+release,live=map(pathlib.Path,sys.argv[1:3])
+licensing=sys.argv[3]=="--apply-licensing-v1"
 def read(path,allow_absent):
     entries={}
     for line in path.read_text().splitlines():
@@ -30,9 +32,20 @@ if set(new)!=set(baseline) or set(protected)&set(new):raise SystemExit('Escopo d
 for name,h in {**baseline,**protected}.items():
     p=live/name
     if p.resolve()!=p or (h=='-' and p.exists()) or (h!='-' and (not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest()!=h)):raise SystemExit('Baseline divergente: '+name)
+if licensing:
+    migrations={
+        'database/migrations/2026_11_20_000001_create_platform_contracts.php',
+        'database/migrations/2026_11_20_000002_create_platform_contract_installments.php',
+        'database/migrations/2026_11_20_000003_create_platform_contract_payments.php',
+        'database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php',
+    }
+    if {name for name in new if name.startswith('database/')}!=migrations:raise SystemExit('Migrações fora do escopo da V1.')
+    legacy={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
+    if not legacy<=set(protected):raise SystemExit('Login de transição precisa estar protegido.')
+    if 'resources/views/welcome.blade.php' not in new:raise SystemExit('Landing da versão ausente.')
 for name in new:
     if name not in ('bootstrap/app.php','composer.json') and not name.startswith(('app/','config/','database/migrations/','ops/','public/','resources/views/','routes/')):raise SystemExit('Arquivo fora do escopo: '+name)
-    if name in ('ops/apache.conf','public/index.php','resources/views/welcome.blade.php') or name.startswith(('public/brand/','public/marketing')):raise SystemExit('Arquivo protegido: '+name)
+    if (name=='resources/views/welcome.blade.php' and not licensing) or name in ('ops/apache.conf','public/index.php') or name.startswith(('public/brand/','public/marketing')):raise SystemExit('Arquivo protegido: '+name)
 PY
 cd "$live"
 phpcli=(/usr/bin/php -c /opt/reporvexo-tools/php/cli.ini)
@@ -47,6 +60,11 @@ health() {
     done
     return 1
 }
+if [[ $mode == --apply-licensing-v1 ]]; then
+    for unit in vendra-licensing.timer vendra-licensing.service; do
+        case $(systemctl show "$unit" -p ActiveState --value) in inactive|failed) ;; *) echo "Aguarde a parada de $unit." >&2; exit 1;; esac
+    done
+fi
 systemctl is-active --quiet vendra.service
 health
 journal=$(mktemp -d "$release/attempt.XXXXXX")
@@ -57,6 +75,7 @@ clean_exit() {
     local status=$?
     trap - EXIT
     if (( status && overlay )); then
+        web_paused=1
         systemctl stop vendra.service || exit 1
         while read -r h p; do
             if [[ "$h" == - ]]; then rm -f -- "$live/$p"; else cp -p -- "$journal/previous/$p" "$live/$p" || exit 1; fi
@@ -91,7 +110,13 @@ while read -r h p; do
 done < "$manifest"
 sha256sum -c "$manifest" > "$journal/runtime-check.log"
 while read -r h p; do runuser -u vendra-web -- test -r "$live/$p"; done < "$manifest"
-for migration in database/migrations/2026_11_20_000001_add_platform_mfa.php database/migrations/2026_11_20_000004_add_company_activation.php; do
+migrations=(database/migrations/2026_11_20_000001_add_platform_mfa.php database/migrations/2026_11_20_000004_add_company_activation.php)
+if [[ $mode == --apply-licensing-v1 ]]; then
+    migrations=(database/migrations/2026_11_20_000001_create_platform_contracts.php database/migrations/2026_11_20_000002_create_platform_contract_installments.php database/migrations/2026_11_20_000003_create_platform_contract_payments.php database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php)
+    # Check effective configuration without displaying credentials before reopening the application.
+    runuser -u vendra-web -- "${phpcli[@]}" -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach (["fiscal.product_invoices_enabled","c6pix.enabled","c6pix.sandbox.enabled","licensing_worker.reconcile","licensing_worker.issue"] as $key) if (config($key)!==false) exit(1);'
+fi
+for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1
 done
 cache > "$journal/cache.log" 2>&1

@@ -1,3 +1,4 @@
+@if(config('fiscal.product_invoices_enabled',false))
 @include('fiscal.preferences',['settings'=>$fiscalSettings])
 @if(!($setupFiscal??false)||$configuration['nfce'])
 @php
@@ -57,6 +58,7 @@
 @endif
 @if(!($setupFiscal??false)||$configuration['nfe'])
 @include('fiscal.nfe.company',['nfeConfiguration'=>$nfeConfiguration??null,'nfeNextNumber'=>$nfeNextNumber??null])
+@endif
 @endif
 @if($setupFiscal??false)
 @if($configuration['nfse'])@include('fiscal.nfse.company',['configuration'=>$nfseConfiguration])@endif

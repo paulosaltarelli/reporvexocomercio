@@ -17,14 +17,14 @@
     </div>
 </section>
 <details class="disclosure" style="margin-top:24px" @if($wizardCompany ?? false) open @endif><summary>Endereço e dados fiscais preparatórios</summary><div class="disclosure-content form-grid">
-@foreach(['street'=>'Logradouro','number'=>'Número','district'=>'Bairro','city'=>'Cidade','postal_code'=>'CEP','municipality_code'=>'Código IBGE do município','municipal_registration'=>'Inscrição municipal','state_registration'=>'Inscrição estadual'] as $field=>$label)
+@foreach(['street'=>'Logradouro','number'=>'Número','district'=>'Bairro','city'=>'Cidade','postal_code'=>'CEP','municipality_code'=>'Código IBGE do município','municipal_registration'=>'Inscrição municipal','state_registration'=>'Inscrição estadual (opcional)'] as $field=>$label)
 <div class="field"><label>{{ $label }}</label><input name="{{ $field }}" value="{{ old($field,$profile->$field) }}" maxlength="{{ ['street'=>180,'number'=>20,'district'=>100,'city'=>100,'postal_code'=>9,'municipality_code'=>7,'municipal_registration'=>30,'state_registration'=>30][$field] }}"></div>
 @endforeach
 <div class="field"><label>Estado</label><select name="state"><option value="">Não informado</option>
 @foreach(explode(',','AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO') as $uf)<option @selected(old('state',$profile->state)===$uf)>{{ $uf }}</option>
 @endforeach</select></div><div class="field"><label>Regime tributário</label><select name="tax_regime"><option value="">Não informado</option>
 @foreach(['mei'=>'MEI','simples'=>'Simples Nacional','presumido'=>'Lucro Presumido','real'=>'Lucro Real'] as $value=>$label)<option value="{{ $value }}" @selected(old('tax_regime',$profile->tax_regime)===$value)>{{ $label }}</option>
-@endforeach</select></div></div></details><p class="hint">Dados sujeitos à conferência contábil. O cadastro local não comprova situação na Receita ou credenciamento na SEFAZ. Configure a emissão de mercadorias abaixo; NFS-e é uma integração separada.</p><div class="actions"><button class="primary">{{ $companySubmitLabel ?? 'Salvar dados da empresa' }}</button></div></fieldset></form>
+@endforeach</select></div></div></details><p class="hint">Confira os dados cadastrais com o responsável contábil da empresa.</p><div class="actions"><button class="primary">{{ $companySubmitLabel ?? 'Salvar dados da empresa' }}</button></div></fieldset></form>
 
 @push('scripts')
 <script>

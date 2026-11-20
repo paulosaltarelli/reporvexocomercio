@@ -11,11 +11,36 @@ use Illuminate\Support\Str;
 
 trait PurchaseInvoiceCases
 {
+    public function test_v1_purchases_accept_manual_stock_and_reject_fiscal_inputs_and_xml(): void
+    {
+        config(['fiscal.product_invoices_enabled'=>false]);
+        $supplier = Supplier::create(['name'=>'Fornecedor comercial']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->get('/app/a/purchases/new')->assertOk()->assertSee('custo efetivo')
+            ->assertDontSee('Nota fiscal de entrada')->assertDontSee('fiscal_detail')->assertDontSee('prévia do XML');
+        $this->post('/app/a/purchases/preview-xml')->assertNotFound();
+        $data = ['request_key'=>(string) Str::uuid(),'supplier_id'=>$supplier->id,
+            'purchased_on'=>now()->toDateString(),'due_date'=>now()->toDateString(),'paid'=>0,'payment_method'=>'invoice',
+            'items'=>[['product_id'=>$this->product->id,'quantity'=>'3','unit_cost'=>'12.00']]];
+        $this->post('/app/a/purchases',$data+['invoice'=>['number'=>'18']])->assertSessionHasErrors('invoice');
+        $fiscal = $data;
+        $fiscal['items'][0]['fiscal_detail'] = '{"taxes":{}}';
+        $this->post('/app/a/purchases',$fiscal)->assertSessionHasErrors('items');
+        $this->post('/app/a/purchases',$data)->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $purchase = Purchase::sole();
+        $this->assertSame('36.00',$purchase->entries()->sole()->amount);
+        $this->assertSame('3.000',$this->product->fresh()->quantity);
+    }
+
     public function test_supplier_invoice_preserves_total_stock_value_and_blocks_duplicate_receipt(): void
     {
+        config(['fiscal.product_invoices_enabled'=>true]);
         $supplier = Supplier::create(['name' => 'Fornecedor NF']);
         $id = $this->product->id;
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $this->get('/app/a/purchases/new')->assertOk()->assertSee('Nota fiscal de entrada')
+            ->assertSee('name="invoice_xml"', false);
         $this->post("/app/a/products/$id/units", ['code' => 'CX', 'factor' => '1000', 'purpose' => 'purchase', 'base' => 'UN'])->assertSessionHasNoErrors();
         $date = now()->toDateString();
         $purchase = ['request_key' => (string) Str::uuid(), 'supplier_id' => $supplier->id,
@@ -42,5 +67,9 @@ trait PurchaseInvoiceCases
         app(Checkout::class)->cancel($sale->id, $this->user->id, true);
         app(Checkout::class)->cancel($first->id, $this->user->id, true);
         $this->assertSame('124.0000000', app(Inventory::class)->totalValue());
+        config(['fiscal.product_invoices_enabled'=>false]);
+        $this->get("/app/a/purchases/{$entry->id}")->assertOk()->assertDontSee('Crédito recuperável')->assertDontSee('Nota 18');
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertTrue(\App\Models\OperationRecord::where('action','purchase_invoice')->where('after->purchase_id',$entry->id)->exists());
     }
 }

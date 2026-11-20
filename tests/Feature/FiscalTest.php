@@ -57,6 +57,8 @@ class FiscalTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // This suite exercises NF-e/NFC-e, including their signed XML and outbox.
+        config(['fiscal.product_invoices_enabled' => true]);
         if (! env('VENDRA_TEST_PASSWORD')) {
             $this->markTestSkipped('Configure MySQL dedicado conforme docs/TESTES.md.');
         }

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Fiscal\ProcessFiscalOutbox;
+use App\Fiscal\ProductInvoiceGate;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
 use Illuminate\Console\Command;
@@ -20,6 +21,9 @@ class ProcessFiscal extends Command
         if (! $limit) {
             return self::FAILURE;
         }
+        // In V1 the product outbox stays untouched, including pending legacy operations.
+        if (!ProductInvoiceGate::enabled()) return self::SUCCESS;
+
         foreach (Tenant::where('active', true)->when($this->option('company'), fn ($q) => $q->where('slug', $this->option('company')))->orderBy('id')->get() as $tenant) {
             try {
                 $connection->connect($tenant);

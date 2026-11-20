@@ -4,7 +4,7 @@
 @section('actions')<button class="button secondary no-print" onclick="window.print()">Imprimir</button>@endsection
 @section('content')
 <section class="panel">
-    <div class="split"><div><h2>{{ $purchase->supplier?->name ?? 'Fornecedor não informado' }}</h2><p>Recebida em {{ \Carbon\Carbon::parse($purchase->purchased_on)->format('d/m/Y') }}</p><p class="muted">Documento: {{ $purchase->reference ?? 'Não informado' }}</p></div><div><span class="badge">Recebida</span><p class="hint">Consulte as parcelas e baixas no financeiro para conferir o pagamento atual.</p></div></div>
+    <div class="split"><div><h2>{{ $purchase->supplier?->name ?? 'Fornecedor não informado' }}</h2><p>Recebida em {{ \Carbon\Carbon::parse($purchase->purchased_on)->format('d/m/Y') }}</p><p class="muted">Referência: {{ $purchase->reference ?? 'Não informado' }}</p></div><div><span class="badge">Recebida</span><p class="hint">Consulte as parcelas e baixas no financeiro para conferir o pagamento atual.</p></div></div>
     @if($invoice ?? null)
         <h2>Nota {{ $invoice['number'] }} · série {{ $invoice['series'] }}</h2>
         <p>Emitida em {{ \Carbon\Carbon::parse($invoice['issued_on'])->format('d/m/Y') }} por {{ $invoice['supplier_name'] }} {{ $invoice['supplier_document'] }}.</p>

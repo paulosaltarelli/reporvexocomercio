@@ -1,0 +1,37 @@
+[Unit]
+Description=Vendra monthly installments and C6 Pix reconciliation
+After=network-online.target
+ConditionPathExists=/etc/vendra/licensing-worker.env
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+User=vendra-billing
+SupplementaryGroups=vendra-web
+WorkingDirectory=/srv/reporvexo
+EnvironmentFile=/etc/vendra/licensing-worker.env
+Environment=LOG_CHANNEL=stderr
+Environment=CACHE_STORE=array
+Environment=SESSION_DRIVER=array
+Environment=APP_SERVICES_CACHE=/run/vendra-billing/services.php
+Environment=APP_PACKAGES_CACHE=/run/vendra-billing/packages.php
+Environment=APP_CONFIG_CACHE=/run/vendra-billing/config.php
+Environment=APP_ROUTES_CACHE=/run/vendra-billing/routes.php
+Environment=APP_EVENTS_CACHE=/run/vendra-billing/events.php
+Environment=VIEW_COMPILED_PATH=/run/vendra-billing
+RuntimeDirectory=vendra-billing
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/php -c /opt/reporvexo-tools/php/cli.ini /srv/reporvexo/artisan platform:licensing-work
+TimeoutStartSec=30min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/srv/reporvexo/storage/app -/var/lib/vendra/controlplane

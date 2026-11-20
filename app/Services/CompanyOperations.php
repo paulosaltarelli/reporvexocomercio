@@ -12,11 +12,21 @@ class CompanyOperations
         'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
         'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>true,
     ];
+    private function effective(array $stored): array
+    {
+        $configuration = array_replace(self::DEFAULTS, $stored);
+        if (!config('fiscal.product_invoices_enabled', false)) {
+            $configuration['nfce'] = false;
+            $configuration['nfe'] = false;
+        }
+        return $configuration;
+    }
+
     public function current(): array
     {
         $query=CompanyOperation::whereKey(1);
         if (DB::connection('tenant')->transactionLevel()>0) $query->sharedLock();
-        return array_replace(self::DEFAULTS, $query->first()?->configuration ?? []);
+        return $this->effective($query->first()?->configuration ?? []);
     }
     public function lock(): array
     {
@@ -24,7 +34,7 @@ class CompanyOperations
         // creating a row or opening a repeatable-read snapshot before domain locks.
         // This preserves both request-key races and the shared sale lock of models 55/65.
         $row=CompanyOperation::whereKey(1)->sharedLock()->first();
-        return array_replace(self::DEFAULTS, $row?->configuration ?? []);
+        return $this->effective($row?->configuration ?? []);
     }
     public function requireModule(string $key): void
     {
@@ -43,20 +53,23 @@ class CompanyOperations
     {
         abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
         $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual', 'negative_stock'=>'sometimes|required|in:block,warn,allow'];
-        foreach (array_diff(array_keys(self::DEFAULTS), ['catalog_mode','commission_basis','negative_stock']) as $key) $rules[$key]='required|boolean';
+        $defaults = self::DEFAULTS;
+        $productInvoices = config('fiscal.product_invoices_enabled', false);
+        if (!$productInvoices) unset($defaults['nfe'], $defaults['nfce']);
+        foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock']) as $key) $rules[$key]='required|boolean';
         $data=Validator::make($input,$rules)->validate();
-        foreach (array_keys(self::DEFAULTS) as $key) if (is_bool(self::DEFAULTS[$key])) $data[$key]=(bool)$data[$key];
-        if ($data['catalog_mode']==='services' && ($data['inventory'] || $data['nfce'] || $data['nfe'])) {
-            throw ValidationException::withMessages(['catalog_mode'=>'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.']);
+        foreach (array_keys($defaults) as $key) if (is_bool($defaults[$key])) $data[$key]=(bool)$data[$key];
+        if ($data['catalog_mode']==='services' && ($data['inventory'] || ($data['nfce'] ?? false) || ($data['nfe'] ?? false))) {
+            throw ValidationException::withMessages(['catalog_mode'=>$productInvoices ? 'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.' : 'Desabilite a gestão de estoque para operar somente com serviços.']);
         }
         if ($data['catalog_mode']==='products' && ($data['nfse'] || $data['work_orders'])) {
             throw ValidationException::withMessages(['catalog_mode'=>'Para NFS-e ou ordens de serviço, habilite também serviços.']);
         }
-        return DB::connection('tenant')->transaction(function () use ($data,$actor) {
+        return DB::connection('tenant')->transaction(function () use ($data,$actor,$defaults) {
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>self::DEFAULTS]);
             $row=CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
-            $before=array_intersect_key(array_replace(self::DEFAULTS,$row->configuration),self::DEFAULTS);
+            $before=array_intersect_key(array_replace($defaults,$row->configuration),$defaults);
             $data['negative_stock'] ??= $before['negative_stock'];
             if ($before['inventory']!==$data['inventory'] && Product::where('quantity','<>',0)->sharedLock()->first()) {
                 throw ValidationException::withMessages(['inventory'=>'Concilie e zere os saldos por movimentações identificadas antes de mudar o controle de estoque.']);
@@ -76,7 +89,7 @@ class CompanyOperations
                 }
             }
             unset($data['version']);
-            $data=array_replace(self::DEFAULTS,$data);
+            $data=array_replace($defaults,$data);
             if ($before===$data) return $row;
             $configuration=array_replace($row->configuration,$data);
             $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
@@ -99,9 +112,11 @@ class CompanyOperations
             foreach (['street','number','district','city','state','postal_code','municipality_code','tax_regime'] as $field) {
                 if (empty($p?->$field)) { $pending['Complete endereço, código IBGE e regime tributário em Minha empresa.']=1; break; }
             }
-            $issuer=FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('environment','homologation')->first();
-            if (($c['nfce'] || $c['nfe']) && (! $issuer || ! FiscalCredential::where('issuer_id',$issuer->id)->where('valid_from','<=',now())->where('valid_until','>',now())->where('certificate_document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->exists())) {
-                $pending['Vincule e valide um certificado da empresa nas configurações fiscais.']=3;
+            if ($c['nfce'] || $c['nfe']) {
+                $issuer=FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('environment','homologation')->first();
+                if (! $issuer || ! FiscalCredential::where('issuer_id',$issuer->id)->where('valid_from','<=',now())->where('valid_until','>',now())->where('certificate_document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->exists()) {
+                    $pending['Vincule e valide um certificado da empresa nas configurações fiscais.']=3;
+                }
             }
             if ($c['nfse'] && ! \App\Models\NfseConfiguration::where('cnpj',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('certificate_valid_until','>',now())->exists()) $pending['Vincule o certificado na preparação de NFS-e da empresa.']=3;
         }

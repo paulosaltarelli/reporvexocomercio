@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Vendra licensing cycle every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+RandomizedDelaySec=20s
+Unit=vendra-licensing.service
+
+[Install]
+WantedBy=timers.target

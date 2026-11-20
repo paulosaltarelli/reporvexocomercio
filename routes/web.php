@@ -19,6 +19,8 @@ use App\Http\Controllers\SimulationFiscalController;
 
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\DeskController;
+use App\Http\Controllers\LicenseSelfServiceController;
+use App\Http\Middleware\EnforceContractAccess;
 use App\Http\Middleware\ResolveTenant;
 use App\Http\Middleware\TenantAuthenticated;
 use Illuminate\Support\Facades\Route;
@@ -29,7 +31,14 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
     Route::post('ativar', [\App\Http\Controllers\CompanyActivationController::class, 'activate'])->middleware('throttle:6,1');
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
-    Route::middleware(TenantAuthenticated::class)->group(function () {
+    Route::middleware([TenantAuthenticated::class, EnforceContractAccess::class])->group(function () {
+        Route::get('licenca/ajuda', \App\Http\Controllers\LicenseHelpController::class)->name('license.help');
+        Route::prefix('licenca')->name('license.')->group(function () {
+            Route::get('/', [LicenseSelfServiceController::class, 'index'])->name('index');
+            Route::get('parcelas/{installment}', [LicenseSelfServiceController::class, 'show'])->whereNumber('installment')->name('installments.show');
+            Route::post('parcelas/{installment}/pix', [LicenseSelfServiceController::class, 'issue'])->whereNumber('installment')->middleware('throttle:10,1')->name('installments.issue');
+            Route::post('parcelas/{installment}/consultar', [LicenseSelfServiceController::class, 'refresh'])->whereNumber('installment')->middleware('throttle:20,1')->name('installments.refresh');
+        });
         Route::get('account/password', [AccountController::class, 'password'])->name('account.password');
         Route::post('account/password', [AccountController::class, 'changePassword'])->name('account.password.save');
         Route::post('users/{id}', [AccountController::class, 'updateUser'])->whereNumber('id')->name('user.update');
@@ -54,55 +63,57 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('business', [BusinessController::class, 'save']);
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
         Route::get('fiscal/company', [BusinessController::class, 'fiscal'])->name('fiscal.company');
-        Route::post('business/fiscal/nfe', [NfeEmissionController::class, 'configure'])->name('nfe.configure');
-        Route::post('business/fiscal/nfe/validate', [NfeEmissionController::class, 'validateLocal'])->name('nfe.validate');
-        Route::get('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'customer'])->whereNumber('id')->name('nfe.customer');
-        Route::post('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'saveCustomer'])->whereNumber('id')->name('nfe.customer.save');
-        Route::post('sales/{id}/fiscal/nfe/emit', [NfeEmissionController::class, 'emit'])->whereNumber('id')->name('nfe.emit');
-        Route::get('fiscal/nfe/documents/{id}', [NfeEmissionController::class, 'show'])->whereNumber('id')->name('nfe.document');
-        Route::post('fiscal/nfe/documents/{id}/consult', [NfeEmissionController::class, 'consult'])->whereNumber('id')->name('nfe.consult');
-        Route::post('fiscal/nfe/documents/{id}/resend', [NfeEmissionController::class, 'resend'])->whereNumber('id')->name('nfe.resend');
-        Route::post('fiscal/nfe/documents/{id}/cancel', [NfeEmissionController::class, 'cancel'])->whereNumber('id')->name('nfe.cancel');
-        Route::get('fiscal/nfe/documents/{id}/files/{kind}', [NfeEmissionController::class, 'download'])->whereNumber('id')->name('nfe.download');
+        Route::middleware(\App\Http\Middleware\ProductInvoicesEnabled::class)->group(function () {
+            Route::post('business/fiscal/nfe', [NfeEmissionController::class, 'configure'])->name('nfe.configure');
+            Route::post('business/fiscal/nfe/validate', [NfeEmissionController::class, 'validateLocal'])->name('nfe.validate');
+            Route::get('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'customer'])->whereNumber('id')->name('nfe.customer');
+            Route::post('fiscal/nfe/customers/{id}', [NfeEmissionController::class, 'saveCustomer'])->whereNumber('id')->name('nfe.customer.save');
+            Route::post('sales/{id}/fiscal/nfe/emit', [NfeEmissionController::class, 'emit'])->whereNumber('id')->name('nfe.emit');
+            Route::get('fiscal/nfe/documents/{id}', [NfeEmissionController::class, 'show'])->whereNumber('id')->name('nfe.document');
+            Route::post('fiscal/nfe/documents/{id}/consult', [NfeEmissionController::class, 'consult'])->whereNumber('id')->name('nfe.consult');
+            Route::post('fiscal/nfe/documents/{id}/resend', [NfeEmissionController::class, 'resend'])->whereNumber('id')->name('nfe.resend');
+            Route::post('fiscal/nfe/documents/{id}/cancel', [NfeEmissionController::class, 'cancel'])->whereNumber('id')->name('nfe.cancel');
+            Route::get('fiscal/nfe/documents/{id}/files/{kind}', [NfeEmissionController::class, 'download'])->whereNumber('id')->name('nfe.download');
 
-        Route::get('fiscal/profiles', [FiscalProfileController::class, 'index'])->name('fiscal.profiles.index');
-        Route::get('fiscal/profiles/create', [FiscalProfileController::class, 'create'])->name('fiscal.profiles.create');
-        Route::post('fiscal/profiles', [FiscalProfileController::class, 'store'])->name('fiscal.profiles.store');
-        Route::get('fiscal/profiles/{id}/edit', [FiscalProfileController::class, 'edit'])->whereNumber('id')->name('fiscal.profiles.edit');
-        Route::post('fiscal/profiles/{id}', [FiscalProfileController::class, 'update'])->whereNumber('id')->name('fiscal.profiles.update');
-        Route::get('fiscal/profiles/{id}/bulk', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.bulk');
-        Route::get('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.preview.back');
-        Route::post('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'preview'])->whereNumber('id')->name('fiscal.profiles.preview');
-        Route::post('fiscal/profiles/{id}/apply', [FiscalProfileController::class, 'apply'])->whereNumber('id')->name('fiscal.profiles.apply');
-        Route::post('fiscal/products/{id}/profile', [FiscalProfileController::class, 'bindProduct'])->whereNumber('id')->name('fiscal.products.profile');
-        Route::post('fiscal/groups/{id}/profile', [FiscalProfileController::class, 'assignGroup'])->whereNumber('id')->name('fiscal.groups.profile');
-        Route::post('fiscal/products/{id}/individual/clear', [FiscalProfileController::class, 'clearIndividual'])->whereNumber('id')->name('fiscal.products.individual.clear');
+            Route::get('fiscal/profiles', [FiscalProfileController::class, 'index'])->name('fiscal.profiles.index');
+            Route::get('fiscal/profiles/create', [FiscalProfileController::class, 'create'])->name('fiscal.profiles.create');
+            Route::post('fiscal/profiles', [FiscalProfileController::class, 'store'])->name('fiscal.profiles.store');
+            Route::get('fiscal/profiles/{id}/edit', [FiscalProfileController::class, 'edit'])->whereNumber('id')->name('fiscal.profiles.edit');
+            Route::post('fiscal/profiles/{id}', [FiscalProfileController::class, 'update'])->whereNumber('id')->name('fiscal.profiles.update');
+            Route::get('fiscal/profiles/{id}/bulk', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.bulk');
+            Route::get('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'bulk'])->whereNumber('id')->name('fiscal.profiles.preview.back');
+            Route::post('fiscal/profiles/{id}/preview', [FiscalProfileController::class, 'preview'])->whereNumber('id')->name('fiscal.profiles.preview');
+            Route::post('fiscal/profiles/{id}/apply', [FiscalProfileController::class, 'apply'])->whereNumber('id')->name('fiscal.profiles.apply');
+            Route::post('fiscal/products/{id}/profile', [FiscalProfileController::class, 'bindProduct'])->whereNumber('id')->name('fiscal.products.profile');
+            Route::post('fiscal/groups/{id}/profile', [FiscalProfileController::class, 'assignGroup'])->whereNumber('id')->name('fiscal.groups.profile');
+            Route::post('fiscal/products/{id}/individual/clear', [FiscalProfileController::class, 'clearIndividual'])->whereNumber('id')->name('fiscal.products.individual.clear');
 
-        Route::get('fiscal/simulations', [SimulationFiscalController::class, 'index'])->name('fiscal.simulations.index');
-        Route::post('sales/{id}/fiscal/simulate', [SimulationFiscalController::class, 'create'])->whereNumber('id')->name('fiscal.simulations.create');
-        Route::get('fiscal/simulations/{id}', [SimulationFiscalController::class, 'show'])->whereNumber('id')->name('fiscal.simulations.show');
-        Route::post('fiscal/simulations/{id}/consult', [SimulationFiscalController::class, 'consult'])->whereNumber('id')->name('fiscal.simulations.consult');
-        Route::post('fiscal/simulations/{id}/cancel', [SimulationFiscalController::class, 'cancel'])->whereNumber('id')->name('fiscal.simulations.cancel');
-        Route::get('fiscal/simulations/{id}/download', [SimulationFiscalController::class, 'download'])->whereNumber('id')->name('fiscal.simulations.download');
-        Route::get('fiscal/simulations/{id}/receipt', [SimulationFiscalController::class, 'receipt'])->whereNumber('id')->name('fiscal.simulations.receipt');
+            Route::get('fiscal/simulations', [SimulationFiscalController::class, 'index'])->name('fiscal.simulations.index');
+            Route::post('sales/{id}/fiscal/simulate', [SimulationFiscalController::class, 'create'])->whereNumber('id')->name('fiscal.simulations.create');
+            Route::get('fiscal/simulations/{id}', [SimulationFiscalController::class, 'show'])->whereNumber('id')->name('fiscal.simulations.show');
+            Route::post('fiscal/simulations/{id}/consult', [SimulationFiscalController::class, 'consult'])->whereNumber('id')->name('fiscal.simulations.consult');
+            Route::post('fiscal/simulations/{id}/cancel', [SimulationFiscalController::class, 'cancel'])->whereNumber('id')->name('fiscal.simulations.cancel');
+            Route::get('fiscal/simulations/{id}/download', [SimulationFiscalController::class, 'download'])->whereNumber('id')->name('fiscal.simulations.download');
+            Route::get('fiscal/simulations/{id}/receipt', [SimulationFiscalController::class, 'receipt'])->whereNumber('id')->name('fiscal.simulations.receipt');
 
-        Route::post('business/fiscal', [FiscalEmissionController::class,'configure'])->name('business.fiscal');
-        Route::post('business/fiscal/validate', [FiscalEmissionController::class,'validateLocal'])->name('business.fiscal.validate');
-        Route::post('fiscal/voids', [FiscalEmissionController::class,'invalidate'])->name('fiscal.invalidate');
-        Route::get('fiscal/voids/{id}/xml', [FiscalEmissionController::class,'voidXml'])->whereNumber('id')->name('fiscal.void.xml');
-        Route::post('fiscal/products/{id}/unit', [FiscalEmissionController::class, 'unit'])->whereNumber('id')->name('fiscal.product.unit');
-        Route::get('fiscal/products/{id}', [FiscalEmissionController::class,'product'])->whereNumber('id')->name('fiscal.product');
-        Route::post('fiscal/products/{id}', [FiscalEmissionController::class,'saveProduct'])->whereNumber('id')->name('fiscal.product.save');
-        Route::post('sales/{id}/fiscal/emit', [FiscalEmissionController::class,'emit'])->whereNumber('id')->name('fiscal.emit');
-        Route::get('fiscal/documents/{id}', [FiscalEmissionController::class,'show'])->whereNumber('id')->name('fiscal.document');
-        Route::post('fiscal/documents/{id}/consult', [FiscalEmissionController::class,'consult'])->whereNumber('id')->name('fiscal.consult');
-        Route::post('fiscal/documents/{id}/resend', [FiscalEmissionController::class,'resend'])->whereNumber('id')->name('fiscal.resend');
-        Route::post('fiscal/documents/{id}/cancel', [FiscalEmissionController::class,'cancel'])->whereNumber('id')->name('fiscal.cancel');
-        Route::get('fiscal/documents/{id}/files/{kind}', [FiscalEmissionController::class,'download'])->whereNumber('id')->name('fiscal.download');
-        Route::post('fiscal/settings', [FiscalController::class, 'save'])->name('fiscal.settings');
-        Route::get('sales/{id}/fiscal', [FiscalController::class, 'sale'])->whereNumber('id')->name('fiscal.sale');
-        Route::post('sales/{id}/fiscal/prepare', [FiscalController::class, 'prepare'])->whereNumber('id')->name('fiscal.prepare');
-        Route::get('fiscal/preparations/{id}', [FiscalController::class, 'preparation'])->whereNumber('id')->name('fiscal.preparation');
+            Route::post('business/fiscal', [FiscalEmissionController::class,'configure'])->name('business.fiscal');
+            Route::post('business/fiscal/validate', [FiscalEmissionController::class,'validateLocal'])->name('business.fiscal.validate');
+            Route::post('fiscal/voids', [FiscalEmissionController::class,'invalidate'])->name('fiscal.invalidate');
+            Route::get('fiscal/voids/{id}/xml', [FiscalEmissionController::class,'voidXml'])->whereNumber('id')->name('fiscal.void.xml');
+            Route::post('fiscal/products/{id}/unit', [FiscalEmissionController::class, 'unit'])->whereNumber('id')->name('fiscal.product.unit');
+            Route::get('fiscal/products/{id}', [FiscalEmissionController::class,'product'])->whereNumber('id')->name('fiscal.product');
+            Route::post('fiscal/products/{id}', [FiscalEmissionController::class,'saveProduct'])->whereNumber('id')->name('fiscal.product.save');
+            Route::post('sales/{id}/fiscal/emit', [FiscalEmissionController::class,'emit'])->whereNumber('id')->name('fiscal.emit');
+            Route::get('fiscal/documents/{id}', [FiscalEmissionController::class,'show'])->whereNumber('id')->name('fiscal.document');
+            Route::post('fiscal/documents/{id}/consult', [FiscalEmissionController::class,'consult'])->whereNumber('id')->name('fiscal.consult');
+            Route::post('fiscal/documents/{id}/resend', [FiscalEmissionController::class,'resend'])->whereNumber('id')->name('fiscal.resend');
+            Route::post('fiscal/documents/{id}/cancel', [FiscalEmissionController::class,'cancel'])->whereNumber('id')->name('fiscal.cancel');
+            Route::get('fiscal/documents/{id}/files/{kind}', [FiscalEmissionController::class,'download'])->whereNumber('id')->name('fiscal.download');
+            Route::post('fiscal/settings', [FiscalController::class, 'save'])->name('fiscal.settings');
+            Route::get('sales/{id}/fiscal', [FiscalController::class, 'sale'])->whereNumber('id')->name('fiscal.sale');
+            Route::post('sales/{id}/fiscal/prepare', [FiscalController::class, 'prepare'])->whereNumber('id')->name('fiscal.prepare');
+            Route::get('fiscal/preparations/{id}', [FiscalController::class, 'preparation'])->whereNumber('id')->name('fiscal.preparation');
+        });
         Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases');
         Route::get('purchases/new', [PurchaseController::class, 'form'])->name('purchase.new');
         Route::post('purchases/preview-xml', [PurchaseController::class,'previewXml'])->name('purchase.preview-xml');
@@ -167,7 +178,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
 });
 
 // Independent national NFS-e preparation: no production endpoint or transmission.
-Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware([ResolveTenant::class, TenantAuthenticated::class])->group(function () {
+Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware([ResolveTenant::class, TenantAuthenticated::class, EnforceContractAccess::class])->group(function () {
     Route::get('nfse', [\App\Http\Controllers\NfseController::class, 'index'])->name('nfse.index');
     Route::post('nfse/config', [\App\Http\Controllers\NfseController::class, 'save'])->name('nfse.config');
         Route::post('nfse/configuration/draft',[\App\Http\Controllers\NfseController::class,'draft'])->name('nfse.config.draft');

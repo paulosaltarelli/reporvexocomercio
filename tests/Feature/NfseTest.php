@@ -159,6 +159,71 @@ class NfseTest extends TestCase
         $document=$this->prepare();$this->assertNotEmpty($document->signed_xml);
     }
 
+    public function test_v1_exposes_service_preparation_and_blocks_product_invoice_routes_without_side_effects(): void
+    {
+        config(['fiscal.product_invoices_enabled' => false]);
+        $this->configured();
+        $this->login();
+        $saleId = $this->sale->id;
+        $this->get('/app/a/nfse')->assertOk();
+        $sale = $this->get("/app/a/sales/$saleId")->assertOk();
+        $sale->assertDontSee('/fiscal/nfe/emit', false)->assertDontSee('/fiscal/prepare', false);
+        foreach (['fiscal/profiles', 'fiscal/simulations', 'fiscal/nfe/customers/'.$this->customer->id] as $path) {
+            $this->get('/app/a/'.$path)->assertNotFound();
+        }
+        foreach (['business/fiscal/nfe', "sales/$saleId/fiscal/nfe/emit", "sales/$saleId/fiscal/emit", "sales/$saleId/fiscal/simulate"] as $path) {
+            $this->post('/app/a/'.$path)->assertNotFound();
+        }
+        $this->post("/app/a/nfse/sales/$saleId/prepare", [
+            'request_key' => (string) Str::uuid(), 'competence' => now()->subDay()->toDateString(), 'operation_scope_confirmed' => true,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->connect();
+        $dps = NfseDocument::sole();
+        $this->assertNotEmpty($dps->signed_xml);
+        $this->assertSame(0, DB::connection('tenant')->table('fiscal_outbox')->count());
+        $this->assertSame(0, DB::connection('tenant')->table('fiscal_documents')->count());
+        $this->get('/app/a/nfse/documents/'.$dps->id.'/xml')->assertOk();
+    }
+
+    public function test_v1_mixed_work_order_prepares_only_service_dps_and_preserves_goods_catalog_data(): void
+    {
+        config(['fiscal.product_invoices_enabled'=>false]);
+        $this->configured();
+        $part=Product::create(['name'=>'Peça de teste','sku'=>'OS-PECA','type'=>'product','unit'=>'UN',
+            'controls_stock'=>false,'barcode'=>'7891234567890','sale_price'=>'12.34','product_group_id'=>$this->group->id,
+            'ncm'=>'12345678','origin'=>'0']);
+        $orders=app(\App\Services\Documents::class);
+        $order=$orders->create(['type'=>'work_order','request_key'=>(string)Str::uuid(),'items'=>[
+            ['kind'=>'product','id'=>$this->service->id,'quantity'=>'1','unit_price'=>$this->service->sale_price],
+            ['kind'=>'product','id'=>$part->id,'quantity'=>'1','unit_price'=>$part->sale_price],
+        ]],$this->user->id);
+        $orders->transition($order->id,'in_progress');
+        $orders->transition($order->id,'completed');
+        $sale=$orders->invoice($order->id,['paid'=>true,'payment_method'=>'cash'],$this->user->id);
+        $this->login();
+        $path="/app/a/nfse/sales/{$sale->id}";
+        foreach (["/app/a/documents/{$order->id}", "/app/a/sales/{$sale->id}"] as $url) {
+            $this->get($url)->assertOk()->assertSee($path,false)->assertDontSee('NFC-e')
+                ->assertDontSee('/fiscal/profiles',false)->assertDontSee('/fiscal/simulations',false);
+        }
+        $this->get("/app/a/products/{$part->id}/edit")->assertOk()->assertSee('name="barcode"',false)
+            ->assertDontSee('name="ncm"',false)->assertDontSee('name="origin"',false);
+        $this->post("/app/a/products/save/{$part->id}",['name'=>$part->name,'sku'=>$part->sku,'unit'=>'UN',
+            'barcode'=>'7891234567891','product_group_id'=>$this->group->id,'sale_price'=>'12.34',
+            'ncm'=>'87654321','origin'=>'1','active'=>1])->assertRedirect()->assertSessionHasNoErrors();
+        $this->get($path)->assertOk()->assertSee('100,01')->assertSee('12,34');
+        $this->post($path.'/prepare',['request_key'=>(string)Str::uuid(),'competence'=>now()->subDay()->toDateString(),
+            'operation_scope_confirmed'=>true,'segregate_work_order'=>true])->assertRedirect()->assertSessionHasNoErrors();
+        $this->connect();
+        $this->assertSame('7891234567891',$part->fresh()->barcode);
+        $this->assertSame('12345678',$part->fresh()->ncm);
+        $this->assertSame('0',(string)$part->fresh()->origin);
+        $this->assertSame('100.01',NfseDocument::sole()->total);
+        $this->assertSame('112.35',$sale->fresh()->total);
+        $this->assertSame(0,DB::connection('tenant')->table('fiscal_documents')->count());
+        $this->assertSame(0,DB::connection('tenant')->table('fiscal_outbox')->count());
+    }
+
     private function configured(): NfseConfiguration
     {
         $fixture=$this->fixture();

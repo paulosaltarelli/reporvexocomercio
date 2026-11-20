@@ -1,7 +1,7 @@
 @php
     $nfseOld = static fn ($key, $default = null) => old('_fiscal_form') === 'nfse' ? old($key, $default) : $default;
 @endphp
-<section class="panel" id="nfse-configuration"><h2>Configuração própria da NFS-e nacional</h2><p>Os dados do prestador vêm de Minha empresa. Certificado A1 e configuração pertencem somente a esta empresa; este fluxo não utiliza CSC.</p>
+<section class="panel" id="nfse-configuration"><h2>Configuração própria da NFS-e nacional</h2><p>Os dados do prestador vêm de Minha empresa. O certificado A1 e a configuração pertencem a esta empresa.</p>
 @php($np=array_merge($configurationDefaults??[],$configuration?->parameters??[]))
 @if($configuration?->certificate_valid_until)<p>Certificado cadastrado · válido até {{ \Carbon\Carbon::parse($configuration->certificate_valid_until)->format('d/m/Y') }}.</p>@endif
 <form method="post" enctype="multipart/form-data" action="{{ route('nfse.config',['company'=>$tenant->slug]) }}">@csrf

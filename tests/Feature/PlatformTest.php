@@ -19,6 +19,8 @@ use Tests\TestCase;
 
 class PlatformTest extends TestCase
 {
+    use \Tests\Support\LicensingWorkerCases;
+    use \Tests\Support\ContractBillingCases;
     private static bool $schemaReady = false;
 
     private PlatformAdmin $admin;
@@ -84,6 +86,25 @@ class PlatformTest extends TestCase
     private function centralSession(): void
     {
         $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_mfa_at' => time(), 'platform_auth_version' => $this->admin->auth_version]);
+    }
+
+    public function test_license_forms_show_terms_and_preserve_empty_module_selection_on_update(): void
+    {
+        $url = '/vexo-admin/companies/'.$this->company->id.'/license';
+        $this->get($url)->assertRedirect('/vexo-admin/login');
+        $this->centralSession();
+        $this->get($url)->assertOk()->assertSee('Nenhum contrato cadastrado')->assertSee('Novo contrato');
+        $this->get($url.'/new')->assertOk()->assertSee('Recursos sujeitos à restrição por atraso')->assertSee('Mensalidade');
+        $data = ['start_date'=>'2028-05-01', 'end_date'=>'2028-06-30', 'monthly_amount'=>'165.50', 'due_day'=>20, 'restricted_modules'=>['sales']];
+        $this->post($url.'/contracts', $data)->assertRedirect($url)->assertSessionHasNoErrors();
+        $contract = \App\Platform\Contract::where('tenant_id', $this->company->id)->sole();
+        $edit = $url.'/contracts/'.$contract->id.'/edit';
+        $this->get($url)->assertOk()->assertSee($edit)->assertSee('165,50')->assertSee('05/2028')->assertSee('06/2028');
+        $this->get($edit)->assertOk()->assertSee('value="sales" checked', false);
+        unset($data['restricted_modules']);
+        $this->post($url.'/contracts/'.$contract->id, $data + ['expected_version'=>$contract->version])
+            ->assertRedirect($url)->assertSessionHasNoErrors();
+        $this->assertSame([], $contract->fresh()->restricted_modules);
     }
 
     public function test_global_admin_management_is_central_only_preserves_last_admin_and_revokes_sessions(): void

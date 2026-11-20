@@ -24,6 +24,8 @@ class FiscalController extends Controller
     {
         $this->admin($request);
 
+        if (!config('fiscal.product_invoices_enabled', false)) return redirect()->route('nfse.index', ['company' => $request->route('company')]);
+
         return view('fiscal.index', [
             'settings' => FiscalSetting::find(1),
             'report' => $readiness->inspect($request->attributes->get('tenant')),

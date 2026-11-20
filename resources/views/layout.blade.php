@@ -22,6 +22,13 @@
     </header>
     <main id="main-content" tabindex="-1">
         @if(isset($supportAdmin))<div class="notice support-banner" role="status"><strong>Suporte Vexo · DBA: {{ $supportAdmin->name }}</strong><p>Loja: {{ $tenant->name }}. Acesso global identificado e auditado.</p><form method="post" action="{{ route('platform.support.leave') }}">@csrf<button class="button secondary">Encerrar suporte e voltar à central</button></form></div>@endif
+        @if(request()->attributes->get('restrictedModules') && !isset($message))
+            <div class="notice no-print" role="status">
+                <strong>Licença com parcela vencida</strong>
+                <p>Recursos com acesso limitado: {{ implode(', ',request()->attributes->get('restrictedModules')) }}.</p>
+                <a href="{{ route('license.help',['company'=>$tenant->slug]) }}">Como regularizar o acesso</a>
+            </div>
+        @endif
         @include('components.company-report-header',['reportPrintOnly'=>!request()->routeIs('reports','commissions','sale.show','document.show','purchase.show','cash','cashflow','finance')])
         <div class="page-top"><div><div class="eyebrow">@yield('navigation-section','GESTÃO COMERCIAL')</div><h1>@yield('title','Visão geral')</h1><p class="muted">@yield('subtitle')</p></div>@yield('actions')</div>
         @if(session('stock_warning'))

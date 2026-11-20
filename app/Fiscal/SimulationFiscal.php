@@ -17,6 +17,7 @@ final class SimulationFiscal
 {
     public function create(Tenant $tenant, int $saleId, int $userId, string $requestKey, string $scenario = 'accepted'): FiscalSimulation
     {
+        ProductInvoiceGate::assertEnabled();
         $this->context($tenant, $userId, $requestKey);
         if (! in_array($scenario, ['accepted', 'rejected', 'uncertain'], true)) {
             $this->invalid('scenario', 'Escolha um cenário de simulação válido.');
@@ -71,11 +72,13 @@ final class SimulationFiscal
 
     public function consult(Tenant $tenant, int $simulationId, int $userId, string $requestKey): FiscalSimulation
     {
+        ProductInvoiceGate::assertEnabled();
         return $this->operate($tenant, $simulationId, $userId, $requestKey, 'consult');
     }
 
     public function cancel(Tenant $tenant, int $simulationId, int $userId, string $reason, string $requestKey): FiscalSimulation
     {
+        ProductInvoiceGate::assertEnabled();
         $reason = trim($reason);
         if (mb_strlen($reason) < 15 || mb_strlen($reason) > 255) {
             $this->invalid('reason', 'Informe motivo entre 15 e 255 caracteres.');

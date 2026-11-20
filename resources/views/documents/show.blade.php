@@ -68,6 +68,9 @@ Peça ao administrador para vincular um vendedor ativo antes de gerar a venda. O
 @if($currentUser->allows('documents.invoice') && !empty($document->items) && $hasActiveSalesperson && (($document->type==='quote'&&$document->status==='approved')||($document->type==='work_order'&&$document->status==='completed')))
 @include('documents.checkout')
 @endif
+@if($document->sale_id && $document->type==='work_order' && $sections->has('service') && $currentUser->allows('fiscal.manage'))
+    <p class="no-print"><a href="{{ route('nfse.sale',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Conferir DPS dos serviços desta OS</a></p>
+@endif
 @if($document->sale_id && $currentUser->allows('sales.view'))<p class="no-print"><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$document->sale_id]) }}">Abrir venda #{{ $document->sale_id }}</a></p>
 @endif</section>
 @endsection

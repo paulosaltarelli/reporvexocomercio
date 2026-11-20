@@ -19,6 +19,8 @@ final class ProcessFiscalOutbox
 {
     public function run(int $tenantId, int $outboxId): void
     {
+        if (!ProductInvoiceGate::enabled()) return;
+
         $connection = app(TenantConnection::class);
         try {
             $tenant = Tenant::where('active', true)->findOrFail($tenantId);

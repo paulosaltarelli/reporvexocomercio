@@ -43,18 +43,20 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     <div class="form-note" id="effective-commercial-rules" role="status" aria-live="polite"></div>
     <p class="hint">Cada campo herda de forma independente. A comissão usa o valor líquido após descontos; sua apuração não registra pagamento ao vendedor.</p>
 </details>
-<details class="disclosure compact" style="margin-top:24px" @if($errors->hasAny(['ncm','origin','municipal_service_code','iss_rate'])) open @endif>
-    <summary>Dados fiscais preparatórios (opcional)</summary>
+<details id="item-tax-section" class="disclosure compact" style="margin-top:24px" @if(!config('fiscal.product_invoices_enabled') && $itemType!=='service') hidden @endif @if($errors->hasAny(['ncm','origin','municipal_service_code','iss_rate'])) open @endif>
+    <summary>{{ config('fiscal.product_invoices_enabled') ? 'Dados fiscais preparatórios (opcional)' : 'Dados municipais do serviço (opcional)' }}</summary>
     <div class="disclosure-content">
+        @if(config('fiscal.product_invoices_enabled'))
         <div id="product-fiscal-fields" class="form-grid"><div class="field"><label>NCM (opcional)</label><input name="ncm" maxlength="8" value="{{ old('ncm',$product->ncm) }}"></div><div class="field"><label>Origem fiscal (opcional)</label><select name="origin"><option value="">Não informada</option>
 @foreach(range(0,8) as $o)<option value="{{ $o }}"
 @selected((string)old('origin',$product->origin)===(string)$o)>{{ $o }}</option>
 @endforeach</select></div></div>
+        @endif
         <div id="service-fiscal-fields" class="form-grid">
             <div class="field"><label for="municipal_service_code">Código municipal do serviço</label><input id="municipal_service_code" name="municipal_service_code" maxlength="30" value="{{ old('municipal_service_code',$product->municipal_service_code) }}"><small class="hint">Informe conforme a classificação usada pelo município.</small></div>
             <div class="field"><label for="iss_rate">Alíquota de ISS (%)</label><input id="iss_rate" name="iss_rate" type="number" min="0" max="100" step="0.01" value="{{ old('iss_rate',$product->iss_rate) }}"></div>
         </div>
-        <p class="hint">Campos para evolução da integração fiscal. Não há cálculo tributário nem emissão de nota nesta versão.</p>
+        <p class="hint">Os dados municipais auxiliam a preparação local da DPS para serviços.</p>
     </div>
 </details>
 <div class="actions"><button class="primary">Salvar cadastro</button><a href="{{ route('products',['company'=>$tenant->slug]) }}">Voltar</a></div></form>
@@ -110,6 +112,7 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
         const isService=typeField.value==='service';
         const productFiscal=document.querySelector('#product-fiscal-fields');
         const serviceFiscal=document.querySelector('#service-fiscal-fields');
+        document.querySelector('#item-tax-section').hidden=!productFiscal && !isService;
         if(productFiscal){productFiscal.hidden=isService;productFiscal.querySelectorAll('input,select').forEach(field=>field.disabled=isService);}
         if(serviceFiscal){serviceFiscal.hidden=!isService;serviceFiscal.querySelectorAll('input,select').forEach(field=>field.disabled=!isService);}
         const controlled=controlsStock();

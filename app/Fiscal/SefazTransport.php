@@ -14,6 +14,7 @@ class SefazTransport
 
     public function __construct(array $issuer, array $configuration, #[\SensitiveParameter] FiscalCredential $credential, private int $model = 65)
     {
+        ProductInvoiceGate::assertEnabled();
         if (! in_array($model, [55, 65], true)) { throw new FiscalTransportException('fiscal_model_invalid'); }
         try {
             $secrets = $credential->secrets ?? [];

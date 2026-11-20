@@ -34,6 +34,7 @@ class BusinessController extends Controller
     public function viewData(Request $r): array
     {
         $profile = BusinessProfile::find(1) ?? new BusinessProfile(['legal_name' => $r->attributes->get('tenant')->name]);
+        if (!config('fiscal.product_invoices_enabled', false)) return ['profile' => $profile];
         $issuer = FiscalIssuer::where('document', TaxpayerDocument::normalize((string) $profile->document))->where('environment', 'homologation')->first();
         $credential = $issuer ? FiscalCredential::where('issuer_id', $issuer->id)->first() : null;
         $sequence = $issuer && isset($issuer->validated_configuration['series']) ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 65)->where('series', $issuer->validated_configuration['series'])->first() : null;
