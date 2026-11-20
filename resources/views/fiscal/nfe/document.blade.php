@@ -1,7 +1,9 @@
 @extends('layout')
 @section('title','NF-e #'.$document->number.' · série '.$document->series)
 @section('subtitle','Ambiente de homologação · sem valor fiscal.')
-@section('content')<section class="panel">
+@section('content')
+@include('fiscal.work-order-link')
+<section class="panel">
 <p>Venda #{{ $document->sale_id }} · <strong>{{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada em homologação'][$document->state]??$document->state }}</strong></p>
 @if($document->official_code)<p>Código SEFAZ: {{ $document->official_code }} · Protocolo: {{ $document->protocol??'Ainda não disponível' }}</p>@endif
 @if($document->operator_message)<p>{{ $document->operator_message }}</p>@endif

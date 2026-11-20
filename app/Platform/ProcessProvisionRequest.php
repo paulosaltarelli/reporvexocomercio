@@ -13,7 +13,7 @@ final class ProcessProvisionRequest
 {
     public function __construct(private readonly TenantStorageProvisioner $storage) {}
 
-    public function process(int $requestId, #[\SensitiveParameter] string $password): ProvisionRequest
+    public function process(int $requestId, #[\SensitiveParameter] string $password, bool $emailActivation = false): ProvisionRequest
     {
         $this->privileged();
         if (strlen($password) > 72) {
@@ -73,7 +73,7 @@ final class ProcessProvisionRequest
         $job = $claimed['job'];
         try {
             $this->storage->provisionNew($tenant, ['name' => $job->admin_name, 'email' => $job->admin_email, 'must_change_password' => true], $password);
-            return DB::connection('central')->transaction(function () use ($tenant, $job) {
+            return DB::connection('central')->transaction(function () use ($tenant, $job, $emailActivation) {
                 $current = ProvisionRequest::whereKey($job->id)->lockForUpdate()->firstOrFail();
                 $actor = PlatformAdmin::whereKey($current->requested_by)->lockForUpdate()->first();
                 $company = Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
@@ -87,6 +87,7 @@ final class ProcessProvisionRequest
                 $company->platform_version = (int) $company->platform_version + 1;
                 $company->save();
                 $current->status = 'completed';
+                if ($emailActivation) $current->activation_status = 'queued';
                 $current->active_slug = null;
                 $current->completed_at = now();
                 $current->failure_code = null;

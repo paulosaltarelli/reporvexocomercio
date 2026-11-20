@@ -62,7 +62,7 @@ class CommerceController extends Controller
             'salesYear'=>$salesYear,'salesYears'=>$salesYears,'salesTrend'=>$salesTrend,'salesPeriodTotal'=>(string)(clone $period)->sum('total'),'salesPeriodCount'=>(clone $period)->count(),
             'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'),
             'receivable' => FinancialEntry::where('direction', 'in')->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total'),
-            'stockValue' => Product::selectRaw('COALESCE(SUM(quantity * average_cost),0) as value')->value('value'),
+            'stockValue' => app(Inventory::class)->totalValue(),
             'lowStock' => Product::where('active', true)->where('type', 'product')->where('controls_stock', true)->whereColumn('quantity', '<=', 'minimum_stock')->orderBy('name')->limit(8)->get(),
             'recent' => Sale::with('customer')->latest()->limit(8)->get(),
         ]);
@@ -125,7 +125,29 @@ class CommerceController extends Controller
         if($kind==='services')return redirect()->route('products',['company'=>$company,'type'=>'service']);
         [$model,$title,$fields] = $this->catalogSpec($kind);
 
-        return view('catalog', ['rows' => $model::orderBy('name')->paginate(20), 'title' => $title, 'fields' => $fields, 'kind' => $kind, 'editing' => $r->integer('edit') ? $model::findOrFail($r->integer('edit')) : null]);
+        $filters = $this->catalogFilters($r, $kind);
+        $search = $filters['q'] ?? '';
+        $query = $model::query();
+        if ($search !== '') {
+            $query->where(function ($query) use ($search) {
+                $literal = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search);
+                $query->whereRaw("name LIKE ? ESCAPE '!'", ['%'.$literal.'%']);
+                $document = \App\Fiscal\TaxpayerDocument::normalize($search);
+                if (preg_match('/^[A-Z0-9]+$/D', $document)) {
+                    $query->orWhereRaw("UPPER(REPLACE(REPLACE(REPLACE(REPLACE(document, '.', ''), '/', ''), '-', ''), ' ', '')) LIKE ?", ['%'.$document.'%']);
+                }
+            });
+        }
+        $rows = $query->orderBy('name')->orderBy('id')->paginate(20)->appends(['q' => $filters['q'] ?? null]);
+
+        return view('catalog', ['rows' => $rows, 'search' => $search, 'filters' => $filters, 'title' => $title, 'fields' => $fields, 'kind' => $kind, 'editing' => $r->integer('edit') ? $model::findOrFail($r->integer('edit')) : null]);
+    }
+
+    private function catalogFilters(Request $request, string $kind): array
+    {
+        if (!in_array($kind, ['customers', 'suppliers'], true)) return [];
+        $filters = $request->validate(['q' => 'nullable|string|max:100', 'page' => 'nullable|integer|min:1']);
+        return array_filter($filters, fn ($value) => $value !== null && $value !== '');
     }
 
     public function lookupCustomerRegistry(Request $request, \App\Services\CustomerRegistryLookup $registry)
@@ -153,6 +175,7 @@ class CommerceController extends Controller
         $this->admin($r);
         if($kind==='services')return $this->saveLegacyService($r,$company);
         [$model] = $this->catalogSpec($kind);
+        $filters = $this->catalogFilters($r, $kind);
         $row = $r->integer('id') ? $model::findOrFail($r->integer('id')) : new $model;
         $rules = match ($kind) {
             'groups' => ['name' => ['required', 'string', 'max:180', Rule::unique('tenant.product_groups', 'name')->ignore($row->id)], 'margin' => 'required|numeric|min:0|max:99.99|decimal:0,2','price_policy'=>'sometimes|required|in:alert,automatic','discount_enabled'=>'sometimes|required|boolean','max_discount_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'sometimes|required|numeric|min:0|max:100|decimal:0,2'],
@@ -171,7 +194,7 @@ class CommerceController extends Controller
             if($kind==='groups')app(PricingService::class)->syncGroup($row->id,$r->attributes->get('currentUser')->id);
         },3);
 
-        return redirect()->route('catalog', ['company' => $company, 'kind' => $kind])->with('success', 'Cadastro salvo.');
+        return redirect()->route('catalog', ['company' => $company, 'kind' => $kind] + $filters)->with('success', 'Cadastro salvo.');
     }
 
     public function stock()

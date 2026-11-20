@@ -6,6 +6,8 @@
  function renderTotal(form){
   const base=BigInt(form.dataset.cartNet||form.dataset.paymentTotal||'0');let passed=0n,active=false;
   for(const box of form.querySelectorAll('.card-fee-fields'))if(!box.hidden&&box.dataset.passed){passed+=BigInt(box.dataset.passed);active=true;}
+  const grand=form.querySelector('#pos-net-total');
+  if(grand)grand.textContent=Vendra.centsText(base+passed);
   const display=form.querySelector('.card-sale-total');if(display){display.hidden=!active;display.textContent='Total a cobrar: '+Vendra.centsText(base+passed)+' · acréscimo repassado: '+Vendra.centsText(passed);}
  }
  function refresh(box,reset=false){
@@ -23,6 +25,7 @@
   field('card_installments').setCustomValidity(brand.rates[n]===undefined?'Parcelamento sem taxa configurada.':'');
   if(rate===null||brand.rates[n]===undefined){box.querySelector('.card-fee-preview').textContent='Configure a taxa para este parcelamento ou escolha outra quantidade de parcelas.';renderTotal(form);return;}
   const policy=field('fee_policy').value,result=quote(base,rate,policy);
+  if(field('rate_seen').value!==money(rate)||field('charged_seen').value!==money(result.charged))field('fee_reviewed').checked=false;
   field('rate_seen').value=money(rate);field('charged_seen').value=money(result.charged);
   if(reset)field('fee_reviewed').checked=false;
   box.querySelector('.card-fee-review').hidden=policy!=='pass';field('fee_reviewed').required=policy==='pass';field('fee_reviewed').disabled=policy!=='pass';

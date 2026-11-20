@@ -9,3 +9,8 @@
 .pos-grid:has(.split-enabled:checked){grid-template-columns:minmax(0,1fr)}.pos-grid:has(.split-enabled:checked) .pos-payment{position:static}.pos-grid:has(.split-enabled:checked) .pos-items-panel{min-height:0}.pos-payment input[type="checkbox"]{min-height:auto;width:auto}form:has(.split-enabled:checked) .single-payment-fields,form:has(.split-enabled:checked) .single-payment-field{display:none}.split-payment-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:16px}.split-payment-row{margin-bottom:0}.split-payment-row .field{margin:6px 0}.split-payment-row input,.split-payment-row select{max-width:100%}
 .card-fee-fields{border-top:1px solid #dbe4f0;padding-top:12px;margin-top:12px;min-width:0}.card-fee-fields .form-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}.card-fee-review input[type=checkbox]{min-height:auto;width:auto}.card-sale-total{font-weight:700}.card-fee-preview{overflow-wrap:anywhere}
 .card-fee-fields[hidden],.card-fee-review[hidden],.card-sale-total[hidden]{display:none!important}
+
+#pos-catalog-dialog{box-sizing:border-box;width:min(34rem,calc(100vw - 2rem));max-width:100%;padding:1.25rem;border:1px solid var(--line);border-radius:10px}
+#pos-catalog-dialog::backdrop{background:rgb(22 35 58 / 45%)}
+#pos-catalog-dialog select{width:100%;min-width:0}
+.pos-cart .pos-pick-item{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}

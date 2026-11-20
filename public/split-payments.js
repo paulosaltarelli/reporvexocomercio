@@ -31,7 +31,7 @@
  function insert(data={}){
   if(container.children.length>=10)return;
   const row=form.querySelector('.split-payment-template').content.firstElementChild.cloneNode(true),index=sequence++;
-  row.querySelectorAll('[data-field]').forEach(e=>{e.name=`payments[${index}][${e.dataset.field}]`;if(data[e.dataset.field]!==undefined&&data[e.dataset.field]!==null)e.value=data[e.dataset.field];});
+  row.querySelectorAll('[data-field]').forEach(e=>{e.name=`payments[${index}][${e.dataset.field}]`;if(e.type==='checkbox')e.checked=String(data[e.dataset.field]??'')==='1';else if(data[e.dataset.field]!==undefined&&data[e.dataset.field]!==null)e.value=data[e.dataset.field];});
   row.querySelector('[data-field="payment_option"]').addEventListener('change',()=>{if(row.querySelector('[data-field="payment_option"]').selectedOptions[0]?.dataset.type==='invoice')row.querySelector('[data-field="paid"]').value='0';update();});
   row.querySelector('[data-field="paid"]').addEventListener('change',()=>{if(row.querySelector('[data-field="payment_option"]').selectedOptions[0]?.dataset.type==='invoice')row.querySelector('[data-field="paid"]').value='0';});
   row.addEventListener('input',update);row.addEventListener('change',update);row.querySelector('.split-remove').addEventListener('click',()=>{row.remove();update();});container.append(row);Vendra.associateLabels(row);window.VendraCardFees?.init(row.querySelector('.card-fee-fields'));update();

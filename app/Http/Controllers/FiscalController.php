@@ -59,7 +59,11 @@ class FiscalController extends Controller
         $this->admin($request);
         $sale = Sale::findOrFail($id);
 
-        return view('fiscal.sale', ['sale' => $sale, 'report' => $readiness->inspect($request->attributes->get('tenant'), $sale)]);
+        $receipts = \App\Models\Payment::whereIn('entry_id', $sale->entries()->select('id'))
+            ->where('direction', 'in')->where('kind', 'payment')->whereDoesntHave('reversal')
+            ->selectRaw('method, SUM(amount) as amount')->groupBy('method')->pluck('amount', 'method');
+
+        return view('fiscal.sale', ['sale' => $sale, 'hasPixReceipt' => $receipts->has('pix'), 'receipts' => $receipts, 'report' => $readiness->inspect($request->attributes->get('tenant'), $sale)]);
     }
 
     public function prepare(Request $request, string $company, int $id, PrepareFiscalReview $prepare)

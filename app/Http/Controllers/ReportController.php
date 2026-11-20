@@ -33,9 +33,16 @@ class ReportController extends Controller
         [$from,$to] = $this->period($r);
         $sales = Sale::where('status', 'completed')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
         $payments = Payment::whereBetween('paid_on', [$from, $to]);
-        $top = DB::connection('tenant')->table('sale_items')->join('sales', 'sales.id', '=', 'sale_items.sale_id')->where('sales.status', 'completed')->whereBetween('sales.created_at', [$from.' 00:00:00', $to.' 23:59:59'])->selectRaw('sale_items.description, SUM(sale_items.quantity) as quantity, SUM(sale_items.total) as total')->groupBy('sale_items.description')->orderByDesc('total')->limit(10)->get();
+        $top = DB::connection('tenant')->table('sale_items as i')
+            ->join('sales as s', 's.id', '=', 'i.sale_id')
+            ->leftJoin('products as p','p.id','=','i.product_id')
+            ->leftJoin('services as v','v.id','=','i.service_id')
+            ->where('s.status','completed')->whereBetween('s.created_at',[$from.' 00:00:00',$to.' 23:59:59'])
+            ->groupBy('i.product_id','i.service_id')
+            ->selectRaw('COALESCE(MAX(p.name), MAX(v.name), MIN(i.description)) as description, SUM(i.quantity) as quantity, SUM(i.total) as total')
+            ->orderByDesc('total')->orderBy('i.product_id')->orderBy('i.service_id')->limit(10)->get();
 
-        return view('reports', ['from' => $from, 'to' => $to, 'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'), 'saleCount' => (clone $sales)->count(), 'cashIn' => (clone $payments)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $payments)->where('direction', 'out')->sum('amount'), 'top' => $top, 'stockValue' => Product::selectRaw('COALESCE(SUM(quantity*average_cost),0) as total')->value('total')]);
+        return view('reports', ['from' => $from, 'to' => $to, 'revenue' => (clone $sales)->sum('total'), 'cost' => (clone $sales)->sum('cost_total'), 'saleCount' => (clone $sales)->count(), 'cashIn' => (clone $payments)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $payments)->where('direction', 'out')->sum('amount'), 'top' => $top, 'stockValue' => app(\App\Services\Inventory::class)->totalValue()]);
     }
 
     public function csv(Request $r, string $company, string $kind)
@@ -62,9 +69,10 @@ class ReportController extends Controller
                 };
                 if ($kind === 'stock') {
                     $write(['SKU', 'Produto', 'Grupo', 'Unidade', 'Saldo atual', 'Custo médio atual', 'Valor atual do estoque', 'Preço venda', 'Margem alvo']);
-                    foreach (Product::with('group')->where('type','product')->where('controls_stock',true)->orderBy('id')->lazyById(500) as $p) {
-                        $write([$p->sku, $p->name, $p->group->name, $p->unit, $p->quantity, $p->average_cost, bcmul($p->quantity, $p->average_cost, 4), $p->sale_price, $p->margin ?? $p->group->margin]);
-                    }
+                    Product::with('group')->where('type','product')->where('controls_stock',true)->chunkById(500,function ($products) use ($write) {
+                        $values = app(\App\Services\Inventory::class)->values($products);
+                        foreach ($products as $p) $write([$p->sku, $p->name, $p->group->name, $p->unit, $p->quantity, $p->average_cost, $values[$p->id], $p->sale_price, $p->margin ?? $p->group->margin]);
+                    });
                 } elseif ($kind === 'movements') {
                     $write(['Data', 'Produto', 'Tipo', 'Quantidade', 'Custo unitário', 'Saldo após', 'Custo médio após', 'Motivo', 'Usuário']);
                     foreach (StockMovement::with('product')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('id')->lazyById(500) as $m) {

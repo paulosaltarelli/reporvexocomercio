@@ -20,7 +20,7 @@ final class PrepareDps
     public function prepare(Tenant $tenant, int $saleId, int $actor, array $input): NfseDocument
     {
         Access::admin($tenant, $actor);
-        $data = Validator::make($input, ['request_key' => 'required|uuid', 'competence' => 'required|date_format:Y-m-d|before_or_equal:today', 'operation_scope_confirmed' => 'required|accepted'])->validate();
+        $data = Validator::make($input, ['request_key' => 'required|uuid', 'competence' => 'required|date_format:Y-m-d|before_or_equal:today', 'operation_scope_confirmed' => 'required|accepted', 'segregate_work_order' => 'sometimes|accepted'])->validate();
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $actor, $data) {
             app(\App\Services\CompanyOperations::class)->lock();
             app(\App\Services\CompanyOperations::class)->requireModule('nfse');
@@ -43,7 +43,9 @@ final class PrepareDps
             $profile = BusinessProfile::whereKey(1)->lockForUpdate()->firstOrFail();
             $cnpj = TaxpayerDocument::normalize((string) $profile->document);
             $configuration = NfseConfiguration::where('cnpj', $cnpj)->lockForUpdate()->first();
-            $report = app(Readiness::class)->inspect($configuration, $sale);
+            $split = !empty($data['segregate_work_order']) ? \App\Fiscal\WorkOrderFiscalSplit::partition($sale) : null;
+            $serviceSale = $split ? \App\Fiscal\WorkOrderFiscalSplit::servicePortion($sale, $split) : $sale;
+            $report = app(Readiness::class)->inspect($configuration, $serviceSale);
             if (! $report['draft_ready']) {
                 throw ValidationException::withMessages(['nfse' => $report['draft_blockers']]);
             }
@@ -62,12 +64,12 @@ final class PrepareDps
             $secrets = $configuration->secrets ?? [];
             $pfx = base64_decode($secrets['pfx'] ?? '', true) ?: '';
             app(CertificateInspector::class)->inspect($pfx, $secrets['certificate_password'] ?? '', $cnpj);
-            $line = $sale->items->first();
+            $line = $serviceSale->items->first();
             $snapshot = [
                 'environment' => 'restricted', 'tenant_id' => $tenant->id, 'sale_id' => $saleId,
                 'dps_id' => 'DPS'.$parameters['municipality_code'].'2'.$cnpj.str_pad((string) $series, 5, '0', STR_PAD_LEFT).str_pad($number, 15, '0', STR_PAD_LEFT),
                 'series' => $series, 'number' => $number, 'issued_at' => $issued->format('Y-m-d\TH:i:sP'),
-                'competence' => $data['competence'], 'total' => Decimal::input((string) $sale->total, 2, 'total', '0.01'),
+                'competence' => $data['competence'], 'total' => Decimal::input((string) $serviceSale->total, 2, 'total', '0.01'),
                 'configuration' => $parameters,
                 'issuer' => ['cnpj' => $cnpj, 'legal_name' => $profile->legal_name, 'municipality_code' => $profile->municipality_code],
                 'service' => ['item_id' => $line->id, 'product_id' => $line->product_id, 'description' => $line->description, 'quantity' => (string) $line->quantity, 'unit_price' => (string) $line->unit_price, 'total' => (string) $line->total],
@@ -76,6 +78,9 @@ final class PrepareDps
                 'certificate_fingerprint' => $configuration->certificate_fingerprint,
                 'limitations' => ['draft_only', 'no_external_acceptance', 'federal_rtc_not_transmitted', 'local_service_no_withholding'],
             ];
+            if ($split) {
+                $snapshot['work_order_split'] = $split;
+            }
             try {
                 $xml = app(DpsBuilder::class)->build($snapshot, $pfx, $secrets['certificate_password'] ?? '');
             } catch (\App\Fiscal\FiscalTransportException) {

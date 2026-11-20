@@ -101,6 +101,10 @@ final class FiscalReadiness
                 if ($kind === 'goods') {
                     $product = $products->get($item->product_id);
                     $line['tax_metadata_at_review'] = $product?->only(['ncm', 'origin', 'unit']) ?? [];
+                    $line['tax_metadata_at_review']['fiscal_unit'] = $product ? FiscalUnit::symbol($product) : null;
+                    if ($product && !$line['tax_metadata_at_review']['fiscal_unit']) {
+                        $add('item.'.$item->id.'.unit', 'Cadastre uma sigla fiscal de até seis caracteres em Fiscal → Regra do produto '.$product->name.'.');
+                    }
                     $effective = $resolvedRules[$item->product_id] ?? null;
                     $line['tax_rule_at_review'] = $effective;
                     if (! ($effective['available'] ?? false)) {

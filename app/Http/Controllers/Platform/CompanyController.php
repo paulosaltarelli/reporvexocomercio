@@ -55,6 +55,16 @@ class CompanyController extends Controller
         return view('platform.request', ['provisionRequest' => ProvisionRequest::findOrFail($id)]);
     }
 
+    public function resendActivation(Request $request, int $id)
+    {
+        $this->actor($request);
+        $updated = ProvisionRequest::whereKey($id)->where('status', 'completed')
+            ->where('activation_status', 'sent')->whereIn('tenant_id', Tenant::where('active', true)->select('id'))
+            ->update(['activation_status' => 'queued', 'activation_digest' => null, 'activation_expires_at' => null, 'activation_retry_at' => null]);
+        abort_unless($updated, 409, 'O estado do convite mudou. Atualize a solicitação.');
+        return redirect()->route('platform.requests.show', ['id' => $id])->with('success', 'Novo convite solicitado para o administrador inicial.');
+    }
+
     public function show(Request $request, int $id)
     {
         $this->actor($request);

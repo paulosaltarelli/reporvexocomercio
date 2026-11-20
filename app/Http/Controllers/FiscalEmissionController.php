@@ -103,6 +103,23 @@ class FiscalEmissionController extends Controller
         return view('fiscal.product', ['product' => $product, 'rule' => FiscalItemRule::where('product_id', $id)->first(), 'effectiveRule' => app(FiscalRuleResolver::class)->resolve($product), 'fiscalProfiles' => FiscalTaxProfile::orderBy('name')->get(), 'bindingHash' => app(FiscalProfileManager::class)->bindingHash($product), 'individualHash' => app(FiscalProfileManager::class)->individualHash($product), 'fiscalGroupProfile' => $product->product_group_id ? FiscalTaxProfile::find(DB::connection('tenant')->table('product_groups')->where('id', $product->product_group_id)->value('fiscal_tax_profile_id')) : null]);
     }
 
+    public function unit(Request $r, string $company, int $id)
+    {
+        $this->admin($r);
+        $data = $r->validate(['base' => 'required|string|max:10', 'symbol' => 'required|regex:/^[A-Z0-9]{1,6}$/D']);
+        DB::connection('tenant')->transaction(function () use ($id, $data, $r) {
+            $product = Product::where('type', 'product')->lockForUpdate()->findOrFail($id);
+            abort_unless($product->unit === $data['base'] && mb_strlen($product->unit) > 6, 409, 'A unidade base mudou.');
+            $before = \App\Fiscal\FiscalUnit::symbol($product);
+            if ($before !== $data['symbol']) {
+                \App\Models\OperationRecord::create(['action' => 'fiscal_unit_alias', 'version' => 0,
+                    'user_id' => $r->attributes->get('currentUser')->id, 'before' => ['symbol' => $before],
+                    'after' => $data + ['product_id' => $product->id], 'created_at' => now()]);
+            }
+        }, 3);
+        return back()->with('success', 'Sigla fiscal salva para esta unidade base.');
+    }
+
     public function saveProduct(Request $r, string $company, int $id, TaxProfile $profile)
     {
         $this->admin($r);
@@ -121,7 +138,7 @@ class FiscalEmissionController extends Controller
     public function emit(Request $r, string $company, int $id, QueueNfce $queue)
     {
         $this->admin($r);
-        $operation = $r->validate(['consumer_final' => 'accepted', 'not_taxpayer' => 'accepted', 'homologation_consent' => 'accepted', 'presence' => 'required|in:1', 'destination_state' => 'required|alpha|size:2', 'pix_mode' => 'nullable|in:dynamic,static', 'tenant_id' => 'prohibited']);
+        $operation = $r->validate(['segregate_work_order'=>'sometimes|accepted', 'goods_payments'=>'sometimes|array:cash,pix,transfer', 'goods_payments.*'=>'required|decimal:0,2|min:0', 'consumer_final' => 'accepted', 'not_taxpayer' => 'accepted', 'homologation_consent' => 'accepted', 'presence' => 'required|in:1', 'destination_state' => 'required|alpha|size:2', 'pix_mode' => 'nullable|in:dynamic,static', 'tenant_id' => 'prohibited']);
         $operation['consumer_final'] = $r->boolean('consumer_final');
         $operation['not_taxpayer'] = $r->boolean('not_taxpayer');
         $doc = $queue->enqueue($r->attributes->get('tenant'), $id, $r->attributes->get('currentUser')->id, $operation);

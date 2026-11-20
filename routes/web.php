@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => view('welcome'));
 Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(ResolveTenant::class)->group(function () {
+    Route::view('ativar', 'auth.activate')->name('company.activate');
+    Route::post('ativar', [\App\Http\Controllers\CompanyActivationController::class, 'activate'])->middleware('throttle:6,1');
     Route::get('login', [AuthController::class, 'form'])->name('login');
     Route::post('login', [AuthController::class, 'login']);
     Route::middleware(TenantAuthenticated::class)->group(function () {
@@ -88,6 +90,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('business/fiscal/validate', [FiscalEmissionController::class,'validateLocal'])->name('business.fiscal.validate');
         Route::post('fiscal/voids', [FiscalEmissionController::class,'invalidate'])->name('fiscal.invalidate');
         Route::get('fiscal/voids/{id}/xml', [FiscalEmissionController::class,'voidXml'])->whereNumber('id')->name('fiscal.void.xml');
+        Route::post('fiscal/products/{id}/unit', [FiscalEmissionController::class, 'unit'])->whereNumber('id')->name('fiscal.product.unit');
         Route::get('fiscal/products/{id}', [FiscalEmissionController::class,'product'])->whereNumber('id')->name('fiscal.product');
         Route::post('fiscal/products/{id}', [FiscalEmissionController::class,'saveProduct'])->whereNumber('id')->name('fiscal.product.save');
         Route::post('sales/{id}/fiscal/emit', [FiscalEmissionController::class,'emit'])->whereNumber('id')->name('fiscal.emit');
@@ -102,6 +105,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('fiscal/preparations/{id}', [FiscalController::class, 'preparation'])->whereNumber('id')->name('fiscal.preparation');
         Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases');
         Route::get('purchases/new', [PurchaseController::class, 'form'])->name('purchase.new');
+        Route::post('purchases/preview-xml', [PurchaseController::class,'previewXml'])->name('purchase.preview-xml');
         Route::post('purchases', [PurchaseController::class, 'create']);
         Route::get('purchases/{id}', [PurchaseController::class, 'show'])->whereNumber('id')->name('purchase.show');
         Route::post('quick-create/{kind}',[\App\Http\Controllers\QuickCreateController::class,'store'])->whereIn('kind',['customers','products','services'])->name('quick.create');
@@ -148,6 +152,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('documents/{id}/invoice', [OperationsController::class, 'invoice'])->whereNumber('id')->name('document.invoice');
         Route::get('finance', [OperationsController::class, 'finance'])->name('finance');
         Route::post('finance', [OperationsController::class, 'createEntry']);
+        Route::post('finance/{id}/pix/{operation}', [\App\Http\Controllers\SicoobPixController::class, 'sync'])
+            ->whereNumber('id')->whereIn('operation', ['gerar', 'consultar'])->middleware('throttle:30,1')->name('finance.pix');
         Route::post('finance/{id}/pay', [OperationsController::class, 'payEntry'])->whereNumber('id')->name('finance.pay');
         Route::get('payment-methods',[\App\Http\Controllers\PaymentMethodController::class,'index'])->name('payment.methods');
         Route::post('payment-methods/card-brands',[\App\Http\Controllers\PaymentMethodController::class,'saveBrand'])->name('payment.brands.save');

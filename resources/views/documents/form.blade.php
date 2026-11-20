@@ -19,7 +19,15 @@
 </div></section>
 @if($type==='work_order')<div class="document-guidance"><span class="guidance-dot" aria-hidden="true"></span><p>Produtos e serviços são opcionais na abertura da OS.</p><details><summary>Entenda as etapas</summary><p>Inicie o serviço sem aprovação. Acrescente itens e valores durante o atendimento, antes de finalizar. Salvar a OS não reserva estoque nem gera cobrança; esses lançamentos ocorrem ao confirmar a venda.</p></details></div>@endif
 @include('components.sales.entry-items',['itemsHeading'=>$type==='quote'?'Itens do orçamento':'Produtos e serviços previstos','initialItems'=>$initialItems??[],'allowEmptyItems'=>$type==='work_order','splitItemTotals'=>$type==='work_order'])
-<div class="actions form-actions"><button class="primary" @disabled(!isset($document) && !$currentUser->allows('sales.seller') && (!$currentSalesperson || !$currentSalesperson->active))>{{ isset($document)?'Salvar alterações da OS':($type==='quote'?'Salvar orçamento':'Salvar ordem de serviço') }}</button><a class="button secondary" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$selectedSalespersonId??($currentSalesperson??null)?->id,'customer_id'=>$selectedCustomerId??null]) }}">Voltar ao caixa</a></div>
+<div class="actions form-actions"><button class="primary" @disabled(!isset($document) && !$currentUser->allows('sales.seller') && (!$currentSalesperson || !$currentSalesperson->active))>{{ isset($document)?'Salvar alterações da OS':($type==='quote'?'Salvar orçamento':'Salvar ordem de serviço') }}</button>
+@if(isset($document))
+<a class="button secondary" href="{{ route('document.show',['company'=>$tenant->slug,'id'=>$document->id]) }}">Cancelar edição</a>
+@elseif($currentUser->allows('desk.use'))
+<a class="button secondary" href="{{ route('desk',['company'=>$tenant->slug,'salesperson_id'=>$selectedSalespersonId??($currentSalesperson??null)?->id,'customer_id'=>$selectedCustomerId??null]) }}">Voltar ao caixa</a>
+@else
+<a class="button secondary" href="{{ route('documents',['company'=>$tenant->slug]) }}">Voltar à lista</a>
+@endif
+</div>
 </form>
 @include('components.quick-create')
 @endsection

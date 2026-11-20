@@ -86,18 +86,24 @@ class CompanyOperations
     }
     public function pending(): array
     {
+        return array_keys($this->pendingSteps());
+    }
+
+    /** @return array<string,int> Blocking message and the setup step that resolves it. */
+    public function pendingSteps(): array
+    {
         $c=$this->current(); $p=BusinessProfile::find(1); $pending=[];
-        if (! $p?->legal_name) $pending[]='Preencha a razão social em Minha empresa.';
-        if (! \App\Fiscal\TaxpayerDocument::cnpj((string)$p?->document)) $pending[]='Preencha o CNPJ da empresa.';
+        if (! $p?->legal_name) $pending['Preencha a razão social em Minha empresa.']=1;
+        if (! \App\Fiscal\TaxpayerDocument::cnpj((string)$p?->document)) $pending['Preencha o CNPJ da empresa.']=1;
         if ($c['nfce'] || $c['nfe'] || $c['nfse']) {
             foreach (['street','number','district','city','state','postal_code','municipality_code','tax_regime'] as $field) {
-                if (empty($p?->$field)) { $pending[]='Complete endereço, código IBGE e regime tributário em Minha empresa.'; break; }
+                if (empty($p?->$field)) { $pending['Complete endereço, código IBGE e regime tributário em Minha empresa.']=1; break; }
             }
             $issuer=FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('environment','homologation')->first();
             if (($c['nfce'] || $c['nfe']) && (! $issuer || ! FiscalCredential::where('issuer_id',$issuer->id)->where('valid_from','<=',now())->where('valid_until','>',now())->where('certificate_document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->exists())) {
-                $pending[]='Vincule e valide um certificado da empresa nas configurações fiscais.';
+                $pending['Vincule e valide um certificado da empresa nas configurações fiscais.']=3;
             }
-            if ($c['nfse'] && ! \App\Models\NfseConfiguration::where('cnpj',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('certificate_valid_until','>',now())->exists()) $pending[]='Vincule o certificado na preparação de NFS-e da empresa.';
+            if ($c['nfse'] && ! \App\Models\NfseConfiguration::where('cnpj',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('certificate_valid_until','>',now())->exists()) $pending['Vincule o certificado na preparação de NFS-e da empresa.']=3;
         }
         return $pending;
     }

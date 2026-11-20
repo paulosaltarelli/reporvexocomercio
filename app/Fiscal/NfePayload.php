@@ -55,6 +55,7 @@ final class NfePayload
         if (! $sale->customer) { $fail('Cliente não encontrado para esta venda.'); }
         $recipient = app(NfeRecipient::class)->snapshot($sale->customer, (string) $profile->state);
         if ($recipient['fiscal_ie_indicator'] === '9' && ! $operation['consumer_final']) { $fail('Destinatário não contribuinte exige operação de consumidor final neste fluxo de NF-e.'); }
+        $split = WorkOrderFiscalSplit::forGoods($tenant, $sale, $operation);
         $items = [];
         $rules = [];
         $commercialLines = [];
@@ -64,6 +65,9 @@ final class NfePayload
         foreach ($sale->items->sortBy('id') as $line) {
             if ($line->product_id && $line->service_id) {
                 $fail('Item com vínculos ambíguos: revisar o histórico antes da emissão.');
+            }
+            if ($split && (int) $line->id === (int) $split['service']['id']) {
+                continue;
             }
             if ($line->fiscal_kind === 'service' || $line->service_id) {
                 $fail('A emissão direta inicial aceita somente mercadorias. Serviços municipais e vendas mistas exigem segregação fiscal específica; não serão omitidos silenciosamente.');
@@ -81,6 +85,7 @@ final class NfePayload
             }
             $amounts = app(NfcePayload::class)->fiscalAmounts((string) $line->quantity, (string) $line->unit_price,
                 (string) $line->gross_total, (string) $line->discount_amount, (string) $line->total);
+            $fiscalUnit = FiscalUnit::required($product);
             $tax = app(TaxProfile::class)->fields($rule['parameters'], $amounts['net'], (string) $c['crt']);
             $rules[$product->id] = ['parameters' => $rule['parameters'], 'accountant_reference' => $rule['accountant_reference'], 'validated_at' => $rule['validated_at'], 'source' => $rule['source'], 'profile_id' => $rule['profile_id'] ?? null, 'profile_revision' => $rule['profile_revision'] ?? null, 'group_id' => $rule['group_id'] ?? null];
             $items[] = array_merge($tax, [
@@ -88,7 +93,7 @@ final class NfePayload
                 'descricao' => $line->description, 'quantidade_comercial' => $amounts['quantity'], 'quantidade_tributavel' => $amounts['quantity'],
                 'valor_unitario_comercial' => $amounts['unit_price'], 'valor_unitario_tributavel' => $amounts['unit_price'],
                 'valor_bruto' => $amounts['gross'], 'valor_desconto' => $amounts['discount'],
-                'unidade_comercial' => $product->unit, 'unidade_tributavel' => $product->unit, 'icms_origem' => $product->origin,
+                'unidade_comercial' => $fiscalUnit, 'unidade_tributavel' => $fiscalUnit, 'icms_origem' => $product->origin,
             ]);
             $commercialLines[] = ['sale_item_id' => $line->id, 'product_id' => $line->product_id,
                 'quantity' => $amounts['quantity'], 'offered_unit_price' => $amounts['commercial_unit_price'],
@@ -101,7 +106,7 @@ final class NfePayload
         if (! $items || bccomp($goods, '0', 2) <= 0) {
             $fail('Não há mercadorias com valor positivo para NF-e.');
         }
-        if (bccomp($goods, (string) $sale->total, 2) !== 0
+        if (bccomp($goods, (string) ($split['goods_total'] ?? $sale->total), 2) !== 0
             || bccomp(bcsub($goodsGross, $goodsDiscount, 2), $goods, 2) !== 0) {
             $fail('Total comercial não corresponde aos itens, bruto e descontos.');
         }
@@ -110,7 +115,7 @@ final class NfePayload
             'cnpj_emitente' => $issuer->document, 'data_emissao' => now()->setTimezone($c['timezone'])->toIso8601String(),
             'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1',
             'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items,
-            'formas_pagamento' => $payment['methods'],
+            'formas_pagamento' => WorkOrderFiscalSplit::goodsPayments($payment, $split, $operation['goods_payments'] ?? []),
             'valor_total' => $goods, 'valor_produtos' => $goodsGross, 'valor_desconto' => $goodsDiscount,
         ];
         // Required legal homologation label; business/issuer data are never fixtures.
@@ -127,7 +132,7 @@ final class NfePayload
             'issuer_snapshot' => $profile->only(['legal_name', 'trade_name', 'document', 'state_registration', 'tax_regime', 'street', 'number', 'district', 'city', 'state', 'postal_code', 'municipality_code']),
             'configuration_snapshot' => array_intersect_key($c, array_flip(['timezone', 'crt', 'natureza_operacao', 'series', 'next_number', 'cancellation_minutes', 'uf_validation_reference', 'model'])),
             'commercial_lines' => $commercialLines, 'payment_evidence' => $payment,
-            'recipient_snapshot' => $recipient, 'model' => 55, 'services_total' => '0.00', 'goods_total' => $goods, 'operation' => $operation,
+            'recipient_snapshot' => $recipient, 'model' => 55, 'work_order_split' => $split, 'services_total' => $split['services_total'] ?? '0.00', 'goods_total' => $goods, 'operation' => $operation,
             'tax_rules' => $rules, 'configuration_hash' => $configurationHash,
             'certificate_fingerprint' => $credential->certificate_fingerprint, 'schema_package' => FiscalSchema::PACKAGE,
         ];

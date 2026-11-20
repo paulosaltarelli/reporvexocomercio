@@ -509,10 +509,76 @@ class FiscalTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_mixed_work_order_links_signed_dps_to_goods_xml_with_reconciled_tenders(): void
+    {
+        [, $cert] = $this->configuredFiscal();
+        app(\App\Fiscal\Nfse\Configuration::class)->save($this->tenant, [
+            'enabled'=>true, 'national_issuer_confirmed'=>true, 'municipality_code'=>'3550308',
+            'timezone'=>'America/Sao_Paulo', 'op_simp_nac'=>'3', 'reg_ap_trib_sn'=>'1', 'reg_esp_trib'=>'0',
+            'service_national_code'=>'010701', 'nbs'=>'115021100', 'iss_mode'=>'municipal_parameterized',
+            'total_tax_mode'=>'not_informed', 'series'=>1, 'next_number'=>1, 'certificate_password'=>$cert['password'],
+        ], $cert['pfx'], $this->user->id);
+        $service = Product::create(['name'=>'Manutenção', 'type'=>'service', 'sku'=>'OS-SERV',
+            'controls_stock'=>false, 'sale_price'=>'8.00', 'unit'=>'UN', 'product_group_id'=>$this->product->product_group_id]);
+        $orders = app(\App\Services\Documents::class);
+        $order = $orders->create(['type'=>'work_order', 'request_key'=>(string) Str::uuid(), 'items'=>[
+            ['kind'=>'product', 'id'=>$this->product->id, 'quantity'=>'1', 'unit_price'=>'10.01'],
+            ['kind'=>'product', 'id'=>$service->id, 'quantity'=>'1', 'unit_price'=>'8.00'],
+        ]], $this->user->id);
+        $orders->transition($order->id, 'in_progress');
+        $orders->transition($order->id, 'completed');
+        $sale = $orders->invoice($order->id, ['payments'=>[
+            ['payment_option'=>'cash', 'amount'=>'9.01', 'paid'=>1],
+            ['payment_option'=>'pix', 'amount'=>'9.00', 'paid'=>1],
+        ]], $this->user->id);
+        $counts = fn () => array_map(fn ($table) => DB::connection('tenant')->table($table)->count(),
+            ['sales','stock_movements','financial_entries','payments']);
+        $before = $counts();
+        $dps = app(\App\Fiscal\Nfse\PrepareDps::class)->prepare($this->tenant,$sale->id,$this->user->id,[
+            'request_key'=>(string) Str::uuid(), 'competence'=>now()->toDateString(),
+            'operation_scope_confirmed'=>true, 'segregate_work_order'=>true,
+        ]);
+        $this->assertSame('8.00', $dps->total);
+        $operation = $this->operation() + ['segregate_work_order'=>true,'goods_payments'=>['cash'=>'4.01','pix'=>'6.00']];
+        $document = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $operation);
+        $this->assertSame($dps->id, $document->snapshot['work_order_split']['nfse_document_id']);
+        $this->assertSame($order->id, $document->snapshot['work_order_split']['work_order_id']);
+        $xml = new \DOMDocument;
+        $xml->loadXML($document->signed_xml, LIBXML_NONET);
+        $this->assertSame('10.01', $xml->getElementsByTagName('vNF')->item(0)->nodeValue);
+        $this->assertSame(['4.01','6.00'], array_map(fn ($element) => $element->nodeValue, iterator_to_array($xml->getElementsByTagName('vPag'))));
+        $this->assertSame(1, $xml->getElementsByTagName('det')->length);
+        $this->assertSame('18.01', bcadd($dps->total,$document->snapshot['goods_total'],2));
+        $this->assertSame($before, $counts());
+        $this->assertSame([], $this->transportCalls);
+        Http::assertNothingSent();
+    }
+
+    public function test_long_commercial_unit_requires_explicit_fiscal_alias(): void
+    {
+        $this->configuredFiscal();
+        $this->product->update(['unit'=>'UNIDADE']);
+        try {
+            app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,$this->operation());
+            $this->fail('Unidade longa deveria exigir mapeamento.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('sigla', $e->errors()['fiscal'][0]);
+        }
+        $this->login();
+        $this->post('/app/a/fiscal/products/'.$this->product->id.'/unit',['base'=>'UNIDADE','symbol'=>'UN'])->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $doc = app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,$this->operation());
+        $this->assertStringContainsString('<uCom>UN</uCom>', $doc->signed_xml);
+        $this->assertStringContainsString('<uTrib>UN</uTrib>', $doc->signed_xml);
+    }
+
     public function test_split_cash_pix_nfce_has_two_signed_payment_groups_and_validates_authorization(): void
     {
         [, $cert]=$this->configuredFiscal();
         $this->sale=app(Checkout::class)->complete(['request_key'=>(string)Str::uuid(),'payments'=>[['payment_option'=>'cash','amount'=>'4.00','paid'=>1],['payment_option'=>'pix','amount'=>'6.01','paid'=>1]],'items'=>[['kind'=>'product','id'=>$this->product->id,'quantity'=>'1','unit_price'=>'10.01']]],$this->user->id);
+        $this->login();
+        $this->get('/app/a/sales/'.$this->sale->id.'/fiscal')->assertOk()->assertSee('id="pix_mode"', false);
+        app(TenantConnection::class)->connect($this->tenant);
         try{app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,array_diff_key($this->operation(),['pix_mode'=>true]));$this->fail('Unknown Pix accepted.');}catch(ValidationException){$this->assertSame(0,FiscalDocument::count());}
         $doc=app(QueueNfce::class)->enqueue($this->tenant,$this->sale->id,$this->user->id,$this->operation());
         $this->assertSame([['forma_pagamento'=>'01','valor_pagamento'=>'4.00'],['forma_pagamento'=>'17','valor_pagamento'=>'6.01']],$doc->snapshot['payload']['formas_pagamento']);

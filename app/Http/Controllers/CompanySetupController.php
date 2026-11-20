@@ -21,12 +21,15 @@ class CompanySetupController extends Controller
     {
         $this->admin($r);
         $data=$r->validate(['step'=>'nullable|integer|between:1,5']);
+        $sellers = Seller::where('active',true)->orderBy('name')->get();
+        $pending = $operations->pendingSteps();
+        if ($sellers->isEmpty()) $pending['Cadastre ao menos um responsável pelo caixa na etapa Equipe.'] = 4;
         return view('setup.index',[
             'step'=>(int)($data['step']??app(CompanyOnboarding::class)->step()), 'configuration'=>$operations->current(),
             'wizardMode'=>app(CompanyOnboarding::class)->required($r->attributes->get('tenant')),
-            'users'=>User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'sellers'=>Seller::where('active',true)->orderBy('name')->get(),
+            'users'=>User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'sellers'=>$sellers,
             'accessState'=>app(AccessProfiles::class)->state(),'profileService'=>app(AccessProfiles::class),
-            'setup'=>CompanyOperation::find(1), 'profile'=>BusinessProfile::find(1)??new BusinessProfile(['legal_name'=>$r->attributes->get('tenant')->name]), 'pending'=>$operations->pending(),
+            'setup'=>CompanyOperation::find(1), 'profile'=>BusinessProfile::find(1)??new BusinessProfile(['legal_name'=>$r->attributes->get('tenant')->name]), 'pending'=>$pending,
             'audit'=>DB::connection('tenant')->table('company_operation_audits')->whereIn('action',['configuration','company_changed','completed','setup_step','nfse_draft'])->latest('id')->limit(10)->get(['action','version','created_at']),
         ] + app(BusinessController::class)->viewData($r) + $this->nfseData());
     }

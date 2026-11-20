@@ -18,6 +18,7 @@ Route::prefix('vexo-admin')->group(function () {
         Route::get('/', [CompanyController::class, 'index'])->name('platform.index');
         Route::get('companies/new', [CompanyController::class, 'create'])->name('platform.companies.create');
         Route::post('companies', [CompanyController::class, 'store'])->middleware('throttle:10,1')->name('platform.companies.store');
+        Route::post('requests/{id}/activation', [CompanyController::class, 'resendActivation'])->whereNumber('id')->middleware('throttle:3,10')->name('platform.requests.activation');
         Route::get('requests/{id}', [CompanyController::class, 'provisionRequest'])->whereNumber('id')->name('platform.requests.show');
         Route::get('companies/{id}', [CompanyController::class, 'show'])->whereNumber('id')->name('platform.companies.show');
         Route::post('companies/{id}/status', [CompanyController::class, 'status'])->whereNumber('id')->middleware('throttle:20,1')->name('platform.companies.status');

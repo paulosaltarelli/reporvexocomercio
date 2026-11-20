@@ -58,6 +58,11 @@
                     @if($entry->sale_id && $currentUser->allows('sales.view'))<a class="hint" href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$entry->sale_id]) }}">Venda #{{ $entry->sale_id }}</a>@endif
                     @if($entry->purchase_id && $currentUser->allows('purchases.view'))<a class="hint" href="{{ route('purchase.show',['company'=>$tenant->slug,'id'=>$entry->purchase_id]) }}">Compra #{{ $entry->purchase_id }}</a>@endif
                     @if($entry->supplier)<small class="hint">{{ $entry->supplier->name }}</small>@endif
+                    @if($entry->direction === 'in' && $currentUser->allows('finance.manage') && \App\Pix\SicoobClient::enabled($tenant))
+                        <form method="post" action="{{ route('finance.pix', ['company'=>$tenant->slug,'id'=>$entry->id,'operation'=>$isPending?'gerar':'consultar']) }}">
+                            @csrf <button class="text-button">{{ $isPending ? 'Gerar ou consultar Pix Sicoob' : 'Consultar Pix Sicoob' }}</button>
+                        </form>
+                    @endif
                 </td>
                 <td>{{ $entry->direction==='out'?'A pagar':'A receber' }}</td>
                 <td>{{ \Carbon\Carbon::parse($entry->due_date)->format('d/m/Y') }}</td>

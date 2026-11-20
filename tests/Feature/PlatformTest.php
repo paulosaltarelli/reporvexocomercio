@@ -83,13 +83,13 @@ class PlatformTest extends TestCase
 
     private function centralSession(): void
     {
-        $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_auth_version' => $this->admin->auth_version]);
+        $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_mfa_at' => time(), 'platform_auth_version' => $this->admin->auth_version]);
     }
 
     public function test_global_admin_management_is_central_only_preserves_last_admin_and_revokes_sessions(): void
     {
         $this->get('/vexo-admin/admins')->assertRedirect('/vexo-admin/login');
-        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_auth_version'=>$this->admin->auth_version]);
+        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_mfa_at'=>time(),'platform_auth_version'=>$this->admin->auth_version]);
         $this->get('/vexo-admin/admins')->assertOk()->assertSee('Administradores Vexo');
         $base=['name'=>'Administrador','email'=>$this->admin->email,'active'=>0,'expected_version'=>$this->admin->auth_version];
         $this->post('/vexo-admin/admins/'.$this->admin->id,$base)->assertSessionHasErrors('active');
@@ -104,10 +104,52 @@ class PlatformTest extends TestCase
     }
     public function test_central_shows_company_login_and_setup_urls_without_starting_support_on_get(): void
     {
-        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_auth_version'=>$this->admin->auth_version]);
+        $this->withSession(['platform_admin_id'=>$this->admin->id,'platform_mfa_at'=>time(),'platform_auth_version'=>$this->admin->auth_version]);
         $this->get('/vexo-admin')->assertOk()->assertSee('/app/'.$this->company->slug.'/login',false)->assertSessionMissing('platform_support');
         $this->get('/vexo-admin/companies/'.$this->company->id)->assertOk()->assertSee('/app/'.$this->company->slug.'/setup',false)->assertSee('Acessar loja como DBA')->assertSessionMissing('platform_support');
         $this->get('/vexo-admin/companies/'.$this->company->id.'/support')->assertStatus(405);
+    }
+
+    public function test_company_hosts_isolate_slug_and_central_routes_and_keep_legacy_hosts(): void
+    {
+        config(['tenancy.company_domain' => 'vendra.test', 'tenancy.legacy_hosts' => 'painel.vendra.test,127.0.0.1']);
+        $this->get('https://platform-a.vendra.test/')->assertRedirect('https://platform-a.vendra.test/app/platform-a/login');
+        $this->get('https://platform-a.vendra.test/app/platform-b/login')->assertNotFound();
+        $this->get('https://platform-a.vendra.test/vexo-admin/login')->assertNotFound();
+        $this->get('https://empresa-ausente.vendra.test/')->assertNotFound();
+        $this->get('https://desconhecido.test/vexo-admin/login')->assertNotFound();
+        $this->get('https://painel.vendra.test/vexo-admin/login')->assertOk();
+        $this->get('https://127.0.0.1/vexo-admin/login')->assertOk();
+        $this->centralSession();
+        $this->postJson('https://painel.vendra.test/vexo-admin/companies', [
+            'name'=>'Reservada', 'slug'=>'painel', 'admin_name'=>'Operador', 'admin_email'=>'owner@example.test',
+            'is_demonstration'=>false, 'request_key'=>(string) Str::uuid(),
+        ])->assertUnprocessable()->assertJsonValidationErrors('slug');
+    }
+
+    public function test_demo_host_is_optional_isolates_vexo_and_reserves_its_label_without_wildcard(): void
+    {
+        $alias = 'lojavendra.vexogestao.com.br';
+        $this->company->update(['slug' => 'vexo']);
+        config(['tenancy.company_domain' => '', 'tenancy.demo_host' => '']);
+        $this->assertStringNotContainsString($alias, \App\Tenancy\CompanyHosts::url('vexo'));
+        $this->centralSession();
+        $this->postJson('/vexo-admin/companies', [
+            'name'=>'Nome reservado', 'slug'=>'lojavendra', 'admin_name'=>'Operador', 'admin_email'=>'owner@example.test',
+            'is_demonstration'=>false, 'request_key'=>(string) Str::uuid(),
+        ])->assertUnprocessable()->assertJsonValidationErrors('slug');
+        config(['tenancy.demo_host' => $alias]);
+        foreach (['', 'vexogestao.com.br'] as $domain) {
+            config(['tenancy.company_domain' => $domain]);
+            $login = 'https://'.$alias.'/app/vexo/login';
+            $this->assertSame($login, \App\Tenancy\CompanyHosts::url('vexo'));
+            $this->assertSame('https://'.$alias.'/app/vexo/setup', \App\Tenancy\CompanyHosts::url('vexo', 'setup'));
+            $this->get('https://'.$alias.'/')->assertRedirect($login);
+            $this->get('https://'.$alias.'/vexo-admin/login')->assertNotFound();
+            $this->get('https://'.$alias.'/app/outra/login')->assertNotFound();
+        }
+        $this->company->update(['active'=>false]);
+        $this->get('https://'.$alias.'/')->assertNotFound();
     }
 
     public function test_platform_login_is_distinct_from_customer_admin_session_and_logs_out_with_audit(): void
@@ -115,13 +157,30 @@ class PlatformTest extends TestCase
         $this->withSession(['tenant_id' => $this->company->id, 'user_id' => $this->admin->id, 'auth_version' => 0, 'role' => 'admin']);
         $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
         $this->get('/vexo-admin/login')->assertOk();
-        $this->post('/vexo-admin/login', ['email' => $this->admin->email, 'password' => 'test-central-password-123'])
+        $login = ['email' => $this->admin->email, 'password' => 'test-central-password-123'];
+        $this->post('/vexo-admin/login', $login)->assertSessionHasErrors('email')->assertSessionMissing('platform_admin_id');
+        $secret = \App\Platform\Totp::newSecret();
+        $this->admin->update(['mfa_secret' => $secret]);
+        $code = \App\Platform\Totp::code($secret, intdiv(time(), 30));
+        $this->post('/vexo-admin/login', $login + ['mfa_code' => $code])
             ->assertRedirect('/vexo-admin')->assertSessionHas('platform_admin_id', $this->admin->id)->assertSessionHas('platform_auth_version', 0);
         $this->get('/vexo-admin')->assertOk();
         $this->assertSame(1, PlatformAudit::where('action', 'platform.login')->where('platform_admin_id', $this->admin->id)->count());
         $this->post('/vexo-admin/logout')->assertRedirect('/vexo-admin/login')->assertSessionMissing('platform_admin_id')->assertSessionMissing('platform_auth_version');
         $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
         $this->assertSame(1, PlatformAudit::where('action', 'platform.logout')->where('platform_admin_id', $this->admin->id)->count());
+    }
+
+    public function test_recovery_code_is_single_use_and_password_only_sessions_are_rejected(): void
+    {
+        $this->withSession(['platform_admin_id' => $this->admin->id, 'platform_auth_version' => 0]);
+        $this->get('/vexo-admin')->assertRedirect('/vexo-admin/login');
+        $code = bin2hex(random_bytes(16));
+        $this->admin->update(['mfa_secret' => \App\Platform\Totp::newSecret(), 'mfa_recovery' => [hash('sha256', $code)]]);
+        $form = ['email' => $this->admin->email, 'password' => 'test-central-password-123', 'mfa_code' => $code];
+        $this->post('/vexo-admin/login', $form)->assertRedirect('/vexo-admin')->assertSessionHas('platform_mfa_at');
+        $this->post('/vexo-admin/logout')->assertRedirect('/vexo-admin/login');
+        $this->post('/vexo-admin/login', $form)->assertSessionHasErrors('email')->assertSessionMissing('_old_input.mfa_code');
     }
 
     public function test_platform_credentials_are_generic_rate_limited_and_session_revocation_is_enforced(): void
@@ -228,7 +287,8 @@ class PlatformTest extends TestCase
             }
         };
         $worker = new ProcessProvisionRequest($storage);
-        $completed = $worker->process($job->id, 'Initial-test-secret-1234');
+        $completed = $worker->process($job->id, 'Initial-test-secret-1234', true);
+        $this->assertSame('queued', $completed->activation_status);
         $this->assertSame('completed', $completed->status);
         $this->assertSame(1, $storage->calls);
         $this->assertFalse($storage->captured['active']);
@@ -256,6 +316,48 @@ class PlatformTest extends TestCase
             $this->fail('Provisionamento não pode reutilizar empresa existente.');
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('slug', $e->errors());
+        }
+    }
+
+    public function test_company_activation_delivery_retries_and_resend_invalidates_old_code(): void
+    {
+        config(['tenancy.company_domain' => 'vendra.test', 'mail.default' => 'smtp']);
+        $job = app(RequestCompanyProvision::class)->request([
+            'name'=>'Nova empresa', 'slug'=>'demo-envio', 'admin_name'=>'Dona da loja', 'admin_email'=>'dona@example.test',
+            'is_demonstration'=>false, 'request_key'=>(string) Str::uuid(),
+        ], $this->admin->id, 0);
+        $this->company->update(['slug'=>'demo-envio']);
+        $job->update(['status'=>'completed', 'active_slug'=>null, 'tenant_id'=>$this->company->id, 'activation_status'=>'queued']);
+        $service = app(\App\Platform\CompanyActivation::class);
+        \Illuminate\Support\Facades\Mail::shouldReceive('raw')->once()->andThrow(new \RuntimeException('teste de indisponibilidade SMTP'));
+        try {
+            $service->send($job->id);
+            $this->fail('A falha SMTP deve manter o pedido para nova tentativa.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('teste de indisponibilidade SMTP', $e->getMessage());
+        }
+        $this->assertSame('queued', $job->fresh()->activation_status);
+        $this->assertTrue($job->fresh()->activation_retry_at->isFuture());
+        $this->travel(11)->minutes();
+        try {
+            $code = null;
+            \Illuminate\Support\Facades\Mail::shouldReceive('raw')->once()->andReturnUsing(function ($body, $address) use (&$code) {
+                $this->assertStringContainsString('https://demo-envio.vendra.test/app/demo-envio/ativar', $body);
+                $message = new \Illuminate\Mail\Message(new \Symfony\Component\Mime\Email());
+                $address($message);
+                $this->assertSame('dona@example.test', $message->getSymfonyMessage()->getTo()[0]->getAddress());
+                $this->assertSame(1, preg_match('/[a-f0-9]{32}$/D', $body, $match));
+                $code = $match[0];
+            });
+            $service->send($job->id);
+            $this->assertSame('sent', $job->fresh()->activation_status);
+            $this->assertSame(hash('sha256', $code), $job->fresh()->activation_digest);
+            $this->centralSession();
+            $this->post('/vexo-admin/requests/'.$job->id.'/activation')->assertRedirect();
+            $this->assertSame('queued', $job->fresh()->activation_status);
+            $this->assertNull($job->fresh()->activation_digest);
+        } finally {
+            $this->travelBack();
         }
     }
 

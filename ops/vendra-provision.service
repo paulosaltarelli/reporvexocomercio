@@ -1,0 +1,20 @@
+[Unit]
+Description=Vendra company provisioning and first-account activation
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/srv/reporvexo
+ExecStart=/usr/bin/php -c /opt/reporvexo-tools/php/cli.ini /srv/reporvexo/artisan platform:provision-work
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# Root must never bootstrap PHP from the web process' writable caches.
+TemporaryFileSystem=/srv/reporvexo/bootstrap/cache:rw,mode=0700 /srv/reporvexo/storage:rw,mode=0700
+Environment=LOG_CHANNEL=stderr
+Environment=VIEW_COMPILED_PATH=/srv/reporvexo/storage
+ReadWritePaths=/run/lock
+NoNewPrivileges=true
+UMask=0077
+TimeoutStartSec=30min

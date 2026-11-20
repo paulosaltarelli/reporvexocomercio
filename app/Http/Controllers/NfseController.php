@@ -66,13 +66,22 @@ class NfseController extends Controller
         $this->admin($request);
         $sale = Sale::with('customer', 'items')->findOrFail($id);
         $configuration = $this->configuration();
-        return view('fiscal.nfse.sale', ['sale' => $sale, 'configuration' => $configuration, 'report' => $readiness->inspect($configuration, $sale), 'requestKey' => (string) Str::uuid()]);
+        $portion = $sale;
+        if (\App\Fiscal\WorkOrderFiscalSplit::eligibleOrigin($sale)) {
+            try {
+                $split = \App\Fiscal\WorkOrderFiscalSplit::partition($sale);
+                $portion = \App\Fiscal\WorkOrderFiscalSplit::servicePortion($sale, $split);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $splitError = collect($e->errors())->flatten()->first();
+            }
+        }
+        return view('fiscal.nfse.sale', ['sale' => $sale, 'configuration' => $configuration, 'split' => $split ?? null, 'splitError' => $splitError ?? null, 'report' => $readiness->inspect($configuration, $portion), 'requestKey' => (string) Str::uuid()]);
     }
 
     public function prepare(Request $request, string $company, int $id, PrepareDps $service)
     {
         $this->admin($request);
-        $data = $request->validate(['request_key' => 'required|uuid', 'competence' => 'required|date_format:Y-m-d', 'operation_scope_confirmed' => 'required|accepted', 'tenant_id' => 'prohibited', 'environment' => 'prohibited']);
+        $data = $request->validate(['request_key' => 'required|uuid', 'competence' => 'required|date_format:Y-m-d', 'operation_scope_confirmed' => 'required|accepted', 'segregate_work_order' => 'sometimes|accepted', 'tenant_id' => 'prohibited', 'environment' => 'prohibited']);
         $document = $service->prepare($request->attributes->get('tenant'), $id, (int) $request->attributes->get('currentUser')->id, $data);
         return redirect()->route('nfse.show', ['company' => $company, 'id' => $document->id]);
     }

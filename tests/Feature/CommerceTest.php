@@ -22,6 +22,7 @@ use Tests\TestCase;
 
 class CommerceTest extends TestCase
 {
+    use \Tests\Support\PurchaseInvoiceCases;
     private static bool $schemasReady = false;
 
     private Tenant $a;
@@ -62,6 +63,56 @@ class CommerceTest extends TestCase
         $this->user = User::create(['name' => 'Administrador', 'email' => 'admin@example.test', 'password' => 'test-password-123', 'role' => 'admin']);
         $g = ProductGroup::create(['name' => 'Geral', 'margin' => '40']);
         $this->product = Product::create(['name' => 'Produto teste', 'sku' => 'SKU-1', 'product_group_id' => $g->id, 'sale_price' => '100', 'unit' => 'UN']);
+    }
+
+    public function test_sicoob_charge_and_bank_reconciliation_replay(): void
+    {
+        $http = \Illuminate\Support\Facades\Http::class;
+        $http::preventStrayRequests();
+        config(['sicoob' => ['tenant_id' => $this->a->id, 'key' => 'chave-teste', 'client_id' => 'cliente-teste',
+            'api_url' => 'https://teste.sicoob.com.br/v2', 'token_url' => 'https://teste.sicoob.com.br/token',
+            'cert' => __FILE__, 'private_key' => __FILE__, 'passphrase' => '']]);
+        $bank = null;
+        $writes = 0;
+        $http::fake(function ($request) use ($http, &$bank, &$writes) {
+            if ($request->url() === config('sicoob.token_url')) {
+                return $http::response(['access_token' => 'apenas-teste']);
+            }
+            $txid = basename($request->url());
+            $this->assertMatchesRegularExpression('/^[a-zA-Z0-9]{32}$/D', $txid);
+            if ($request->method() === 'PUT') {
+                ++$writes;
+                $bank = ['txid' => $txid, 'status' => 'ATIVA', 'valor' => $request['valor'], 'chave' => $request['chave'],
+                    'calendario' => ['criacao' => now()->toIso8601String(), 'expiracao' => 3600], 'pixCopiaECola' => 'payload-teste'];
+                return $http::response($bank, 201);
+            }
+            return $bank === null ? $http::response([], 404) : $http::response($bank);
+        });
+        $entry = app(\App\Services\FinancialService::class)->schedule(['request_key' => (string) Str::uuid(),
+            'amount' => '90.00', 'direction' => 'in', 'description' => 'Título teste Pix', 'category' => 'Serviço',
+            'due_date' => now()->toDateString()], $this->user->id)->first();
+        $service = app(\App\Pix\TitleCharge::class);
+        $result = $service->sync($this->a, $entry->id, $this->user->id, true);
+        $this->assertSame('payload-teste', $result['code']);
+        $this->assertSame('90.00', $entry->fresh()->balance);
+        $service->sync($this->a, $entry->id, $this->user->id, true);
+        $this->assertSame(1, $writes);
+        $bank['status'] = 'CONCLUIDA';
+        $bank['pix'] = [['txid' => $bank['txid'], 'endToEndId' => 'E'.str_repeat('1', 31),
+            'valor' => '91.00', 'horario' => now()->toIso8601String()]];
+        try {
+            $service->sync($this->a, $entry->id, $this->user->id, false);
+            $this->fail('Valor bancário divergente aceito.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('pix', $e->errors());
+        }
+        $this->assertSame('90.00', $entry->fresh()->balance);
+        $bank['pix'][0]['valor'] = '90.00';
+        $service->sync($this->a, $entry->id, $this->user->id, false);
+        $service->sync($this->a, $entry->id, $this->user->id, false);
+        $this->assertSame('0.00', $entry->fresh()->balance);
+        $this->assertSame(1, $entry->payments()->count());
+        $this->assertSame(1, \App\Models\OperationRecord::where('action', 'sicoob_pix_settled')->count());
     }
 
     protected function tearDown(): void
@@ -229,6 +280,50 @@ class CommerceTest extends TestCase
         $this->assertSame(0, Product::count());
         $this->assertSame(0, User::count());
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id])->get('/app/b/')->assertRedirect('/app/b/login');
+    }
+
+    public function test_catalog_search_finds_clients_and_suppliers_and_preserves_list_context(): void
+    {
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        foreach (['customers' => \App\Models\Customer::class, 'suppliers' => \App\Models\Supplier::class] as $kind => $model) {
+            app(TenantConnection::class)->connect($this->a);
+            foreach (range(1, 40) as $number) $model::create(['name' => sprintf('Cadastro %02d', $number)]);
+            $record = $model::create(['name' => 'Cadastro Zeta', 'document' => '12.ABC.345/0001-20']);
+            $path = '/app/a/catalog/'.$kind;
+            foreach (['Zeta', '12abc345000120', '12.ABC.345/0001-20'] as $term) {
+                $this->get($path.'?q='.urlencode($term))->assertOk()
+                    ->assertViewHas('rows', fn ($rows) => $rows->total() === 1 && $rows->first()->is($record));
+            }
+            $this->get($path.'?q=%25')->assertOk()->assertSee('Nenhum cadastro encontrado para esta busca.');
+            $page = $this->get($path.'?q=Cadastro&page=3')->assertOk();
+            $page->assertSee('Cadastro Zeta')->assertViewHas('rows', fn ($rows) => str_contains($rows->url(2), 'q=Cadastro'));
+            $list = route('catalog', ['company' => 'a', 'kind' => $kind, 'q' => 'Cadastro', 'page' => 3]);
+            $edit = route('catalog', ['company' => 'a', 'kind' => $kind, 'edit' => $record->id, 'q' => 'Cadastro', 'page' => 3]);
+            $page->assertSee($edit);
+            $this->get($edit)->assertOk()->assertSee($list);
+            $this->post($edit, ['id' => $record->id, 'name' => 'Cadastro Zeta atualizado'])->assertRedirect($list)->assertSessionHasNoErrors();
+        }
+    }
+
+    public function test_first_company_activation_expires_is_scoped_and_can_be_consumed_once(): void
+    {
+        $this->user->update(['must_change_password' => true]);
+        $admin = \App\Platform\PlatformAdmin::create(['name'=>'Platform','email'=>'platform@example.test','password'=>'test-hash','active'=>true,'auth_version'=>0]);
+        $job = app(\App\Platform\RequestCompanyProvision::class)->request([
+            'name'=>'Loja A', 'slug'=>'fixture-pedido', 'admin_name'=>'Gestor', 'admin_email'=>$this->user->email,
+            'is_demonstration'=>false, 'request_key'=>(string) Str::uuid(),
+        ], $admin->id, 0);
+        $code = bin2hex(random_bytes(16));
+        $job->update(['status'=>'completed', 'tenant_id'=>$this->a->id, 'activation_status'=>'sent', 'activation_digest'=>hash('sha256', $code), 'activation_expires_at'=>now()->subMinute()]);
+        $input = ['email'=>$this->user->email, 'activation_code'=>$code, 'password'=>'nova-senha-do-cliente', 'password_confirmation'=>'nova-senha-do-cliente'];
+        $this->post('/app/a/ativar', $input)->assertSessionHasErrors('activation_code')->assertSessionMissing('_old_input.activation_code');
+        $job->update(['activation_expires_at'=>now()->addDay()]);
+        $this->postJson('/app/b/ativar', $input)->assertUnprocessable();
+        $this->post('/app/a/ativar', $input)->assertRedirect('/app/a/login')->assertSessionHasNoErrors();
+        $this->assertSame('used', $job->fresh()->activation_status);
+        $this->assertNull($job->fresh()->activation_digest);
+        $this->postJson('/app/a/ativar', $input)->assertUnprocessable();
+        $this->post('/app/a/login', ['email'=>$this->user->email, 'password'=>$input['password']])->assertRedirect()->assertSessionHas('user_id', $this->user->id);
     }
 
     public function test_customer_cnpj_lookup_prefills_without_saving_and_catalog_persists_the_details(): void
@@ -569,7 +664,7 @@ class CommerceTest extends TestCase
 
     public function test_public_page_renders(): void
     {
-        $this->get('/')->assertOk()->assertSee('vendra')->assertSee('https://wa.me/5535999193304', false)->assertSee('99919-3304')->assertSee('mailto:ivancasvilela@gmail.com', false)->assertSee('/app/vexo/login', false)->assertSee('Demonstração ilustrativa');
+        $this->get('/')->assertOk()->assertSee('vendra')->assertSee('https://wa.me/5535999193304', false)->assertSee('99919-3304')->assertSee('mailto:contato@vexogestao.com.br', false)->assertSee('/app/vexo/login', false)->assertSee('Demonstração ilustrativa');
     }
 
     public function test_http_catalog_stock_sale_and_receipt_workflow(): void
@@ -786,6 +881,7 @@ class CommerceTest extends TestCase
         $operatorSeller = app(\App\Services\CommercialRules::class)->seller($operator->id);
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $operator->id]);
         $this->get('/app/a/documents/'.$doc->id.'/edit')->assertOk()
+            ->assertSee('href="'.route('document.show',['company'=>'a','id'=>$doc->id]).'">Cancelar edição</a>', false)
             ->assertViewHas('initialItems', fn ($rows) => count($rows) === 1 && collect($rows)->every(fn ($line) => ! array_key_exists('commission_rate', $line) && ! array_key_exists('commission_amount', $line)));
         app(TenantConnection::class)->connect($this->a);
         $data = ['expected_hash' => $documents->editHash($doc->fresh()), 'items' => [], 'asset' => 'Recepção revisada pelo técnico', 'notes' => 'Aguardando diagnóstico'];
@@ -2713,6 +2809,7 @@ class CommerceTest extends TestCase
         $this->post('/app/a/setup/team',['name'=>'Responsável do caixa','user_id'=>$this->user->id,'active'=>1])->assertRedirect('/app/a/setup?step=5')->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $this->assertSame(1,\App\Models\Seller::where('name','Responsável do caixa')->count());$version=\App\Models\CompanyOperation::find(1)->version;
+        $this->get('/app/a/setup?step=5')->assertOk()->assertDontSee('Corrigir na etapa')->assertDontSee('disabled>Concluir implantação', false);
         $this->post('/app/a/setup/complete',['version'=>$version,'reviewed'=>1])->assertRedirect('/app/a')->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $this->assertNotNull(\App\Models\CompanyOperation::find(1)->completed_at);
@@ -2723,6 +2820,8 @@ class CommerceTest extends TestCase
     public function test_setup_rejects_invalid_company_missing_fiscal_and_team_without_completing(): void
     {
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->get('/app/a/setup?step=5')->assertOk()->assertSee('Corrigir na etapa Empresa')
+            ->assertSee('Corrigir na etapa Equipe')->assertSee('disabled>Concluir implantação', false);
         $this->post('/app/a/setup/company',['legal_name'=>'Sem CNPJ','document'=>'123'])->assertSessionHasErrors('document');
         $this->post('/app/a/setup/fiscal/continue')->assertSessionHasErrors('configuration');
         $this->post('/app/a/setup/team',['name'=>'','active'=>1])->assertSessionHasErrors('name');
@@ -2744,8 +2843,13 @@ class CommerceTest extends TestCase
     public function test_global_support_is_identified_audited_and_cannot_be_used_without_central_session(): void
     {
         $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte central','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
-        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1]);
-        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Implantação da empresa'])->assertRedirect('/app/a');
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1,'platform_mfa_at'=>time()]);
+        $this->withSession(['platform_mfa_at'=>time()-301]);
+        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Implantação da empresa'])
+            ->assertSessionHasErrors('mfa_code')->assertSessionMissing('platform_support');
+        $recovery=bin2hex(random_bytes(16));
+        $admin->update(['mfa_secret'=>\App\Platform\Totp::newSecret(),'mfa_recovery'=>[hash('sha256',$recovery)]]);
+        $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Implantação da empresa','mfa_code'=>$recovery])->assertRedirect('/app/a');
         $this->get('/app/a')->assertOk()->assertSee('Suporte Vexo · DBA');
         $this->from('/app/a/business')->post('/app/a/business',['legal_name'=>'Alteração global'])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(1,\App\Platform\PlatformAudit::where('action','support.enter')->count());
@@ -2756,14 +2860,14 @@ class CommerceTest extends TestCase
         $this->post('/vexo-admin/support/leave')->assertRedirect('/vexo-admin')->assertSessionMissing('platform_support')->assertSessionMissing('tenant_id');
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->get('/app/a')->assertOk()->assertDontSee('Suporte Vexo · DBA');
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$support->id,'auth_version'=>$support->auth_version])->get('/app/a')->assertRedirect('/vexo-admin/login');
-        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1])->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Teste de revogação'])->assertRedirect('/app/a');
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1,'platform_mfa_at'=>time()])->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Teste de revogação'])->assertRedirect('/app/a');
         $admin->update(['active'=>false,'auth_version'=>2]);
         $this->get('/app/a')->assertRedirect('/vexo-admin/login')->assertSessionMissing('tenant_id');
     }
     public function test_global_support_cannot_jump_store_context_and_preserves_configuration_metadata(): void
     {
         $admin=\App\Platform\PlatformAdmin::create(['name'=>'Suporte','email'=>'global@example.test','password'=>'global-password-1234','active'=>true,'auth_version'=>1]);
-        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1]);
+        $this->withSession(['platform_admin_id'=>$admin->id,'platform_auth_version'=>1,'platform_mfa_at'=>time()]);
         $this->post('/vexo-admin/companies/'.$this->a->id.'/support',['reason'=>'Configurar loja A'])->assertRedirect('/app/a');
         app(TenantConnection::class)->connect($this->a);
         $version=\App\Models\CompanyOperation::find(1)->version;
@@ -2887,15 +2991,16 @@ class CommerceTest extends TestCase
     public function test_split_checkout_preserves_receipts_installments_and_exact_total(): void
     {
         $key=(string)Str::uuid();
-        $sale=$this->commissionSale('100',true,null,['request_key'=>$key,'payments'=>[
+        $request=['request_key'=>$key,'payments'=>[
             ['payment_option'=>'pix','amount'=>'30.00','paid'=>1],
             ['payment_option'=>'credit','amount'=>'70.00','paid'=>0,'due_date'=>now()->addDay()->toDateString(),'installments'=>3],
-        ]]);
+        ]];
+        $sale=$this->commissionSale('100',true,null,$request);
         $this->assertFalse($sale->paid);$this->assertSame('30.00',(string)$sale->entries()->sum('paid_amount'));
         $this->assertSame(['30.00','23.33','23.33','23.34'],$sale->entries()->orderBy('id')->pluck('amount')->all());
         $this->assertSame('pix',\App\Models\Payment::firstOrFail()->method);
         $rows=app(\App\Services\SalePayments::class)->rows($sale->id);$this->assertSame('70.00',$rows[1]['amount']);
-        $this->assertSame($sale->id,$this->commissionSale('100',true,null,['request_key'=>$key])->id);
+        $this->assertSame($sale->id,$this->commissionSale('100',true,null,$request)->id);
         $this->assertSame(1,Sale::count());$this->assertSame(4,FinancialEntry::count());
         $summary=app(\App\Services\SalesBreakdown::class)->year((int)now()->year);
         $this->assertSame('100.00',$summary['total']);$this->assertSame('70.00',$summary['methods'][0]['total']);
@@ -2989,8 +3094,12 @@ class CommerceTest extends TestCase
     private function cardBrand(array $changes=[]): string
     {
         $service=app(\App\Services\CardFees::class);
+        $before = $service->all();
         $service->save(array_replace(['version'=>\App\Models\CompanyOperation::find(1)?->version??0,'name'=>'Visa · contrato QA','type'=>'credit','policy'=>'absorb','active'=>1,'rates'=>[1=>'3.00',2=>'4.00',3=>'5.00']],$changes),$this->user->id);
-        return array_key_last($service->all());
+        if (isset($changes['id'])) return $changes['id'];
+        $created = array_diff_key($service->all(), $before);
+        $this->assertCount(1, $created);
+        return array_key_first($created);
     }
     private function cardPayment(string $brand,array $changes=[]): array
     {

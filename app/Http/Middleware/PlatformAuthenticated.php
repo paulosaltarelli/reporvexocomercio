@@ -11,8 +11,8 @@ class PlatformAuthenticated
     public function handle(Request $request, Closure $next)
     {
         $admin = PlatformAdmin::where('active', true)->find((int) $request->session()->get('platform_admin_id', 0));
-        if (! $admin || (int) $admin->auth_version !== (int) $request->session()->get('platform_auth_version', 0)) {
-            $request->session()->forget(['platform_admin_id', 'platform_auth_version']);
+        if (! $admin || !$request->session()->get('platform_mfa_at') || (int) $admin->auth_version !== (int) $request->session()->get('platform_auth_version', 0)) {
+            $request->session()->forget(['platform_admin_id', 'platform_auth_version', 'platform_mfa_at']);
             return redirect()->route('platform.login');
         }
         $request->attributes->set('platformAdmin', $admin);

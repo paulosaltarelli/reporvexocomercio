@@ -41,7 +41,7 @@ class NfeEmissionController extends Controller
     public function emit(Request $r, string $company, int $id, QueueNfe $queue)
     {
         $this->admin($r);
-        $operation = $r->validate(['homologation_consent'=>'required|accepted','consumer_final'=>'required|boolean','presence'=>'required|in:1','destination_state'=>'required|alpha|size:2','pix_mode'=>'nullable|in:dynamic,static','tenant_id'=>'prohibited','model'=>'prohibited']);
+        $operation = $r->validate(['segregate_work_order'=>'sometimes|accepted', 'goods_payments'=>'sometimes|array:cash,pix,transfer', 'goods_payments.*'=>'required|decimal:0,2|min:0', 'homologation_consent'=>'required|accepted','consumer_final'=>'required|boolean','presence'=>'required|in:1','destination_state'=>'required|alpha|size:2','pix_mode'=>'nullable|in:dynamic,static','tenant_id'=>'prohibited','model'=>'prohibited']);
         $operation['consumer_final'] = $r->boolean('consumer_final');
         $document = $queue->enqueue($r->attributes->get('tenant'), $id, $r->attributes->get('currentUser')->id, $operation);
         return redirect()->route('nfe.document',['company'=>$company,'id'=>$document->id]);

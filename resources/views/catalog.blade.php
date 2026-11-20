@@ -7,7 +7,18 @@
 @php($visibleFields=array_filter($catalogFields,fn($label,$field)=>$currentUser->allows('costs.view')||!in_array($field,['cost','margin','price_policy','discount_enabled','max_discount_percent','commission_percent'],true),ARRAY_FILTER_USE_BOTH))
 @php($commercialKeys=['discount_enabled','max_discount_percent','commission_percent'])
 @php($mainFields=array_diff_key($visibleFields,array_flip($commercialKeys)))
-@if($currentUser->allows($kind.'.manage'))<form class="panel" method="post">
+@if(in_array($kind, ['customers', 'suppliers'], true))
+<form class="panel" method="get" action="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}" role="search">
+    <label for="catalog-search">Buscar por nome, CPF ou CNPJ</label>
+    <div class="actions"><input id="catalog-search" name="q" maxlength="100" type="search" value="{{ $search }}">
+        <button class="secondary">Buscar</button>
+        @if($search !== '')<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}">Limpar busca</a>@endif
+    </div>
+</form>
+@endif
+@if($currentUser->allows($kind.'.manage'))
+@if($search !== '' && !$editing)<details class="panel" @if($errors->any()) open @endif><summary>Novo cadastro</summary>@endif
+<form class="panel" method="post">
 @csrf<h2>{{ $editing?'Editar cadastro':'Novo cadastro' }}</h2><input type="hidden" name="id" value="{{ $editing?->id }}">
 @if($kind === 'customers')
 @include('components.customers.registry-fields')
@@ -39,10 +50,11 @@
 </details>
 @endif
 <div class="actions"><button class="primary">Salvar</button>
-@if($editing)<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind]) }}">Cancelar edição</a>
+@if($editing)<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind] + $filters) }}">Cancelar edição</a>
 @endif</div>
 @if($kind==='groups')<p class="hint">A margem é sobre o valor final da venda, e não um acréscimo sobre o custo. Exemplo: R$ 60,00 de custo com 40% de margem resulta em R$ 100,00. Ao alterar a regra ou a margem, produtos em modo automático com custo válido têm o preço recalculado. Os demais mantêm o preço e recebem um alerta quando houver diferença. Regras próprias do produto continuam valendo; produtos sem custo não têm o preço zerado.</p>
 @endif</form>
+@if($search !== '' && !$editing)</details>@endif
 @endif
 <section class="panel"><div class="scroll"><table><thead><tr>
 @foreach($visibleFields as $label)<th>{{ $label }}</th>
@@ -55,8 +67,8 @@
 @else{{ $row->$field??'—' }}
 @endif</td>
 @endforeach<td>
-@if($currentUser->allows($kind.'.manage'))<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind,'edit'=>$row->id]) }}">Editar</a>
+@if($currentUser->allows($kind.'.manage'))<a href="{{ route('catalog',['company'=>$tenant->slug,'kind'=>$kind,'edit'=>$row->id] + $filters) }}">Editar</a>
 @endif</td></tr>
-@empty<tr><td colspan="{{ count($visibleFields)+1 }}" class="empty">Nenhum cadastro ainda.</td></tr>
+@empty<tr><td colspan="{{ count($visibleFields)+1 }}" class="empty">{{ $search !== '' ? 'Nenhum cadastro encontrado para esta busca.' : 'Nenhum cadastro ainda.' }}</td></tr>
 @endforelse</tbody></table></div>{{ $rows->links() }}</section>
 @endsection

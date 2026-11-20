@@ -29,3 +29,11 @@ A biblioteca exige extensão SOAP. Na VPS compartilhada a extensão foi preparad
 Testes com certificados autogerados e respostas SOAP simuladas verificam software, não equivalem a homologação oficial. Sem certificado ICP-Brasil real, CSC, credenciamento e dados do emitente não é possível comprovar emissão na SEFAZ. Produção permanece bloqueada, inclusive para a base com dados ilustrativos. A ativação futura depende de revisão contábil, manutenção das notas técnicas e evidências oficiais de homologação.
 
 Fontes: https://www.nfe.fazenda.gov.br/portal/ ; https://dfe-portal.svrs.rs.gov.br/Nfe ; https://www.sped.fazenda.mg.gov.br/spedmg/nfce/ ; https://github.com/nfephp-org/sped-nfe ; https://github.com/nfephp-org/sped-common ; https://github.com/nfephp-org/sped-da . Consulte docs/REVISAO_FISCAL_DIRETA.md para achados e limitações da pesquisa das especificações atuais.
+
+## OS mista em homologação
+
+No fiscal da venda, uma OS faturada com uma linha de serviço do catálogo e uma ou mais mercadorias permite preparar os documentos em duas etapas. Abra a conferência do serviço, informe a competência e confirme o valor reservado à DPS. O Vendra assina e valida a DPS localmente no ambiente restrito. Em seguida, confira as peças na venda, selecione NFC-e ou NF-e conforme a operação e confirme separadamente a segregação e o envio em homologação. Havendo vários meios de recebimento, informe os centavos de cada meio destinados às mercadorias. A diferença corresponde ao serviço. O total das peças e o valor da DPS devem recompor o total da venda original. Os dois documentos mantêm identificação da OS, da venda e dos itens.
+
+O escopo municipal atual contempla um único serviço catalogado, local e sem retenção ou desconto no serviço. Linhas sem classificação histórica, cobrança de cartão com acréscimo, serviços múltiplos e divergências de total exigem revisão. A transmissão nacional da DPS depende do contrato autenticado do contribuinte. A geração fiscal mantém estoque e recebíveis registrados pelo faturamento comercial da OS.
+
+Os modelos 55 e 65 consultam os meios efetivamente recebidos para exibir a modalidade do Pix. Para uma unidade comercial acima de seis caracteres, abra a regra fiscal do produto e informe uma abreviação equivalente. Ela é aplicada a uCom e uTrib sem conversão adicional de quantidade ou preço.

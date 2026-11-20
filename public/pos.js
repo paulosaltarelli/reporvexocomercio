@@ -30,7 +30,7 @@
     function refreshTotals(){
         form.querySelector('#pos-gross-total').textContent=Vendra.centsText(BigInt(totals.gross));
         form.querySelector('#pos-discount-total').textContent=Vendra.centsText(BigInt(totals.discount));
-        form.querySelector('#pos-net-total').textContent=Vendra.centsText(BigInt(totals.net));
+        window.VendraCardFees.renderTotal(form);
         cashPreview();
     }
     document.addEventListener('vendra:cart-updated',event=>{totals=event.detail;refreshTotals();});
@@ -44,8 +44,8 @@
     });
     form.addEventListener('submit',event=>{
         if(form.dataset.sending==='1'){event.preventDefault();return;}
-        const selected=form.querySelector('#items .choice:valid');
-        if(!selected){event.preventDefault();form.querySelector('#pos-search-status').textContent='Adicione pelo menos um item à venda.';search.focus();return;}
+        const selected=[...form.querySelectorAll('#items .choice')];
+        if(!selected.length||selected.some(choice=>!choice.value)){event.preventDefault();form.querySelector('#pos-search-status').textContent='Adicione pelo menos um item à venda.';(selected.find(choice=>!choice.value)?.parentElement.querySelector('.pos-pick-item')||search).focus();return;}
         // Hidden fields inside a collapsed disclosure still participate in validation.
         if(!form.reportValidity()){event.preventDefault();return;}
         form.dataset.sending='1';button.disabled=true;button.textContent='Registrando venda…';
@@ -54,9 +54,16 @@
         for(let node=event.target.parentElement;node&&node!==form;node=node.parentElement){if(node.tagName==='DETAILS')node.open=true;}
     },true);
     document.addEventListener('keydown',event=>{
-        if(event.altKey||event.ctrlKey||event.metaKey||event.defaultPrevented||form.closest('[inert]'))return;
+        if(event.altKey||event.ctrlKey||event.metaKey||event.defaultPrevented||form.closest('[inert]')||document.querySelector('dialog[open]'))return;
         if(event.key==='F2'){event.preventDefault();search.focus();search.select();}
-        if(event.key==='F4'){event.preventDefault();method.focus();}
+        if(event.key==='F4'){
+            event.preventDefault();
+            if(form.dataset.splitPayment==='1'){
+                const split=form.querySelector('.split-payments');
+                split.open=true;
+                (split.querySelector('.split-payment-row [data-field="payment_option"]')||split.querySelector('.split-add')).focus();
+            }else method.focus();
+        }
         if(event.key==='F9'){event.preventDefault();if(!button.disabled)form.requestSubmit(button);}
     });
     window.addEventListener('pageshow',()=>{delete form.dataset.sending;button.disabled=initiallyDisabled;button.innerHTML='Registrar venda <kbd>F9</kbd>';});

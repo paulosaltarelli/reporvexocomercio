@@ -249,13 +249,20 @@ class FinancialService
                 }
             }
             foreach ($payments as $payment) {
-                Payment::create([
+                $refund = Payment::create([
                     'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:refund:'.$payment->request_key)->toString(),
                     'entry_id' => $payment->entry_id, 'user_id' => $userId, 'amount' => $payment->amount,
                     'paid_on' => now()->toDateString(), 'method' => $payment->method,
                     'direction' => $payment->direction === 'in' ? 'out' : 'in',
                     'kind' => 'refund', 'reversal_of' => $payment->id,
                 ]);
+                $original = \App\Models\OperationRecord::where('action','payment_method_used')
+                    ->where('after->target_id', $payment->id)->first();
+                if ($original) {
+                    $method = $original->after;
+                    app(PaymentMethods::class)->snapshot('payment_method_used', $refund->id,
+                        ['id'=>$method['method_id'],'label'=>$method['label'],'type'=>$method['type']], $userId);
+                }
             }
             foreach ($entries as $entry) {
                 $entry->update(['paid_amount' => '0.00', 'paid_at' => null, 'cancelled_at' => now()]);

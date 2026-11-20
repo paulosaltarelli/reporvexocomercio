@@ -156,7 +156,7 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => (env('VENDRA_COMPANY_DOMAIN') || env('VENDRA_DEMO_HOST')) ? null : env('SESSION_DOMAIN'),
 
     /*
     |--------------------------------------------------------------------------

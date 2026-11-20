@@ -79,7 +79,13 @@ VENDRA_BACKUP_ACK_QUIESCED=1 sh /srv/reporvexo/ops/backup.sh
 
 Confirme exit zero, leia apenas nomes/estado do pacote, e execute `sha256sum -c SHA256SUMS` dentro do diretório criado. Diretórios `.incomplete.*` indicam falha e não são backups válidos. Não removê-los sem investigar. O script não implementa retenção nem cópia externa; monitore o espaço antes de agendar.
 
-**Ainda necessário antes de comercializar:** destino externo sob controle do proprietário, cifragem com chave protegida fora da VPS, retenção, alertas de falha/espaço e ensaio de restauração. Snapshot da VPS ou cópia na mesma máquina não substitui backup externo. Nenhum agendamento de backup está instalado por esta revisão.
+O exportador `ops/recovery-package.py` (Python 3.11+ e GnuPG) cifra o pacote para uma chave pública OpenPGP antes de gravá-lo em um destino montado pelo operador. O proprietário deve provisionar um destino independente da VPS e um sistema de arquivos que aceite hard links e fsync. Guarde a chave privada em infraestrutura separada e registre a impressão digital por canal confiável. Importe apenas a chave pública no chaveiro do exportador. O armazenamento externo, a política de retenção, o agendamento e os alertas de falha/espaço precisam ser configurados pelo operador.
+
+Para exportar um snapshot finalizado, use `python3 ops/recovery-package.py export DIRETORIO_DO_SNAPSHOT PONTO_DE_MONTAGEM IMPRESSAO_DIGITAL`. O comando verifica os hashes de origem e publica um arquivo cifrado por snapshot. Registre o SHA-256 retornado e o horário em inventário protegido separado do destino. Uma nova tentativa com o mesmo nome preserva a cópia existente. Mantenha as cópias anteriores de acordo com a retenção acordada. Use a opção `--local-drill` apenas em ensaio sintético.
+
+Para restaurar, em estação de recuperação privada e com a chave privada disponível no GnuPG, use `python3 ops/recovery-package.py restore ARQUIVO.tar.gpg SHA256_DO_INVENTARIO NOVO_DIRETORIO`. O novo diretório conterá o dump, os pacotes e os arquivos extraídos com permissões privadas. O restaurador aceita arquivos regulares e diretórios. Verifique em homologação qualquer pacote legado que contenha links. A estação precisa de espaço para os pacotes decifrados, sua extração e o banco temporário. Aplique as permissões da instalação antes de subir o ERP.
+
+A partir dessa extração, execute `bash ops/recovery-mysql-drill.sh NOVO_DIRETORIO IMAGEM_MYSQL_LOCAL` com uma imagem oficial MySQL de versão compatível previamente disponível. O ensaio cria um contêiner descartável sem rede ou volumes do host, importa o SQL, confere os bancos declarados no central e a presença de tabelas em cada um e remove o contêiner e seus volumes. Para validar o ferramental com dados fictícios, rode `bash tests/ops/recovery-drill.sh IMAGEM_MYSQL_LOCAL`. Registre duração, data do ponto recuperado e o resultado das verificações funcionais abaixo em cada exercício real.
 
 Ensaio seguro de recuperação:
 

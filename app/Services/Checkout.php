@@ -26,17 +26,22 @@ class Checkout
         return DB::connection('tenant')->transaction(function () use ($documentId, $payment, $userId) {
             app(CompanyOperations::class)->lock();
             $document = Document::lockForUpdate()->findOrFail($documentId);
-            if ($document->sale_id) return Sale::findOrFail($document->sale_id);
+            $saleData = array_merge($payment, [
+                'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:document-sale:'.$document->request_key)->toString(),
+                'customer_id' => $document->customer_id, 'items' => $document->items,
+                'notes' => 'Origem: documento #'.$document->id,
+            ]);
+            if ($document->sale_id) {
+                $sale = Sale::findOrFail($document->sale_id);
+                OperationReplay::verify($sale, $saleData, $userId);
+                return $sale;
+            }
             $approved = ($document->type === 'quote' && $document->status === 'approved')
                 || ($document->type === 'work_order' && $document->status === 'completed');
             if (! $approved) throw ValidationException::withMessages(['status' => 'O documento precisa estar aprovado ou concluído antes de gerar a venda.']);
             $assignedSeller = app(SellerAssignment::class)->forInvoice($document->id, $userId, $payment);
             $document->refresh();
-            $sale = $this->completeInternal(array_merge($payment, [
-                'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:document-sale:'.$document->request_key)->toString(),
-                'customer_id' => $document->customer_id, 'items' => $document->items,
-                'notes' => 'Origem: documento #'.$document->id,
-            ]), $userId, $document, $assignedSeller);
+            $sale = $this->completeInternal($saleData, $userId, $document, $assignedSeller);
             if (bccomp(bcsub($sale->total,app(SalePayments::class)->passedTotal($sale->id),2), $document->total, 2) !== 0) {
                 throw ValidationException::withMessages(['items' => 'O valor da venda não corresponde ao documento aprovado.']);
             }
@@ -56,6 +61,7 @@ class Checkout
                     if ($document && (int) $existing->document_id !== $document->id) {
                         throw ValidationException::withMessages(['request_key' => 'A chave já pertence a outra venda e não pode faturar este documento.']);
                     }
+                    OperationReplay::verify($existing, $data, $userId);
                     return $existing;
                 }
                 $rules = app(CommercialRules::class);
@@ -67,6 +73,7 @@ class Checkout
                 $choice=app(PaymentMethods::class)->resolve($split?($data['payments'][array_key_first($data['payments'])]['payment_option']??null):($data['payment_option']??null),(string)($data['payment_method']??'cash'));
                 $method = FinancialService::paymentMethod($choice['type']);
                 $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'commission_basis'=>$configuration['commission_basis'], 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
+                OperationReplay::record($sale, $data, $userId);
                 app(PaymentMethods::class)->snapshot('sale_payment_method',$sale->id,$choice,$userId);
                 $lines = $data['items'];
                 if ($lines === [] || count($lines) > 50) {
@@ -94,17 +101,21 @@ class Checkout
                     $qty = $terms['quantity'];
                     $unitCost = $item instanceof Product ? ($configuration['inventory'] ? $item->pricingCost() : (string)$item->reference_cost) : $item->cost;
                     $amount = $terms['total'];
-                    SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
+                    $saleItem = SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
                         'description' => $document ? ($line['description'] ?? $item->name) : $item->name.$detail, 'unit_cost' => $unitCost], $terms));
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
                     $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
                     $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);
+                    $lineCost = bcmul($qty, $unitCost, 8);
                     if ($configuration['inventory'] && $product && $item->controlsStock()) {
-                        app(Inventory::class)->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, 'sale-'.$sale->id.'-'.$i, $sale->id);
+                        $inventory = app(Inventory::class);
+                        $movementKey = 'sale-'.$sale->id.'-'.$i;
+                        $inventory->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, $movementKey, $sale->id, null, $saleItem->id);
+                        $lineCost = $inventory->movementValue($movementKey) ?? $lineCost;
                     }
                     $total = bcadd($total, $amount, 2);
-                    $cost = bcadd($cost, bcmul($qty, $unitCost, 8), 8);
+                    $cost = bcadd($cost, $lineCost, 8);
                 }
                 $cost = Decimal::round($cost, 4);
                 Decimal::input($total, 2, 'items');
@@ -151,6 +162,7 @@ class Checkout
                 if ($document && (int) $existing->document_id !== $document->id) {
                     throw ValidationException::withMessages(['request_key' => 'A chave já pertence a outra venda e não pode faturar este documento.']);
                 }
+                OperationReplay::verify($existing, $data, $userId);
                 return $existing;
             }
 
@@ -179,7 +191,7 @@ class Checkout
                 if (! $product->controlsStock()) {
                     throw ValidationException::withMessages(['product_id' => 'Reative o controle de estoque de '.$product->name.' antes de estornar a venda que originalmente baixou seu saldo.']);
                 }
-                app(Inventory::class)->move($line->product_id, 'return', $line->quantity, $line->unit_cost, 'Estorno venda #'.$sale->id, $userId, 'cancel-'.$line->id, $sale->id);
+                app(Inventory::class)->move($line->product_id, 'return', $line->quantity, $line->unit_cost, 'Estorno venda #'.$sale->id, $userId, 'cancel-'.$line->id, $sale->id, app(Inventory::class)->saleValueForItem($sale->id, $line->id));
             }
             $sale->update(['status' => 'cancelled', 'paid' => false]);
         }, 3);

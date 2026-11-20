@@ -15,9 +15,10 @@
 <p>A conferência registra os dados exibidos agora, incluindo as pendências. Não reserva numeração, não transmite e não altera estoque ou financeiro.</p>
 <button class="primary">Registrar conferência para revisão</button></form>@endif
 <p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}">Voltar à venda</a></p></section>
-@if($sale->status==='completed')<section class="panel"><h2>Emitir NFC-e em homologação</h2><p>Este fluxo atende venda presencial dentro da UF, já recebida em dinheiro, Pix ou transferência. Somente vendas compostas integralmente por mercadorias são aceitas. Vendas com serviços ficam bloqueadas neste fluxo; serviços dependem de NFS-e. Confira as regras do produto e a configuração em Minha empresa.</p><form method="post" action="{{ route('fiscal.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
+@if($sale->status==='completed')<section class="panel"><h2>Emitir NFC-e em homologação</h2><p>Este fluxo atende venda presencial dentro da UF, já recebida em dinheiro, Pix ou transferência. Mercadorias de OS mista exigem DPS de serviço já preparada e confirmação da separação. Confira as regras do produto e a configuração em Minha empresa.</p><form method="post" action="{{ route('fiscal.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 <div class="form-grid"><div class="field"><label for="destination_state">UF de destino desta venda</label><input id="destination_state" name="destination_state" maxlength="2" required></div><div class="field"><label for="presence">Presença do comprador</label><select id="presence" name="presence"><option value="1">Presencial</option></select></div></div>
-@if($sale->payment_method==='pix')
+@include('fiscal.work-order-consent')
+@if($hasPixReceipt)
 <div class="field"><label for="pix_mode">Modalidade do Pix recebido</label><select id="pix_mode" name="pix_mode" required><option value="">Confirme como o Pix foi recebido</option><option value="dynamic" @selected(old('pix_mode')==='dynamic')>Pix dinâmico · cobrança específica para esta venda</option><option value="static" @selected(old('pix_mode')==='static')>Pix estático · chave ou QR Code reutilizável</option></select><small class="hint">Informe a modalidade real do recebimento. A forma de pagamento “Pix” sozinha não determina esta informação.</small></div>
 @endif
 <label class="checkbox-line"><input type="checkbox" name="consumer_final" value="1" required> Confirmo que é uma venda a consumidor final.</label>
@@ -31,7 +32,8 @@
 <p>Destinatário: <strong>{{ $sale->customer?->name }}</strong>. <a href="{{ route('nfe.customer',['company'=>$tenant->slug,'id'=>$sale->customer_id]) }}">Conferir identificação e endereço fiscal</a></p>
 <form method="post" action="{{ route('nfe.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 <div class="form-grid"><div class="field"><label for="nfe_destination_state">UF de destino</label><input id="nfe_destination_state" name="destination_state" maxlength="2" required value="{{ old('destination_state',$sale->customer?->fiscal_state) }}"></div><div class="field"><label for="nfe_presence">Presença do comprador</label><select id="nfe_presence" name="presence"><option value="1">Presencial</option></select></div><div class="field"><label for="nfe_consumer_final">É consumidor final nesta operação?</label><select id="nfe_consumer_final" name="consumer_final" required><option value="">Confirme a operação</option><option value="1" @selected((string)old('consumer_final')==='1')>Sim</option><option value="0" @selected((string)old('consumer_final')==='0')>Não</option></select></div></div>
-@if($sale->payment_method==='pix')
+@include('fiscal.work-order-consent')
+@if($hasPixReceipt)
 <div class="field"><label for="nfe_pix_mode">Modalidade real do Pix recebido</label><select id="nfe_pix_mode" name="pix_mode" required><option value="">Confirme a modalidade</option><option value="dynamic" @selected(old('pix_mode')==='dynamic')>Pix dinâmico · cobrança específica</option><option value="static" @selected(old('pix_mode')==='static')>Pix estático · chave ou QR Code reutilizável</option></select></div>
 @endif
 <label class="checkbox-line"><input type="checkbox" name="homologation_consent" value="1" required> Autorizo a transmissão desta venda à SEFAZ para NF-e em homologação, sem valor fiscal.</label><button class="primary">Solicitar NF-e em homologação</button><p class="hint">A solicitação não altera estoque ou financeiro novamente. A autorização depende da SEFAZ e dos dados validados.</p></form>

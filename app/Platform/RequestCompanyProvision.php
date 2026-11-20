@@ -23,12 +23,15 @@ final class RequestCompanyProvision
         $data = Validator::make($input, [
             'name' => 'required|string|min:2|max:180',
             'slug' => ['required', 'string', 'max:63', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D'],
-            'admin_name' => 'required|string|min:2|max:180', 'admin_email' => 'required|email|max:180',
+            'admin_name' => 'required|string|min:2|max:180', 'admin_email' => 'required|email|max:180|not_regex:/@support\.vexo\.invalid$/i',
             'is_demonstration' => 'required|boolean', 'request_key' => 'required|uuid',
             'password' => 'prohibited', 'admin_password' => 'prohibited', 'password_confirmation' => 'prohibited',
             'db_host' => 'prohibited', 'db_name' => 'prohibited', 'db_username' => 'prohibited', 'db_password' => 'prohibited',
             'active' => 'prohibited', 'storage_mode' => 'prohibited', 'fiscal_demonstration' => 'prohibited',
         ])->validate();
+        if (\App\Tenancy\CompanyHosts::reserved($data['slug'])) {
+            throw ValidationException::withMessages(['slug' => 'Esta identificação está reservada. Escolha outro subdomínio.']);
+        }
         $data['name'] = trim($data['name']);
         $data['admin_name'] = trim($data['admin_name']);
         $data['admin_email'] = mb_strtolower(trim($data['admin_email']));

@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'demo_host' => env('VENDRA_DEMO_HOST', ''),
+    'company_domain' => env('VENDRA_COMPANY_DOMAIN', ''),
+    'legacy_hosts' => env('VENDRA_LEGACY_HOSTS', ''),
     // Disabled until the privileged builder and shared-database QA have passed.
     'shared' => [
         'enabled'=>(bool)env('VENDRA_SHARED_ENABLED',false),

@@ -2,6 +2,15 @@
 @section('title','Regra fiscal · '.e($product->name))
 @section('subtitle','Escolha um perfil compartilhado ou mantenha uma exceção individual para este produto.')
 @section('content')
+@if(mb_strlen($product->unit) > 6)
+<section class="panel"><h2>Sigla da unidade fiscal</h2>
+<form method="post" action="{{ route('fiscal.product.unit',['company'=>$tenant->slug,'id'=>$product->id]) }}">@csrf
+<input type="hidden" name="base" value="{{ $product->unit }}">
+<label for="fiscal-symbol">Abreviação de {{ $product->unit }} para os campos uCom e uTrib</label>
+<input id="fiscal-symbol" name="symbol" value="{{ old('symbol', \App\Fiscal\FiscalUnit::symbol($product)) }}" maxlength="6" pattern="[A-Z0-9]{1,6}" required>
+<p class="hint">Use até seis letras maiúsculas ou dígitos para a mesma unidade base. Quantidades e preços permanecem na escala da venda.</p>
+<button class="primary">Salvar sigla fiscal</button></form></section>
+@endif
 <section class="panel"><h2>Regra em uso</h2><p><strong>{{ ['individual'=>'Exceção individual','product_profile'=>'Perfil do produto','group_profile'=>'Perfil do grupo'][$effectiveRule['source']??'']??'Sem regra definida' }}</strong></p>
 @if(!($effectiveRule['available']??false))<div class="notice">A regra não está disponível para emissão. Confira o vínculo, a atividade do perfil e a identidade fiscal deste produto.</div>@endif
 @if(!empty($effectiveRule['profile_id']))<p>Perfil: {{ $fiscalProfiles->firstWhere('id',$effectiveRule['profile_id'])?->name??'Perfil vinculado' }} · revisão {{ $effectiveRule['profile_revision']??'—' }}</p>@endif

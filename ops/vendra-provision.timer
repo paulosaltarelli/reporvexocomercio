@@ -1,0 +1,10 @@
+[Unit]
+Description=Process the Vendra company provisioning queue
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=30s
+Unit=vendra-provision.service
+
+[Install]
+WantedBy=timers.target

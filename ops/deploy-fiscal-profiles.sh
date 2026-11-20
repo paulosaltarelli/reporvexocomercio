@@ -12,6 +12,7 @@ worker naturally (max60s), pauses only Vendra, rechecks empty real outbox, backs
 up and applies only tenant migration000007. Lints PHP and compiled
 Blade, waits for verified HTTPS readiness, then restores prior timer state.
 Never invokes the fiscal worker manually. See docs/PERFIS_TRIBUTARIOS.md.
+QA requires VENDRA_RELEASE_COMMIT, VENDRA_QA_EVIDENCE and VENDRA_QA_EVIDENCE_SHA256 (docs/TESTES.md).
 PLAN
  exit 0
 fi
@@ -36,6 +37,7 @@ live=/srv/reporvexo
 php_cli=/opt/reporvexo-tools/php/cli.ini
 [[ $(realpath "$stage") == /srv/vendra-fiscal-profile-qa.* && $(realpath "$live") == "$live" ]] || exit 1
 [[ $(sha256sum "$manifest" | cut -d ' ' -f1) == "$manifest_digest" ]] || { echo 'Manifesto divergiu da revisão.' >&2; exit 1; }
+python3 "$(dirname "$0")/qa-release.py" verify "$stage" "$manifest"
 exec 9>/run/lock/vendra-fiscal-deploy.lock
 flock -n 9 || { echo 'Outro deploy fiscal está em andamento.' >&2; exit 1; }
 python3 - "$stage" "$live" "$manifest" "$baseline" "$pdv" <<'PY'

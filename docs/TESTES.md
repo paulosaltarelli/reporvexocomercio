@@ -173,3 +173,17 @@ O painel do operador apresenta somente seus totais, vendas e orçamentos, rejeit
 
 
 Após os quatro filtros, a suíte completa foi executada uma vez no mesmo checkout isolado: **65 testes passaram, 1.011 verificações, nenhum skip/falha, saída 0, em 138,12 segundos**. Inclui todo o baseline comercial, o gráfico mensal agora na consolidação, as cargas anuais de 2025/2026, concorrência e as quatro regressões de vendedor/painel. Nenhuma contagem foi somada entre execuções. Nenhum runner permaneceu ativo ao liberar a operação.
+
+## Validação obrigatória para publicação
+
+Execute `composer test` no checkout de QA com as dependências de desenvolvimento e MySQL exclusivo. A execução inclui as suítes Unit e Feature, os processos concorrentes com pcntl e os testes do banco compartilhado. Estes últimos usam o cliente PHP como root **dentro do ambiente descartável** e o socket administrativo local em `/var/run/mysqld/mysqld.sock`. A variável `VENDRA_TEST_PASSWORD` pode estar no ambiente ou em `.env.testing`. Um teste pulado, incompleto ou arriscado, ou uma suíte vazia, faz o comando retornar erro.
+
+Para gerar a evidência de uma publicação, execute em um checkout limpo do commit aprovado:
+
+```sh
+python3 ops/qa-release.py run --evidence /caminho/privado/qa-release.json
+```
+
+O comando grava o JSON e o relatório adjacente `qa-release.json.junit.xml` fora do checkout após executar a suíte integral. Mantenha os dois arquivos juntos. A evidência contém o commit, a contagem de testes, o resumo SHA-256 do JUnit e os hashes dos arquivos versionados. Guarde o SHA-256 da evidência exibido ao fim da execução no registro de revisão da publicação.
+
+Os scripts `ops/deploy-*.sh --apply` exigem `VENDRA_RELEASE_COMMIT` (SHA completo aprovado), `VENDRA_QA_EVIDENCE` (caminho para esse JSON) e `VENDRA_QA_EVIDENCE_SHA256` (hash recebido da revisão por canal confiável). A verificação confere cada arquivo do manifesto com a evidência e com o stage antes de aplicar o código ou interromper serviços. Para conferir o mesmo conjunto localmente, execute `python3 ops/qa-release.py verify "$stage" "$manifest"` com as três variáveis configuradas. Árvores com mudanças em andamento podem executar `composer test` para desenvolvimento.

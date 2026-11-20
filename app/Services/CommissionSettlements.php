@@ -29,20 +29,36 @@ final class CommissionSettlements
     {
         $d=$this->filters($input);$id=(int)$d['salesperson_id'];
         $sellerQuery=Seller::whereKey($id);if($lock)$sellerQuery->sharedLock();$seller=$sellerQuery->firstOrFail();
-        $query=Sale::where('salesperson_id',$id)->where('commission_total','>','0')->where('created_at','<=',$d['to'].' 23:59:59')->orderBy('id');if($lock)$query->lockForUpdate();$sales=$query->get();
-        $entryQuery=FinancialEntry::whereIn('sale_id',$sales->pluck('id'))->orderBy('id');if($lock)$entryQuery->sharedLock();$entries=$entryQuery->get();
-        $paymentsQuery=Payment::whereIn('entry_id',$entries->pluck('id'))->where('paid_on','<=',$d['to'])->orderBy('id');if($lock)$paymentsQuery->sharedLock();$payments=$paymentsQuery->get();$byEntry=$payments->groupBy('entry_id');$bySale=$entries->groupBy('sale_id');
-        $ledger=$this->records($id)->orderBy('id');if($lock)$ledger->sharedLock();$records=$ledger->get();$accounted=[];$latest=null;
+        $salesQuery=Sale::where('salesperson_id',$id)
+            ->where('commission_total','>','0')->where('created_at','<=',$d['to'].' 23:59:59')->orderBy('id');
+        if($lock)$salesQuery->lockForUpdate();
+        $sales=$salesQuery->get(['id','commission_total','commission_basis','total','status','created_at','updated_at']);
+        // Sales are locked first, as in the payment and reversal transactions. The
+        // shared locking read also sees receipts committed while that lock was pending.
+        $receipts=[];
+        foreach(array_chunk($sales->modelKeys(),1000) as $saleIds){
+            $query=FinancialEntry::query()->toBase()
+                ->leftJoin('payments',function($join)use($d){
+                    $join->on('payments.entry_id','=','financial_entries.id')->where('payments.paid_on','<=',$d['to']);
+                })
+                ->whereIntegerInRaw('financial_entries.sale_id',$saleIds)
+                ->groupBy('financial_entries.sale_id')
+                ->select('financial_entries.sale_id')
+                ->selectRaw('MAX(financial_entries.legacy_paid_amount > 0) AS has_legacy')
+                ->selectRaw("COALESCE(SUM(CASE WHEN payments.kind = 'refund' THEN -payments.amount ELSE payments.amount END), 0.00) AS received");
+            if($lock)$query->sharedLock();
+            foreach($query->get() as $receipt)$receipts[$receipt->sale_id]=$receipt;
+        }
+        $ledger=$this->records($id)->select('after')->orderBy('id');
+        if($lock)$ledger->sharedLock();
+        $records=$ledger->cursor();$accounted=[];$latest=null;
         foreach($records as $record){$after=$record->after;$latest=max($latest??'0000-00-00',$after['to']);foreach($after['lines'] as $line)$accounted[$line['sale_id']]=bcadd($accounted[$line['sale_id']]??'0.00',$line['amount'],2);}
         if($latest!==null&&$d['to']<$latest)throw ValidationException::withMessages(['to'=>'Já há fechamento posterior para este vendedor. Use uma data igual ou posterior a '.$latest.'.']);
         $lines=[];$total='0.00';$positive='0.00';$negative='0.00';$awaiting='0.00';$legacy=0;
         foreach($sales as $sale){
-            $received='0.00';$hasLegacy=false;
-            foreach($bySale->get($sale->id,collect()) as $entry){
-                if(bccomp($entry->legacy_paid_amount,'0',2)>0)$hasLegacy=true;
-                foreach($byEntry->get($entry->id,collect()) as $payment)$received=$payment->kind==='refund'?bcsub($received,$payment->amount,2):bcadd($received,$payment->amount,2);
-            }
-            if($hasLegacy&&$sale->commission_basis!=='accrual')$legacy++;
+            $receipt=$receipts[$sale->id]??null;
+            $received=(string)($receipt->received??'0.00');
+            if(($receipt->has_legacy??false)&&$sale->commission_basis!=='accrual')$legacy++;
             $received=bccomp($received,'0',2)<0?'0.00':(bccomp($received,$sale->total,2)>0?(string)$sale->total:$received);
             $cancelled=$sale->status==='cancelled'&&$sale->updated_at->format('Y-m-d')<=$d['to'];
             $eligible=$cancelled?'0.00':($sale->commission_basis==='accrual'?(string)$sale->commission_total:(bccomp($sale->total,'0',2)>0?Decimal::round(bcdiv(bcmul($sale->commission_total,$received,8),$sale->total,8)):'0.00'));

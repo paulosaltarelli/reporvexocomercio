@@ -14,6 +14,7 @@ marks existing tenant1/vexo demonstration without reseeding; compares complete
 old-data projections/private fiscal files/landing before HTTP resumes; TLS then timer.
 Failure restores only overlay files/caches, retains additive schema/audit/data.
 Review restore compatibility in isolated QA before approving. Never restore DB automatically.
+QA requires VENDRA_RELEASE_COMMIT, VENDRA_QA_EVIDENCE and VENDRA_QA_EVIDENCE_SHA256 (docs/TESTES.md).
 PLAN
  exit 0
 fi
@@ -31,6 +32,7 @@ live=/srv/reporvexo;php_cli=/opt/reporvexo-tools/php/cli.ini
 [[ $manifest_digest =~ ^[a-f0-9]{64}$ && $stage == /srv/vendra-platform-qa.* && $(realpath "$live") == "$live" && $(realpath "$stage") == "$stage" ]] || exit 1
 for p in "$manifest" "$baseline" "$pdv" "$landing";do [[ $p == /* && -f $p && ! -L $p ]] || exit 1;done
 [[ $(sha256sum "$manifest"|cut -d ' ' -f1) == "$manifest_digest" ]] || exit 1
+python3 "$(dirname "$0")/qa-release.py" verify "$stage" "$manifest"
 exec 9>/run/lock/vendra-fiscal-deploy.lock
 flock -n 9 || { echo 'Outro deploy está em andamento.' >&2;exit 1; }
 reader_dir=$(mktemp -d /run/vendra-platform-deploy.XXXXXX);chown root:vendra-web "$reader_dir";chmod 750 "$reader_dir"

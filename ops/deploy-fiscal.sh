@@ -17,6 +17,7 @@ applies only the five fiscal migration files; keeps private fiscal files private
 starts only Vendra. Fiscal timer is installed but disabled. No seed, PFX,
 credentials, numbering, official-network test, emission, worker invocation or
 commercial/PDV migrations. See docs/DEPLOY_FISCAL.md before any apply.
+QA requires VENDRA_RELEASE_COMMIT, VENDRA_QA_EVIDENCE and VENDRA_QA_EVIDENCE_SHA256 (docs/TESTES.md).
 PLAN
  exit 0
 fi
@@ -43,6 +44,7 @@ soap=/opt/reporvexo-tools/php/extracted/usr/lib/php/20230831/soap.so
 [[ $(realpath "$stage") == /srv/vendra-fiscal-qa.* && $(realpath "$live") == "$live" ]] || exit 1
 [[ -f $soap && -f $php_cli && -f /etc/php/8.3/apache2/php.ini ]] || exit 1
 [[ $(sha256sum "$manifest" | cut -d ' ' -f1) == "$manifest_digest" ]] || { echo 'Manifesto não corresponde ao revisado.' >&2; exit 1; }
+python3 "$(dirname "$0")/qa-release.py" verify "$stage" "$manifest"
 exec 9>/run/lock/vendra-fiscal-deploy.lock
 flock -n 9 || { echo 'Outra implantação fiscal está em execução.' >&2; exit 1; }
 # Manifest and base must be cross-checked together. Reject any unrelated file,

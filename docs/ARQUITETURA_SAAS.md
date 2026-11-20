@@ -6,7 +6,7 @@ Um pacote atende todas as empresas. O banco central mantém tenants, administrad
 da plataforma, solicitações de implantação e auditorias. O painel `/vexo-admin`
 tem autenticação própria; usuários das empresas não são administradores centrais.
 Solicitações HTTP não recebem credenciais de banco nem executam provisionamento.
-O processamento administrativo ocorre em console root, com senha por prompt oculto.
+O worker administrativo consome a fila pelo mesmo control plane do comando interativo. O modo automático envia um convite de ativação para o e-mail do primeiro administrador. Consulte [Provisionamento de empresas em subdomínios](PROVISIONAMENTO_SUBDOMINIOS.md).
 
 ## Dados operacionais compartilhados
 

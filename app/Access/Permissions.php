@@ -53,6 +53,7 @@ final class Permissions
             'AccountController'=>$action==='updateUser'?'administration': 'account.self',
             'BusinessController'=>match($action){'logo'=>'account.self','fiscal'=>'fiscal.manage',default=>'administration'},
             'CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',
+            'SicoobPixController'=>'finance.manage',
             'DeskController'=>'desk.use',
             'MeasureUnitController'=>'products.manage',
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},

@@ -127,7 +127,7 @@ class Documents
         return DB::connection('tenant')->transaction(function () use ($id, $payment, $userId) {
             $d = Document::lockForUpdate()->findOrFail($id);
             if ($d->sale_id) {
-                return Sale::findOrFail($d->sale_id);
+                return app(Checkout::class)->completeFromDocument($d->id, $payment, $userId);
             }
             if (($d->type === 'quote' && $d->status !== 'approved') || ($d->type === 'work_order' && $d->status !== 'completed')) {
                 throw ValidationException::withMessages(['status' => 'Aprove o orçamento ou conclua a ordem de serviço antes de gerar a venda.']);
