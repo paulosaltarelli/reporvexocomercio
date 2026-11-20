@@ -511,15 +511,9 @@ class FiscalTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_mixed_work_order_links_signed_dps_to_goods_xml_with_reconciled_tenders(): void
+    public function test_mixed_work_order_links_archived_dps_to_goods_xml_with_reconciled_tenders(): void
     {
-        [, $cert] = $this->configuredFiscal();
-        app(\App\Fiscal\Nfse\Configuration::class)->save($this->tenant, [
-            'enabled'=>true, 'national_issuer_confirmed'=>true, 'municipality_code'=>'3550308',
-            'timezone'=>'America/Sao_Paulo', 'op_simp_nac'=>'3', 'reg_ap_trib_sn'=>'1', 'reg_esp_trib'=>'0',
-            'service_national_code'=>'010701', 'nbs'=>'115021100', 'iss_mode'=>'municipal_parameterized',
-            'total_tax_mode'=>'not_informed', 'series'=>1, 'next_number'=>1, 'certificate_password'=>$cert['password'],
-        ], $cert['pfx'], $this->user->id);
+        $this->configuredFiscal();
         $service = Product::create(['name'=>'Manutenção', 'type'=>'service', 'sku'=>'OS-SERV',
             'controls_stock'=>false, 'sale_price'=>'8.00', 'unit'=>'UN', 'product_group_id'=>$this->product->product_group_id]);
         $orders = app(\App\Services\Documents::class);
@@ -536,10 +530,8 @@ class FiscalTest extends TestCase
         $counts = fn () => array_map(fn ($table) => DB::connection('tenant')->table($table)->count(),
             ['sales','stock_movements','financial_entries','payments']);
         $before = $counts();
-        $dps = app(\App\Fiscal\Nfse\PrepareDps::class)->prepare($this->tenant,$sale->id,$this->user->id,[
-            'request_key'=>(string) Str::uuid(), 'competence'=>now()->toDateString(),
-            'operation_scope_confirmed'=>true, 'segregate_work_order'=>true,
-        ]);
+        $dps = \Tests\Support\ArchivedDps::import($this->tenant, $sale, $this->user->id,
+            \App\Fiscal\WorkOrderFiscalSplit::partition($sale));
         $this->assertSame('8.00', $dps->total);
         $operation = $this->operation() + ['segregate_work_order'=>true,'goods_payments'=>['cash'=>'4.01','pix'=>'6.00']];
         $document = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $operation);

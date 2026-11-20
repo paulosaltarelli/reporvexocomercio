@@ -60,8 +60,3 @@
 @include('fiscal.nfe.company',['nfeConfiguration'=>$nfeConfiguration??null,'nfeNextNumber'=>$nfeNextNumber??null])
 @endif
 @endif
-@if($setupFiscal??false)
-@if($configuration['nfse'])@include('fiscal.nfse.company',['configuration'=>$nfseConfiguration])@endif
-@else
-@include('fiscal.nfse.entry')
-@endif

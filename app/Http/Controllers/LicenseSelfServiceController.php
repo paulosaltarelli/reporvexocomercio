@@ -22,9 +22,14 @@ final class LicenseSelfServiceController extends Controller
     public function show(Request $request, string $company, int $installment, CompanyPix $pix)
     {
         $tenant = $request->attributes->get('tenant');
-        $row = ContractInstallment::where('tenant_id', $tenant->id)->findOrFail($installment);
+        $row = ContractInstallment::with('contract')->where('tenant_id', $tenant->id)->findOrFail($installment);
+        $contract = $row->contract;
         $charge = $pix->view($tenant->id, $row->id);
-        return response()->view('license.show', ['installment' => $row, 'charge' => $charge, 'pixAvailable' => $pix->availableFor($tenant)])->header('Cache-Control', 'private, no-store');
+        return response()->view('license.show', [
+            'installment' => $row, 'charge' => $charge, 'pixAvailable' => $pix->availableFor($tenant),
+            'graceEnds' => $contract->inImplantationGrace() ? $contract->billingStartDate() : null,
+            'restrictionStarts' => $contract->restricted_modules ? $row->due_date->addDays($contract->overdue_grace_days + 1) : null,
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function issue(Request $request, string $company, int $installment, CompanyPix $pix)

@@ -21,24 +21,21 @@ class CompanySetupController extends Controller
     {
         $this->admin($r);
         $data=$r->validate(['step'=>'nullable|integer|between:1,5']);
+        $step=(int)($data['step']??app(CompanyOnboarding::class)->step());
+        if ($step===3 && !config('fiscal.product_invoices_enabled')) {
+            return redirect()->route('setup',['company'=>$r->route('company'),'step'=>4]);
+        }
         $sellers = Seller::where('active',true)->orderBy('name')->get();
         $pending = $operations->pendingSteps();
         if ($sellers->isEmpty()) $pending['Cadastre ao menos um responsável pelo caixa na etapa Equipe.'] = 4;
         return view('setup.index',[
-            'step'=>(int)($data['step']??app(CompanyOnboarding::class)->step()), 'configuration'=>$operations->current(),
+            'step'=>$step, 'configuration'=>$operations->current(),
             'wizardMode'=>app(CompanyOnboarding::class)->required($r->attributes->get('tenant')),
             'users'=>User::orderBy('name')->get()->reject(fn($u)=>\App\Platform\SupportAccess::isManaged($u)), 'sellers'=>$sellers,
             'accessState'=>app(AccessProfiles::class)->state(),'profileService'=>app(AccessProfiles::class),
             'setup'=>CompanyOperation::find(1), 'profile'=>BusinessProfile::find(1)??new BusinessProfile(['legal_name'=>$r->attributes->get('tenant')->name]), 'pending'=>$pending,
             'audit'=>DB::connection('tenant')->table('company_operation_audits')->whereIn('action',['configuration','company_changed','completed','setup_step','nfse_draft'])->latest('id')->limit(10)->get(['action','version','created_at']),
-        ] + app(BusinessController::class)->viewData($r) + $this->nfseData());
-    }
-    private function nfseData(): array
-    {
-        $profile=BusinessProfile::find(1);
-        $configuration=\App\Models\NfseConfiguration::where('cnpj',\App\Fiscal\TaxpayerDocument::normalize((string)$profile?->document))->first();
-        if($configuration){$parameters=$configuration->parameters;$parameters['next_number']=DB::connection('tenant')->table('nfse_sequences')->where('configuration_id',$configuration->id)->where('series',$parameters['series'])->value('next_number');$configuration->parameters=$parameters;}
-        return ['nfseConfiguration'=>$configuration,'configurationDefaults'=>array_replace(['municipality_code'=>$profile?->municipality_code,'municipal_registration'=>$profile?->municipal_registration],app(\App\Fiscal\Nfse\Configuration::class)->draftValues())];
+        ] + app(BusinessController::class)->viewData($r));
     }
     public function company(Request $r,string $company)
     {
@@ -69,8 +66,9 @@ class CompanySetupController extends Controller
     {
         $actor=$this->admin($r);
         $operations->save($r->all(),$actor);
-        app(CompanyOnboarding::class)->advance(3,$actor);
-        return redirect()->route('setup',['company'=>$company,'step'=>3])->with('success','Configurações salvas. As novas operações já seguem estas escolhas.');
+        $next=config('fiscal.product_invoices_enabled')?3:4;
+        app(CompanyOnboarding::class)->advance($next,$actor);
+        return redirect()->route('setup',['company'=>$company,'step'=>$next])->with('success','Configurações salvas. As novas operações já seguem estas escolhas.');
     }
     public function complete(Request $r,string $company,CompanyOperations $operations)
     {

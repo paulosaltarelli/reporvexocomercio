@@ -34,7 +34,7 @@ trait ContractIntegrationCases
         $admin = $this->licensingAdmin();
         $this->withSession(['platform_admin_id' => $admin->id, 'platform_mfa_at' => time(), 'platform_auth_version' => 0]);
         foreach ([$this->a, $this->b] as $tenant) {
-            $this->post("/vexo-admin/companies/{$tenant->id}/license/contracts", $this->licensingTerms())
+            $this->post("/vexo-admin/companies/{$tenant->id}/license/contracts", $this->licensingTerms() + ['implantation_grace_days' => 2, 'overdue_grace_days' => 3])
                 ->assertRedirect()->assertSessionHasNoErrors();
         }
         $own = ContractInstallment::where('tenant_id', $this->a->id)->sole();
@@ -79,6 +79,12 @@ trait ContractIntegrationCases
         $this->flushSession();
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
         $base = '/app/a/licenca/parcelas/';
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-02 12:00:00'));
+        $this->get($base.$own->id)->assertOk()->assertSee('O Pix poderá ser gerado a partir de 03/11/2026')
+            ->assertSee('A partir de 09/11/2026')->assertDontSee('Gerar Pix para pagamento');
+        $this->post($base.$own->id.'/pix')->assertRedirect()->assertSessionHasErrors('installment');
+        $this->assertSame(0, $bank->calls);
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-16 12:00:00'));
         $this->get('/app/a/desk')->assertStatus(402);
         $this->get('/app/a/licenca')->assertOk();
         $this->get('/app/a/finance')->assertOk();

@@ -79,6 +79,10 @@ final class ContractBilling
         if ($installment->cancelled_at || bccomp($installment->balance, '0', 2) <= 0) {
             throw ValidationException::withMessages(['installment' => 'A parcela precisa estar em aberto para emitir a cobrança.']);
         }
+        $contract = $installment->contract;
+        if ($contract->inImplantationGrace()) {
+            throw ValidationException::withMessages(['installment' => 'A cobrança estará disponível após a carência de implantação.']);
+        }
         if (! $installment->payment_locked_at) {
             $installment->update(['payment_locked_at' => now()]);
         }
@@ -125,6 +129,12 @@ final class ContractBilling
         $rules = ['start_date' => 'required|date_format:Y-m-d|after_or_equal:1000-01-01',
             'end_date' => 'required|date_format:Y-m-d|after_or_equal:start_date', 'due_day' => 'required|integer|between:1,31',
             'monthly_amount' => 'required|numeric', 'restricted_modules' => 'sometimes|array'];
+        foreach (['implantation_grace_days', 'overdue_grace_days'] as $field) {
+            $rules[$field] = 'sometimes|nullable|integer|between:0,3650';
+            if (array_key_exists($field, $input) && ($input[$field] === null || $input[$field] === '')) {
+                $input[$field] = 0;
+            }
+        }
         if (array_key_exists('restricted_modules', $input)) {
             $rules['restricted_modules.*'] = ['required', 'string', 'distinct', Rule::in(array_keys(ContractAccess::MODULES))];
         }
@@ -171,6 +181,7 @@ final class ContractBilling
     private function snapshot(Contract $contract): array
     {
         return ['start_date' => $contract->start_date->toDateString(), 'end_date' => $contract->end_date->toDateString(),
+            'implantation_grace_days' => $contract->implantation_grace_days, 'overdue_grace_days' => $contract->overdue_grace_days,
             'due_day' => $contract->due_day, 'monthly_amount' => $contract->monthly_amount,
             'restricted_modules' => $contract->restricted_modules ?? [], 'version' => $contract->version];
     }
@@ -191,7 +202,7 @@ final class ContractBilling
         $changes = [];
         $newRows = [];
         $timestamp = now();
-        $start = $contract->start_date;
+        $start = $contract->billingStartDate();
         $end = $contract->end_date;
         for ($month = $start->startOfMonth(); $month <= $end; $month = $month->addMonthNoOverflow()) {
             $due = $month->day(min($contract->due_day, $month->daysInMonth));
@@ -251,8 +262,8 @@ final class ContractBilling
 
     private function assertFrozenInsideTerm(ContractInstallment $row, Contract $contract): void
     {
-        if ($row->due_date < $contract->start_date || $row->due_date > $contract->end_date) {
-            throw ValidationException::withMessages(['end_date' => 'A nova vigência excluiria parcela vencida, recebida ou com cobrança emitida. Concilie o histórico antes de alterar.']);
+        if ($row->due_date < $contract->billingStartDate() || $row->due_date > $contract->end_date) {
+            throw ValidationException::withMessages(['end_date' => 'A nova vigência ou carência excluiria parcela vencida, recebida ou com cobrança emitida. Concilie o histórico antes de alterar.']);
         }
     }
 

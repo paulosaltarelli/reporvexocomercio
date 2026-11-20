@@ -38,7 +38,7 @@
             ]],
             ['label' => 'Fiscal', 'icon' => 'document', 'links' => array_filter([
                 config('fiscal.product_invoices_enabled') ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'fiscal.company', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
-                $link('nfse.index', 'Notas de serviço', request()->routeIs('nfse.*')),
+                $link('nfse.index', 'Arquivo de serviços', request()->routeIs('nfse.*')),
                 config('fiscal.product_invoices_enabled') ? $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')) : null,
                 config('fiscal.product_invoices_enabled') ? $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')) : null,
             ])],

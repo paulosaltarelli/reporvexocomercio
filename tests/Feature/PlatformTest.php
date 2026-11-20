@@ -94,7 +94,9 @@ class PlatformTest extends TestCase
         $this->get($url)->assertRedirect('/vexo-admin/login');
         $this->centralSession();
         $this->get($url)->assertOk()->assertSee('Nenhum contrato cadastrado')->assertSee('Novo contrato');
-        $this->get($url.'/new')->assertOk()->assertSee('Recursos sujeitos à restrição por atraso')->assertSee('Mensalidade');
+        $this->get($url.'/new')->assertOk()->assertSee('Recursos sujeitos à restrição por atraso')->assertSee('Mensalidade')
+            ->assertSee('name="implantation_grace_days" min="0" max="3650" step="1" value="0"', false)
+            ->assertSee('name="overdue_grace_days" min="0" max="3650" step="1" value="0"', false);
         $data = ['start_date'=>'2028-05-01', 'end_date'=>'2028-06-30', 'monthly_amount'=>'165.50', 'due_day'=>20, 'restricted_modules'=>['sales']];
         $this->post($url.'/contracts', $data)->assertRedirect($url)->assertSessionHasNoErrors();
         $contract = \App\Platform\Contract::where('tenant_id', $this->company->id)->sole();
@@ -102,9 +104,13 @@ class PlatformTest extends TestCase
         $this->get($url)->assertOk()->assertSee($edit)->assertSee('165,50')->assertSee('05/2028')->assertSee('06/2028');
         $this->get($edit)->assertOk()->assertSee('value="sales" checked', false);
         unset($data['restricted_modules']);
+        $data['implantation_grace_days'] = 3;
+        $data['overdue_grace_days'] = 5;
         $this->post($url.'/contracts/'.$contract->id, $data + ['expected_version'=>$contract->version])
             ->assertRedirect($url)->assertSessionHasNoErrors();
         $this->assertSame([], $contract->fresh()->restricted_modules);
+        $this->get($url)->assertOk()->assertSee('3 dias')->assertSee('5 dias');
+        $this->get($edit)->assertOk()->assertSee('name="overdue_grace_days" min="0" max="3650" step="1" value="5"', false);
     }
 
     public function test_global_admin_management_is_central_only_preserves_last_admin_and_revokes_sessions(): void

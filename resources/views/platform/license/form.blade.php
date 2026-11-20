@@ -13,8 +13,23 @@
         <div class="field"><label for="monthly-amount">Mensalidade (R$)</label><input type="number" id="monthly-amount" name="monthly_amount" min="0.01" step="0.01" value="{{ old('monthly_amount',$contract->monthly_amount) }}" required></div>
         <div class="field"><label for="due-day">Dia do vencimento</label><input type="number" id="due-day" name="due_day" min="1" max="31" value="{{ old('due_day',$contract->due_day) }}" required></div>
     </div>
+    <fieldset>
+        <legend>Carências do contrato</legend>
+        <div class="form-grid">
+            <div class="field">
+                <label for="implantation-grace">Implantação sem cobrança (dias corridos)</label>
+                <input id="implantation-grace" type="number" name="implantation_grace_days" min="0" max="3650" step="1" value="{{ old('implantation_grace_days',$contract->implantation_grace_days ?? 0) }}" aria-describedby="implantation-grace-help">
+                <small class="hint" id="implantation-grace-help">Exemplo: com início em 01/04 e 90 dias de implantação, a cobrança pode começar em 30/06. Se o vencimento for dia 10, a primeira parcela vence em 10/07, desde que o contrato ainda esteja vigente.</small>
+            </div>
+            <div class="field">
+                <label for="overdue-grace">Tolerância após o vencimento (dias corridos)</label>
+                <input id="overdue-grace" type="number" name="overdue_grace_days" min="0" max="3650" step="1" value="{{ old('overdue_grace_days',$contract->overdue_grace_days ?? 0) }}" aria-describedby="overdue-grace-help">
+                <small class="hint" id="overdue-grace-help">Exemplo: se a parcela vencer no dia 10 e a tolerância for de 5 dias, os recursos selecionados podem ser restringidos a partir do dia 16 enquanto houver saldo em aberto. Com zero dias, a restrição pode começar no dia 11.</small>
+            </div>
+        </div>
+    </fieldset>
     <fieldset><legend>Recursos sujeitos à restrição por atraso</legend>
-        <p class="hint">Selecione os recursos que podem ser limitados quando houver parcelas vencidas. Deixe a lista vazia para manter todos disponíveis.</p>
+        <p class="hint">Selecione os recursos que podem ser limitados após a tolerância das parcelas vencidas. Deixe a lista vazia para manter todos disponíveis.</p>
         @php($selected = session()->hasOldInput() ? old('restricted_modules',[]) : ($contract->restricted_modules ?? []))
         @foreach($modules as $key => $label)
             <label class="checkbox-line"><input type="checkbox" name="restricted_modules[]" value="{{ $key }}" @checked(is_array($selected) && in_array($key,$selected,true))> {{ $label }}</label>

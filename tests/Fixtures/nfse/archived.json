@@ -1,0 +1,35 @@
+{
+    "environment": "restricted",
+    "total": "8.00",
+    "series": 1,
+    "number": "1",
+    "dps_id": "DPS355030821122233300018100001000000000000001",
+    "issued_at": "2026-11-19T12:00:00-03:00",
+    "competence": "2026-11-18",
+    "issuer": {
+        "cnpj": "11222333000181",
+        "legal_name": "PRESTADOR SINTETICO SEM VALOR FISCAL",
+        "municipality_code": "3550308"
+    },
+    "customer": {
+        "document": "52998224725",
+        "name": "TOMADOR SINTETICO"
+    },
+    "service": {
+        "description": "Manutenção",
+        "quantity": "1.000",
+        "unit_price": "8.00",
+        "total": "8.00"
+    },
+    "configuration": {
+        "municipality_code": "3550308",
+        "series": 1,
+        "op_simp_nac": "3",
+        "reg_ap_trib_sn": "1",
+        "reg_esp_trib": "0",
+        "service_national_code": "010701",
+        "nbs": "115021100",
+        "total_tax_mode": "not_informed"
+    },
+    "certificate_fingerprint": "a11faa56607c85dacd9875c20677eceb0fa93ce8c4798cbb1cb59decbbe90ca8"
+}

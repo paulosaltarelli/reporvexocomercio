@@ -93,7 +93,7 @@ class CommerceTest extends TestCase
         $this->postJson('/app/a/sales',[])->assertStatus(402)->assertJsonPath('modules.0','sales');
         $this->postJson('/app/a/documents/1/invoice',[])->assertStatus(402);
         $this->postJson('/app/a/quick-create/products',[])->assertStatus(402)->assertJsonPath('modules.0','catalog');
-        $this->postJson('/app/a/nfse/config',[])->assertStatus(402)->assertJsonPath('modules.0','fiscal');
+        $this->getJson('/app/a/nfse')->assertStatus(402)->assertJsonPath('modules.0','fiscal');
         $this->get('/app/a/finance')->assertOk()->assertSee('Licença com parcela vencida');
         $this->get('/app/a/account/password')->assertOk();
         $this->get(route('license.help',['company'=>'a']))->assertOk();
@@ -2824,8 +2824,9 @@ class CommerceTest extends TestCase
             rmdir($directory);
         }
     }
-    public function test_company_setup_is_admin_only_and_each_step_renders(): void
+    public function test_v2_company_setup_is_admin_only_and_each_step_renders(): void
     {
+        config(['fiscal.product_invoices_enabled' => true]);
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
         foreach (range(1,5) as $step) $this->get('/app/a/setup?step='.$step)->assertOk()->assertSee('Operação e implantação');
         $this->get('/app/a/setup?step[]=1')->assertSessionHasErrors('step');
@@ -2836,28 +2837,30 @@ class CommerceTest extends TestCase
         $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertForbidden();
     }
 
-    public function test_nfse_only_company_and_setup_preserve_legacy_settings_without_goods_invoice_requirements(): void
+    public function test_setup_preserves_legacy_fiscal_settings_and_skips_certificate_configuration(): void
     {
         config(['fiscal.product_invoices_enabled' => false]);
         $this->withSession(['tenant_id'=>$this->a->id, 'user_id'=>$this->user->id, 'auth_version'=>0]);
-        $stored = array_replace(\App\Services\CompanyOperations::DEFAULTS, ['nfe'=>true, 'nfce'=>false]);
+        $stored = array_replace(\App\Services\CompanyOperations::DEFAULTS, ['nfe'=>true, 'nfce'=>false, 'nfse'=>true]);
         \App\Models\CompanyOperation::forceCreate(['id'=>1, 'version'=>0, 'configuration'=>$stored]);
         \App\Models\BusinessProfile::forceCreate(['id'=>1, 'legal_name'=>'Empresa QA', 'document'=>'07.396.600/0001-60', 'state_registration'=>'LEGADO']);
-        foreach (['/app/a/business', '/app/a/setup?step=1', '/app/a/setup?step=2', '/app/a/setup?step=3', '/app/a/nfse'] as $url) {
-            $this->get($url)->assertOk()->assertDontSee('NFC-e')->assertDontSee('NF-e')->assertDontSee('CSC');
+        foreach (['/app/a/business', '/app/a/setup?step=1', '/app/a/setup?step=2', '/app/a/setup?step=4', '/app/a/nfse'] as $url) {
+            $this->get($url)->assertOk()->assertDontSee('NFC-e')->assertDontSee('NF-e')->assertDontSee('CSC')->assertDontSee('certificado')->assertDontSee('Preparar DPS');
         }
-        $this->get('/app/a/setup?step=3')->assertSee('Configuração própria da NFS-e');
+        $this->get('/app/a/setup?step=3')->assertRedirect('/app/a/setup?step=4');
         $this->get('/app/a/fiscal')->assertRedirect('/app/a/nfse');
         $this->post('/app/a/business', ['legal_name'=>'Nome atualizado'])->assertRedirect()->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $this->assertSame('LEGADO', \App\Models\BusinessProfile::findOrFail(1)->state_registration);
         $form = $this->operationPayload(['version'=>0, 'nfse'=>false]);
         unset($form['nfce'], $form['nfe']);
-        $this->post('/app/a/setup', $form)->assertRedirect('/app/a/setup?step=3')->assertSessionHasNoErrors();
+        $this->post('/app/a/setup', $form)->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $record = \App\Models\CompanyOperation::findOrFail(1);
         $this->assertTrue($record->configuration['nfe']);
         $this->assertFalse($record->configuration['nfce']);
+        $this->assertTrue($record->configuration['nfse']);
+        $this->assertFalse(app(\App\Services\CompanyOperations::class)->current()['nfse']);
         $this->assertFalse(app(\App\Services\CompanyOperations::class)->current()['nfe']);
         $this->post('/app/a/setup/fiscal/continue')->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
     }
@@ -2871,7 +2874,7 @@ class CommerceTest extends TestCase
         app(TenantConnection::class)->connect($this->a);
         $this->assertSame(2,app(\App\Services\CompanyOnboarding::class)->step());
         $version=\App\Models\CompanyOperation::find(1)->version;
-        $this->post('/app/a/setup',$this->operationPayload(['version'=>$version,'nfce'=>false,'nfe'=>false,'nfse'=>false]))->assertRedirect('/app/a/setup?step=3')->assertSessionHasNoErrors();
+        $this->post('/app/a/setup',$this->operationPayload(['version'=>$version,'nfce'=>false,'nfe'=>false,'nfse'=>false]))->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
         $this->post('/app/a/setup/fiscal/continue')->assertRedirect('/app/a/setup?step=4');
         $this->from('/app/a/setup?step=4')->post('/app/a/users',['name'=>'Caixa','email'=>'cashier@example.test','role'=>'operator','password'=>'initial-cashier-1234','password_confirmation'=>'initial-cashier-1234','access_profile'=>'operator'])->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
         $this->post('/app/a/setup/team',['name'=>'Responsável do caixa','user_id'=>$this->user->id,'active'=>1])->assertRedirect('/app/a/setup?step=5')->assertSessionHasNoErrors();
@@ -2896,17 +2899,14 @@ class CommerceTest extends TestCase
         $this->post('/app/a/setup/complete',['version'=>0,'reviewed'=>1])->assertSessionHasErrors('team');
         app(TenantConnection::class)->connect($this->a);$this->assertNull(\App\Models\CompanyOperation::find(1)?->completed_at);
     }
-    public function test_nfse_partial_draft_keeps_unknown_numbering_empty_and_never_enables_emission(): void
+    public function test_retired_dps_setup_does_not_create_configuration_or_sequences(): void
     {
-        \App\Models\BusinessProfile::forceCreate(['id'=>1,'legal_name'=>'Empresa','document'=>'07.396.600/0001-60','municipality_code'=>'3138203','tax_regime'=>'simples']);
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
-        $this->from('/app/a/setup?step=3')->post('/app/a/nfse/configuration/draft',['municipality_code'=>'3138203','timezone'=>'America/Sao_Paulo','op_simp_nac'=>'3','reg_ap_trib_sn'=>'1','service_national_code'=>'010701','nbs'=>'115011000'])->assertSessionHasNoErrors()->assertRedirect('/app/a/setup?step=3');
+        $this->post('/app/a/nfse/configuration/draft',['municipality_code'=>'3138203'])->assertNotFound();
+        $this->post('/app/a/nfse/config',['certificate_password'=>'local-test'])->assertNotFound();
         app(TenantConnection::class)->connect($this->a);
-        $draft=app(\App\Fiscal\Nfse\Configuration::class)->draftValues();$this->assertSame('010701',$draft['service_national_code']);$this->assertArrayNotHasKey('series',$draft);
-        $this->assertSame(0,\App\Models\NfseConfiguration::count());$this->assertSame(0,DB::connection('tenant')->table('nfse_sequences')->count());
-        $this->post('/app/a/nfse/configuration/draft',['series'=>70000])->assertSessionHasErrors('series');
-        $this->post('/app/a/nfse/configuration/draft',['certificate_password'=>'must-not-flash'])->assertSessionHasErrors('certificate_password')->assertSessionMissing('_old_input.certificate_password');
-        app(TenantConnection::class)->connect($this->b);$this->assertSame([],app(\App\Fiscal\Nfse\Configuration::class)->draftValues());
+        $this->assertSame(0,DB::connection('tenant')->table('nfse_configurations')->count());
+        $this->assertSame(0,DB::connection('tenant')->table('nfse_sequences')->count());
     }
     public function test_global_support_is_identified_audited_and_cannot_be_used_without_central_session(): void
     {
@@ -3373,15 +3373,15 @@ class CommerceTest extends TestCase
     public function test_setup_blocks_completion_until_company_is_ready_then_invalidates_after_change(): void
     {
         $ops=app(\App\Services\CompanyOperations::class);
-        $ops->save($this->operationPayload(['nfce'=>false,'nfe'=>false,'nfse'=>false]),$this->user->id);
-        try {$ops->complete(1,$this->user->id);$this->fail('Incomplete setup accepted');}
+        $settings=$ops->save($this->operationPayload(),$this->user->id);
+        try {$ops->complete($settings->version,$this->user->id);$this->fail('Incomplete setup accepted');}
         catch (ValidationException $e) {$this->assertArrayHasKey('configuration',$e->errors());}
         \App\Models\BusinessProfile::forceCreate(['id'=>1,'legal_name'=>'Empresa Teste','document'=>'07.396.600/0001-60']);
-        $ops->complete(1,$this->user->id);
+        $ops->complete($settings->version,$this->user->id);
         $this->assertNotNull(\App\Models\CompanyOperation::find(1)->completed_at);
-        $ops->save($this->operationPayload(['nfce'=>false,'nfe'=>false,'nfse'=>false,'commissions'=>false,'version'=>2]),$this->user->id);
+        $settings=$ops->save($this->operationPayload(['commissions'=>false,'version'=>$settings->fresh()->version]),$this->user->id);
         $this->assertNull(\App\Models\CompanyOperation::find(1)->completed_at);
-        $ops->complete(3,$this->user->id);
+        $ops->complete($settings->version,$this->user->id);
         $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0])->post('/app/a/business',['legal_name'=>'Empresa Atualizada','document'=>'07.396.600/0001-60'])->assertRedirect();
         app(TenantConnection::class)->connect($this->a);
         $this->assertNull(\App\Models\CompanyOperation::find(1)->completed_at);

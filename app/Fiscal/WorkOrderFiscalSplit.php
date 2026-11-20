@@ -64,7 +64,7 @@ final class WorkOrderFiscalSplit
             || !hash_equals($dps->xml_sha256, hash('sha256', $dps->signed_xml))
             || Snapshot::hash($dps->snapshot['work_order_split'] ?? []) !== Snapshot::hash($split)
             || bccomp($dps->total, $split['services_total'], 2) !== 0) {
-            throw self::error('Prepare primeiro a DPS da parte de serviço desta OS e confira sua integridade.');
+            throw self::error('Esta operação exige um registro histórico íntegro da parte de serviço desta OS.');
         }
         return $split + ['nfse_document_id' => $dps->id, 'dps_id' => $dps->dps_id];
     }

@@ -47,6 +47,37 @@ trait ContractBillingCases
         $service->create($company, array_replace($terms, ['start_date' => '2028-04-30']), $actor, $this->admin->auth_version);
     }
 
+    public function test_grace_periods_control_the_first_due_date_and_the_first_restricted_day(): void
+    {
+        $this->travelTo(Carbon::parse('2027-04-01 12:00'));
+        $billing = app(ContractBilling::class);
+        $terms = ['start_date' => '2027-04-01', 'end_date' => '2027-08-31', 'due_day' => 10,
+            'monthly_amount' => '100', 'implantation_grace_days' => 90, 'overdue_grace_days' => 5,
+            'restricted_modules' => ['sales']];
+        $contract = $billing->create($this->company->id, $terms, $this->admin->id, $this->admin->auth_version);
+        $this->assertSame('2027-06-30', $contract->billingStartDate()->toDateString());
+        $rows = $contract->installments()->orderBy('due_date')->get();
+        $this->assertSame(['2027-07-10', '2027-08-10'], $rows->map(fn ($i) => $i->due_date->toDateString())->all());
+        $first = $rows->first();
+        $this->travelTo(Carbon::parse('2027-06-29 23:59'));
+        try {
+            DB::connection('central')->transaction(fn () => $billing->lockForCharge($this->company->id, $first->id));
+            $this->fail('A cobrança antecipada deveria estar bloqueada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('installment', $exception->errors());
+        }
+        $this->travelTo(Carbon::parse('2027-06-30 00:00'));
+        DB::connection('central')->transaction(fn () => $billing->lockForCharge($this->company->id, $first->id));
+        $policy = app(\App\Platform\ContractAccess::class);
+        $this->travelTo(Carbon::parse('2027-07-15 23:59'));
+        $this->assertSame('overdue', $first->status);
+        $this->assertSame([], $policy->restricted($this->company));
+        $this->travelTo(Carbon::parse('2027-07-16 00:00'));
+        $this->assertArrayHasKey('sales', $policy->restricted($this->company));
+        $billing->confirmPix($this->company->id, $first->id, str_repeat('a', 32), 'E'.str_repeat('3', 31), '100.00');
+        $this->assertSame([], $policy->restricted($this->company));
+    }
+
     public function test_contract_payment_replays_bank_confirmation_and_rejects_cross_tenant(): void
     {
         $this->travelTo(Carbon::parse('2028-04-30 12:00:00'));

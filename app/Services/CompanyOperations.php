@@ -10,7 +10,7 @@ class CompanyOperations
 {
     public const DEFAULTS = [
         'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
-        'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>true,
+        'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>false,
     ];
     private function effective(array $stored): array
     {
@@ -19,6 +19,7 @@ class CompanyOperations
             $configuration['nfce'] = false;
             $configuration['nfe'] = false;
         }
+        $configuration['nfse'] = false;
         return $configuration;
     }
 
@@ -54,6 +55,7 @@ class CompanyOperations
         abort_unless(User::whereKey($actor)->where('active',true)->where('role','admin')->exists(),403);
         $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual', 'negative_stock'=>'sometimes|required|in:block,warn,allow'];
         $defaults = self::DEFAULTS;
+        unset($defaults['nfse']);
         $productInvoices = config('fiscal.product_invoices_enabled', false);
         if (!$productInvoices) unset($defaults['nfe'], $defaults['nfce']);
         foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock']) as $key) $rules[$key]='required|boolean';
@@ -62,8 +64,8 @@ class CompanyOperations
         if ($data['catalog_mode']==='services' && ($data['inventory'] || ($data['nfce'] ?? false) || ($data['nfe'] ?? false))) {
             throw ValidationException::withMessages(['catalog_mode'=>$productInvoices ? 'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.' : 'Desabilite a gestão de estoque para operar somente com serviços.']);
         }
-        if ($data['catalog_mode']==='products' && ($data['nfse'] || $data['work_orders'])) {
-            throw ValidationException::withMessages(['catalog_mode'=>'Para NFS-e ou ordens de serviço, habilite também serviços.']);
+        if ($data['catalog_mode']==='products' && $data['work_orders']) {
+            throw ValidationException::withMessages(['catalog_mode'=>'Para ordens de serviço, habilite também serviços.']);
         }
         return DB::connection('tenant')->transaction(function () use ($data,$actor,$defaults) {
             CompanyOperation::firstOrCreate(['id'=>1],['configuration'=>self::DEFAULTS]);
@@ -108,17 +110,14 @@ class CompanyOperations
         $c=$this->current(); $p=BusinessProfile::find(1); $pending=[];
         if (! $p?->legal_name) $pending['Preencha a razão social em Minha empresa.']=1;
         if (! \App\Fiscal\TaxpayerDocument::cnpj((string)$p?->document)) $pending['Preencha o CNPJ da empresa.']=1;
-        if ($c['nfce'] || $c['nfe'] || $c['nfse']) {
+        if ($c['nfce'] || $c['nfe']) {
             foreach (['street','number','district','city','state','postal_code','municipality_code','tax_regime'] as $field) {
                 if (empty($p?->$field)) { $pending['Complete endereço, código IBGE e regime tributário em Minha empresa.']=1; break; }
             }
-            if ($c['nfce'] || $c['nfe']) {
-                $issuer=FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('environment','homologation')->first();
-                if (! $issuer || ! FiscalCredential::where('issuer_id',$issuer->id)->where('valid_from','<=',now())->where('valid_until','>',now())->where('certificate_document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->exists()) {
-                    $pending['Vincule e valide um certificado da empresa nas configurações fiscais.']=3;
-                }
+            $issuer=FiscalIssuer::where('document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('environment','homologation')->first();
+            if (! $issuer || ! FiscalCredential::where('issuer_id',$issuer->id)->where('valid_from','<=',now())->where('valid_until','>',now())->where('certificate_document',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->exists()) {
+                $pending['Vincule e valide um certificado da empresa nas configurações fiscais.']=3;
             }
-            if ($c['nfse'] && ! \App\Models\NfseConfiguration::where('cnpj',\App\Fiscal\TaxpayerDocument::normalize((string)$p?->document))->where('certificate_valid_until','>',now())->exists()) $pending['Vincule o certificado na preparação de NFS-e da empresa.']=3;
         }
         return $pending;
     }

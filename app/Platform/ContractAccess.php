@@ -33,7 +33,7 @@ final class ContractAccess
                     ->whereColumn('installment.contract_id', 'platform_contracts.id')
                     ->whereColumn('installment.tenant_id', 'platform_contracts.tenant_id')
                     ->whereNull('installment.cancelled_at')
-                    ->where('installment.due_date', '<', $today)
+                    ->whereRaw('DATEDIFF(?, installment.due_date) > platform_contracts.overdue_grace_days', [$today])
                     ->whereColumn('installment.paid_amount', '<', 'installment.amount');
             })
             ->get(['restricted_modules']);

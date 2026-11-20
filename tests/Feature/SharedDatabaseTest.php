@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Fiscal\FiscalTransportException;
 use App\Fiscal\Nfse\Access;
-use App\Fiscal\Nfse\PrepareDps;
 use App\Fiscal\PrivateFiscalFiles;
 use App\Fiscal\ProcessFiscalOutbox;
 use App\Fiscal\QueueNfce;
@@ -367,7 +366,7 @@ class SharedDatabaseTest extends TestCase
         $this->assertSame(0, StockMovement::count());
     }
 
-    public function test_shared_fiscal_simulation_and_missing_certificate_fail_closed_and_reject_wrong_tenant_context(): void
+    public function test_shared_fiscal_simulation_leaves_service_tax_archive_unchanged_and_rejects_wrong_tenant_context(): void
     {
         config(['fiscal.product_invoices_enabled' => true]);
         $b = $this->catalog($this->b);
@@ -378,12 +377,8 @@ class SharedDatabaseTest extends TestCase
         $this->assertSame('uncertain', $simulation->state);
         $this->assertSame('accepted', app(SimulationFiscal::class)->consult($this->a, $simulation->id, $a['owner']->id, (string) Str::uuid())->state);
         $this->assertSame('cancelled', app(SimulationFiscal::class)->cancel($this->a, $simulation->id, $a['owner']->id, 'Cancelamento interno de QA', (string) Str::uuid())->state);
-        try {
-            app(PrepareDps::class)->prepare($this->a, $sale->id, $a['owner']->id, ['request_key' => (string) Str::uuid(), 'competence' => now()->toDateString(), 'operation_scope_confirmed' => true]);
-            $this->fail('No A1 means no DPS preparation.');
-        } catch (ValidationException) {
-            $this->assertSame(0, NfseDocument::count());
-        }
+        $this->assertSame(0, NfseDocument::count());
+        $this->assertSame(0, DB::connection('tenant')->table('nfse_sequences')->count());
         $this->assertSame(0, FiscalDocument::count());
         $this->assertSame(0, DB::connection('tenant')->table('fiscal_outbox')->count());
         $this->connect($this->b);

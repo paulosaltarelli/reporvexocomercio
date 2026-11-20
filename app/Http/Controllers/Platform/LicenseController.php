@@ -54,7 +54,7 @@ final class LicenseController extends Controller
 
     private function fields(Request $request): array
     {
-        return $request->only(['start_date', 'end_date', 'monthly_amount', 'due_day', 'expected_version']) + [
+        return $request->only(['start_date', 'end_date', 'monthly_amount', 'due_day', 'implantation_grace_days', 'overdue_grace_days', 'expected_version']) + [
             'restricted_modules' => $request->input('restricted_modules', []),
         ];
     }

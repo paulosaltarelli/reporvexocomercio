@@ -90,7 +90,7 @@
         <details><summary>Posso vender produtos e prestar serviços?</summary><p>Sim. Produtos e serviços podem fazer parte da mesma venda. Você também pode preparar orçamentos e acompanhar ordens de serviço antes de gerar a venda.</p></details>
         <details><summary>Como funcionam as margens e o custo médio?</summary><p>As entradas atualizam o custo médio ponderado do produto. A sugestão de preço usa a margem sobre o valor final da venda, configurada no grupo ou no próprio produto. Por exemplo: custo de R$ 60,00 e margem de 40% resultam em preço sugerido de R$ 100,00, antes de considerar despesas e tributos.</p></details>
         <details><summary>O sistema controla parcelas e pagamentos parciais?</summary><p>Sim. É possível organizar compromissos em até 24 parcelas mensais e registrar baixas integrais ou parciais. Os pagamentos e recebimentos são informados manualmente; o Vendra não movimenta dinheiro nem faz conciliação bancária automática.</p></details>
-        <details><summary>Como funciona a nota de serviço?</summary><p>O Vendra prepara e assina a Declaração de Prestação de Serviços (DPS). A transmissão para autorização da NFS-e ainda está pendente de integração.</p></details>
+        <details><summary>Qual comprovante posso entregar após uma venda?</summary><p>O Vendra gera um recibo comercial com os itens, o total e as condições de pagamento. Você pode imprimi-lo pelo navegador, inclusive em impressora térmica.</p></details>
         <details><summary>Quanto custa e como contratar?</summary><p>Peça uma demonstração pelo WhatsApp ou e-mail. A Vexo avalia sua operação e apresenta uma proposta com condições de implantação e contratação. Não há contratação automática nesta página.</p></details>
     </div></div></section>
 

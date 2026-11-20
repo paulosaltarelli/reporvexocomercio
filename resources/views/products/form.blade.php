@@ -56,7 +56,7 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
             <div class="field"><label for="municipal_service_code">Código municipal do serviço</label><input id="municipal_service_code" name="municipal_service_code" maxlength="30" value="{{ old('municipal_service_code',$product->municipal_service_code) }}"><small class="hint">Informe conforme a classificação usada pelo município.</small></div>
             <div class="field"><label for="iss_rate">Alíquota de ISS (%)</label><input id="iss_rate" name="iss_rate" type="number" min="0" max="100" step="0.01" value="{{ old('iss_rate',$product->iss_rate) }}"></div>
         </div>
-        <p class="hint">Os dados municipais auxiliam a preparação local da DPS para serviços.</p>
+        <p class="hint">Informe o código e a alíquota conforme o cadastro municipal do serviço.</p>
     </div>
 </details>
 <div class="actions"><button class="primary">Salvar cadastro</button><a href="{{ route('products',['company'=>$tenant->slug]) }}">Voltar</a></div></form>

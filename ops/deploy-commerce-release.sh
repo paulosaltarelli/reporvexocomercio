@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode=${1:-}
-[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 ) ]] || { echo 'Uso: --apply ou --apply-licensing-v1 DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 ) ]] || { echo 'Uso: --apply, --apply-licensing-v1 ou --apply-nfse-v1 DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -14,9 +14,10 @@ flock -n 9 || { echo 'Outra implantação em andamento.' >&2; exit 1; }
 [[ $(realpath "$live") == "$live" ]]
 python3 "$stage/ops/qa-release.py" verify "$stage" "$manifest"
 python3 - "$release" "$live" "$mode" <<'PY'
-import hashlib,pathlib,re,sys
+import hashlib,json,os,pathlib,re,sys
 release,live=map(pathlib.Path,sys.argv[1:3])
 licensing=sys.argv[3]=="--apply-licensing-v1"
+nfse=sys.argv[3]=="--apply-nfse-v1"
 def read(path,allow_absent):
     entries={}
     for line in path.read_text().splitlines():
@@ -28,7 +29,14 @@ def read(path,allow_absent):
 baseline=read(release/'baseline.sha256',True)
 new=read(release/'runtime.sha256',False)
 protected=read(release/'protected.sha256',False)
-if set(new)!=set(baseline) or set(protected)&set(new):raise SystemExit('Escopo divergente.')
+removed=read(release/'removed.sha256',False) if nfse else {}
+if set(new)&set(removed) or (set(new)|set(removed))!=set(baseline) or set(protected)&set(baseline):raise SystemExit('Escopo divergente.')
+if nfse:
+    known=set(json.loads(pathlib.Path(os.environ['VENDRA_QA_EVIDENCE']).read_bytes())['files'])
+    for name,h in removed.items():
+        if name in known or h!=baseline[name] or not (name.startswith('app/Fiscal/Nfse/') or name.startswith('resources/views/fiscal/nfse/')):
+            raise SystemExit('Remoção fora do escopo da DPS: '+name)
+
 for name,h in {**baseline,**protected}.items():
     p=live/name
     if p.resolve()!=p or (h=='-' and p.exists()) or (h!='-' and (not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest()!=h)):raise SystemExit('Baseline divergente: '+name)
@@ -40,12 +48,15 @@ if licensing:
         'database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php',
     }
     if {name for name in new if name.startswith('database/')}!=migrations:raise SystemExit('Migrações fora do escopo da V1.')
+    if 'resources/views/welcome.blade.php' not in new:raise SystemExit('Landing da versão ausente.')
+if nfse and {name for name in new if name.startswith('database/')}!={'database/migrations/2026_11_20_000006_add_contract_grace_periods.php'}:
+    raise SystemExit('A revisão NFS-e e carências requer somente a migração central dos prazos contratuais.')
+if licensing or nfse:
     legacy={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
     if not legacy<=set(protected):raise SystemExit('Login de transição precisa estar protegido.')
-    if 'resources/views/welcome.blade.php' not in new:raise SystemExit('Landing da versão ausente.')
 for name in new:
     if name not in ('bootstrap/app.php','composer.json') and not name.startswith(('app/','config/','database/migrations/','ops/','public/','resources/views/','routes/')):raise SystemExit('Arquivo fora do escopo: '+name)
-    if (name=='resources/views/welcome.blade.php' and not licensing) or name in ('ops/apache.conf','public/index.php') or name.startswith(('public/brand/','public/marketing')):raise SystemExit('Arquivo protegido: '+name)
+    if (name=='resources/views/welcome.blade.php' and not (licensing or nfse)) or name in ('ops/apache.conf','public/index.php') or name.startswith(('public/brand/','public/marketing')):raise SystemExit('Arquivo protegido: '+name)
 PY
 cd "$live"
 phpcli=(/usr/bin/php -c /opt/reporvexo-tools/php/cli.ini)
@@ -60,7 +71,7 @@ health() {
     done
     return 1
 }
-if [[ $mode == --apply-licensing-v1 ]]; then
+if [[ $mode != --apply ]]; then
     for unit in vendra-licensing.timer vendra-licensing.service; do
         case $(systemctl show "$unit" -p ActiveState --value) in inactive|failed) ;; *) echo "Aguarde a parada de $unit." >&2; exit 1;; esac
     done
@@ -103,6 +114,9 @@ while read -r h p; do
     if [[ $h != - ]]; then mkdir -p "$journal/previous/$(dirname "$p")"; cp -p "$live/$p" "$journal/previous/$p"; fi
 done < "$release/baseline.sha256"
 overlay=1
+if [[ $mode == --apply-nfse-v1 ]]; then
+    while read -r h p; do rm -- "$live/$p"; done < "$release/removed.sha256"
+fi
 while read -r h p; do
     d=$(dirname "$p")
     if [[ ! -d "$live/$d" ]]; then install -d -o root -g vendra-web -m750 "$live/$d"; fi
@@ -113,6 +127,10 @@ while read -r h p; do runuser -u vendra-web -- test -r "$live/$p"; done < "$mani
 migrations=(database/migrations/2026_11_20_000001_add_platform_mfa.php database/migrations/2026_11_20_000004_add_company_activation.php)
 if [[ $mode == --apply-licensing-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000001_create_platform_contracts.php database/migrations/2026_11_20_000002_create_platform_contract_installments.php database/migrations/2026_11_20_000003_create_platform_contract_payments.php database/migrations/2026_11_20_000005_create_platform_c6_pix_charges.php)
+elif [[ $mode == --apply-nfse-v1 ]]; then
+    migrations=(database/migrations/2026_11_20_000006_add_contract_grace_periods.php)
+fi
+if [[ $mode != --apply ]]; then
     # Check effective configuration without displaying credentials before reopening the application.
     runuser -u vendra-web -- "${phpcli[@]}" -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); foreach (["fiscal.product_invoices_enabled","c6pix.enabled","c6pix.sandbox.enabled","licensing_worker.reconcile","licensing_worker.issue"] as $key) if (config($key)!==false) exit(1);'
 fi

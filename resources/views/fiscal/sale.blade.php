@@ -15,7 +15,7 @@
 <p>A conferência registra os dados exibidos agora, incluindo as pendências. Não reserva numeração, não transmite e não altera estoque ou financeiro.</p>
 <button class="primary">Registrar conferência para revisão</button></form>@endif
 <p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}">Voltar à venda</a></p></section>
-@if($sale->status==='completed')<section class="panel"><h2>Emitir NFC-e em homologação</h2><p>Este fluxo atende venda presencial dentro da UF, já recebida em dinheiro, Pix ou transferência. Mercadorias de OS mista exigem DPS de serviço já preparada e confirmação da separação. Confira as regras do produto e a configuração em Minha empresa.</p><form method="post" action="{{ route('fiscal.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
+@if($sale->status==='completed')<section class="panel"><h2>Emitir NFC-e em homologação</h2><p>Este fluxo atende venda presencial dentro da UF, já recebida em dinheiro, Pix ou transferência. Mercadorias de OS mista exigem DPS de serviço arquivada e confirmação da separação. Confira as regras do produto e a configuração em Minha empresa.</p><form method="post" action="{{ route('fiscal.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 <div class="form-grid"><div class="field"><label for="destination_state">UF de destino desta venda</label><input id="destination_state" name="destination_state" maxlength="2" required></div><div class="field"><label for="presence">Presença do comprador</label><select id="presence" name="presence"><option value="1">Presencial</option></select></div></div>
 @include('fiscal.work-order-consent')
 @if($hasPixReceipt)

@@ -102,6 +102,9 @@ final class LicensingWork extends Command
     {
         $now = now();
         $installments = $db->table('platform_contract_installments as i')->join('tenants as t','i.tenant_id','=','t.id')
+            ->join('platform_contracts as c', 'i.contract_id', '=', 'c.id')
+            ->where(fn ($q) => $q->where('c.implantation_grace_days', 0)
+                ->orWhereRaw('DATEDIFF(?, c.start_date) >= c.implantation_grace_days', [today()->toDateString()]))
             ->where('t.active', true)->where('t.is_demonstration', false)->whereNull('i.cancelled_at')
             ->whereColumn('i.amount','>','i.paid_amount')
             ->where('i.due_date','<=',now('America/Sao_Paulo')->addDays(7)->toDateString())

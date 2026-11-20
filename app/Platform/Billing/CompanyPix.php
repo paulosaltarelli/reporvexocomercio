@@ -153,7 +153,7 @@ final class CompanyPix
             return 'paid';
         }
         $invoice = ContractInstallment::where('tenant_id', $row->tenant_id)->findOrFail($row->installment_id);
-        $bank = $gateway->charge($row->txid, $row->amount, $create && !$invoice->cancelled_at && $invoice->balance === $row->amount);
+        $bank = $gateway->charge($row->txid, $row->amount, $create && !$invoice->cancelled_at && !$invoice->contract->inImplantationGrace() && $invoice->balance === $row->amount);
         $receipt = null;
         $key = $gateway instanceof C6Bank ? $gateway->receivingKey() : (string) config('c6pix.key');
         $state = $this->inspect($row, $bank, $key);
