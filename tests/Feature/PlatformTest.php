@@ -398,6 +398,11 @@ class PlatformTest extends TestCase
         $this->get($uri)->assertOk()->assertSee('Aceito pelo SMTP')->assertSee('Falha no envio')->assertSee('Resultado não confirmado');
         $this->get($uri.'?'.http_build_query(['status' => 'sent', 'recipient' => $recipient]))
             ->assertOk()->assertSee($sent->subject)->assertDontSee($failed->subject)->assertDontSee('Tentativa em andamento QA');
+        $filters = ['recipient' => $recipient, 'status' => 'sent', 'page' => 1];
+        $detail = route('platform.settings.emails.show', ['id' => $sent->id] + $filters);
+        $list = route('platform.settings.emails.index', $filters);
+        $this->get($list)->assertOk()->assertSee($detail);
+        $this->get($detail)->assertOk()->assertSee($list)->assertSee('Voltar aos envios');
         foreach ([$sent, $failed] as $attempt) {
             $response = $this->get($uri.'/'.$attempt->id)->assertOk()->assertSee($attempt->recipient)
                 ->assertSee($attempt->subject)->assertDontSee('#token=')->assertDontSee('name="activation_code"', false);

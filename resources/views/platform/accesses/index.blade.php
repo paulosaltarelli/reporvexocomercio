@@ -34,14 +34,14 @@
     @if($invitations->isEmpty())
         <p>Nenhum convite registrado para esta empresa.</p>
     @else
-        <div class="table-scroll"><table>
+        <div class="table-scroll access-list" role="region" aria-label="Vendedores implantadores" tabindex="0"><table>
             <thead><tr><th>Vendedor</th><th>Situação</th><th>Convite</th><th>Ações</th></tr></thead>
             <tbody>@foreach($invitations as $invite)
-                <tr><td>{{ $invite->name }}<br>{{ $invite->email }}</td><td>{{ $invite->label((bool)$company->active,$activeUsers->get($invite->user_id)===$invite->email) }}<br>{{ \App\Platform\InstallerInvitation::PROFILES[$invite->access_profile] ?? 'Implantação' }}</td>
-                    <td>@if($invite->accepted_at)Aceito em {{ $invite->accepted_at->format('d/m/Y H:i') }}
+                <tr><td data-label="Vendedor"><strong>{{ $invite->name }}</strong><br>{{ $invite->email }}</td><td data-label="Situação">{{ $invite->label((bool)$company->active,$activeUsers->get($invite->user_id)===$invite->email) }}<br>{{ \App\Platform\InstallerInvitation::PROFILES[$invite->access_profile] ?? 'Implantação' }}</td>
+                    <td data-label="Convite">@if($invite->accepted_at)Aceito em {{ $invite->accepted_at->format('d/m/Y H:i') }}
                         @elseif($invite->delivery_status==='sent' && $invite->expires_at)O link expira em {{ $invite->expires_at->format('d/m/Y H:i') }}
                         @else Criado em {{ $invite->created_at->format('d/m/Y H:i') }} @endif</td>
-                    <td>
+                    <td data-label="Ações">
                         @if($company->active && $invite->status==='pending')
                         <form method="post" action="{{ route('platform.company-access.resend',['id'=>$company->id,'invitation'=>$invite->id]) }}">
                             @csrf<input type="hidden" name="expected_version" value="{{ $invite->version }}">
@@ -75,7 +75,7 @@
                 </tr>
             @endforeach</tbody>
         </table></div>
-        {{ $invitations->links() }}
+        {{ $invitations->links('platform.pagination',['label'=>'Páginas de vendedores']) }}
     @endif
 </section>
 @endsection

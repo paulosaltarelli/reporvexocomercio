@@ -11,5 +11,5 @@
             </tr>
         @endforeach</tbody></table>
     </div>
-    <div class="pagination">{{ $installments->links() }}</div>
+    <div class="pagination">{{ $central ? $installments->links('platform.pagination',['label'=>'Páginas de parcelas']) : $installments->links() }}</div>
 @endif

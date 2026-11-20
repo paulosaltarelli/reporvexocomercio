@@ -16,5 +16,5 @@
             </tr>
         @endforeach</tbody></table>
     </div>
-    <div class="pagination">{{ $contracts->links() }}</div>
+    <div class="pagination">{{ $central ? $contracts->links('platform.pagination',['label'=>'Páginas de contratos']) : $contracts->links() }}</div>
 @endif

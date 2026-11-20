@@ -1,0 +1,47 @@
+/* Loaded only for printing a work order. */
+@page { size: A4 portrait; margin: 14mm 15mm 16mm; }
+
+body, .workspace { background: white; color: #17243b; }
+.workspace > main { padding: 0; }
+.workspace > footer, .page-top .eyebrow, .document-screen-facts { display: none !important; }
+.company-report-header { padding-bottom: 3mm; margin-bottom: 4mm; }
+.page-top { margin-bottom: 1.5mm; }
+.page-top h1 { font-size: 19pt; line-height: 1.2; margin: 0; }
+.work-order-copy { margin: 0; padding: 0; border: 0; border-radius: 0; break-inside: auto; }
+.workspace .os-print-facts[hidden] { display: block !important; }
+.os-print-dates { display: flex; gap: 8mm; margin: 0 0 4mm; font-size: 9pt; }
+.os-print-facts dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8mm;
+    row-gap: 2.5mm;
+    border-block: 1px solid #c4cdda;
+    padding: 3mm 0;
+    margin: 0 0 4mm;
+    break-inside: avoid;
+}
+.os-print-facts dt { font-size: 8pt; color: #40516b; }
+.os-print-facts dd { font-size: 10.5pt; margin: 0; overflow-wrap: anywhere; }
+.work-order-copy h3 { font-size: 11pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+.os-print-notes { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 3mm; }
+.work-order-copy .scroll { display: block; overflow: visible; }
+.work-order-copy table { width: 100%; font-size: 9pt; }
+.work-order-copy thead { display: table-header-group; }
+.work-order-copy tr { break-inside: avoid; }
+.work-order-copy th, .work-order-copy td { padding: 1.5mm 1.2mm !important; }
+.work-order-copy th.num { text-align: right; white-space: normal; overflow-wrap: normal; word-break: normal; }
+.work-order-copy td.num { text-align: right; white-space: nowrap; }
+.document-settlement { break-inside: avoid; page-break-inside: avoid; }
+.work-order-copy .num[data-zero-value] > *, .receipt-net[data-no-charge] > span { display: none; }
+.work-order-copy .num[data-zero-value]::after { content: '—'; }
+.receipt-net[data-no-charge]::after { content: 'Sem cobrança'; }
+.work-order-signatures {
+    display: flex;
+    gap: 12mm;
+    padding-top: 18mm;
+    margin: 5mm 0 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+.work-order-signatures > div { flex: 1 1 0; min-width: 0; gap: 1mm; font-size: 9pt; overflow-wrap: anywhere; }
+.work-order-signatures .signature-line { margin-bottom: 1mm; }

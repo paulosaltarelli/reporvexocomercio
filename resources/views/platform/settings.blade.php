@@ -7,7 +7,7 @@
     @if($smtp===null)
         <p role="alert">A configuração privada de SMTP está indisponível. Verifique as permissões do arquivo e a chave da aplicação no servidor.</p>
     @else
-        <p>Este servidor SMTP envia os convites de implantação e de ativação das lojas.</p>
+        <p>Este servidor envia os e-mails de convite, ativação e recuperação de senha das lojas.</p>
         <p><strong>Configuração em uso</strong> {{ $smtp['saved']?'Salva na Central':'Padrão do ambiente' }}</p>
         <form method="post" action="{{ route('platform.settings.smtp.save') }}">
             @csrf

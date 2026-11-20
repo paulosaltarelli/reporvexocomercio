@@ -28,7 +28,7 @@
         @forelse($attempts as $attempt)
             <tr>
                 <td>{{ $attempt->created_at->format('d/m/Y H:i') }}</td>
-                <td><a href="{{ route('platform.settings.emails.show', $attempt->id) }}">{{ $attempt->subject }}</a></td>
+                <td><a href="{{ route('platform.settings.emails.show', ['id'=>$attempt->id] + request()->only(['recipient','status','page'])) }}">{{ $attempt->subject }}</a></td>
                 <td>{{ $attempt->recipient }}</td><td>{{ $attempt->company_name }}</td>
                 <td>{{ $statuses[$attempt->status] ?? 'Desconhecido' }}</td>
             </tr>
@@ -37,6 +37,6 @@
         @endforelse
         </tbody></table>
     </div>
-    <div class="pagination">{{ $attempts->links() }}</div>
+    <div class="pagination">{{ $attempts->links('platform.pagination',['label'=>'Páginas de envios']) }}</div>
 </section>
 @endsection

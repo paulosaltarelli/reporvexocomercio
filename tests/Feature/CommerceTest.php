@@ -493,6 +493,31 @@ class CommerceTest extends TestCase
             ->assertSee('Previsão de entrega (opcional)')->assertSee('id="service-total"', false);
     }
 
+    public function test_work_order_print_keeps_the_dates_signatures_and_net_total_for_mixed_prices(): void
+    {
+        $this->product->group->update(['discount_enabled' => true, 'max_discount_percent' => '20']);
+        $free = Product::create(['name' => 'Peça em cortesia', 'sku' => 'CORTESIA-QA',
+            'product_group_id' => $this->product->product_group_id, 'sale_price' => '0.00']);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $order = app(Documents::class)->create([
+            'type' => 'work_order', 'request_key' => (string) Str::uuid(),
+            'valid_until' => '2027-03-29', 'technician' => 'Técnica da oficina',
+            'items' => [
+                ['kind' => 'product', 'id' => $free->id, 'quantity' => '1', 'unit_price' => '0.00'],
+                ['kind' => 'product', 'id' => $this->product->id, 'quantity' => '2', 'unit_price' => '100.00', 'discount_percent' => '10'],
+            ],
+        ], $this->user->id);
+        $response = $this->get('/app/a/documents/'.$order->id)->assertOk()
+            ->assertSee($order->created_at->format('d/m/Y'))->assertSee('29/03/2027')
+            ->assertSee('Assinatura do cliente')->assertSee('Técnico ou vendedor responsável')
+            ->assertSee('Técnica da oficina')->assertSee('R$ 200,00')->assertSee('R$ 20,00')->assertSee('R$ 180,00');
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($dom);
+        $this->assertCount(4, $xpath->query('//tr[td[contains(.,"cortesia")]]/td[@data-zero-value]'));
+        $this->assertCount(0, $xpath->query('//tr[td[contains(.,"Produto teste")]]/td[@data-zero-value]'));
+    }
+
     public function test_login_dashboard_and_all_views_render(): void
     {
         $this->get('/app/a/login')->assertOk()->assertSee('Empresa a');

@@ -11,7 +11,11 @@
     @if(request()->routeIs('dashboard','commissions*','commission.*','payment.methods*'))<link rel="stylesheet" href="/commercial-insights.css?v={{ filemtime(public_path('commercial-insights.css')) }}">@endif
     @if(request()->routeIs('access.profiles*'))<link rel="stylesheet" href="/access-profiles.css?v={{ filemtime(public_path('access-profiles.css')) }}">@endif
     @if(request()->routeIs('setup*'))<link rel="stylesheet" href="/company-setup.css?v={{ filemtime(public_path('company-setup.css')) }}">@endif
-<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"><link rel="stylesheet" href="/interface.css?v={{ filemtime(public_path('interface.css')) }}"></head>
+<link rel="stylesheet" href="/brand.css?v=20261116-vexo1"><link rel="stylesheet" href="/interface.css?v={{ filemtime(public_path('interface.css')) }}">
+@if(request()->routeIs('document.show') && ($document->type ?? null) === 'work_order')
+    <link rel="stylesheet" href="/work-order-print.css?v={{ filemtime(public_path('work-order-print.css')) }}" media="print">
+@endif
+</head>
 <body @if($wizardMode??false) class="onboarding-shell" @endif>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>
 @if(!($wizardMode??false))@include('partials.company-navigation')@endif

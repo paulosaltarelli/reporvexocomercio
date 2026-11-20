@@ -166,11 +166,19 @@ trait ContractIntegrationCases
         $page = $this->get($filtered.'&page=2')->assertOk();
         $this->assertSame(31, $page->viewData('installments')->total());
         $this->assertCount(1, $page->viewData('installments'));
+        $page->assertSee('Página 2 de 2')->assertSee('Anterior')->assertDontSee('Próxima');
+        $this->get($filtered)->assertOk()->assertSee('Página 1 de 2')->assertSee('Próxima');
         $this->assertSame('3700.00', $page->viewData('totals')['overdue']);
         $month = $this->get($filtered.'&month=2026-11')->assertOk();
         $this->assertSame(1, $month->viewData('installments')->total());
         $this->assertSame('100.00', $month->viewData('totals')['overdue']);
         $this->assertSame('20.00', $month->viewData('totals')['paid']);
         $this->assertSame('overdue', $month->viewData('installments')->first()->payment_status);
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($month->getContent());
+        $cells = (new \DOMXPath($dom))->query('//table/tbody/tr[1]/td');
+        $this->assertSame('R$ 120,00', trim($cells->item(3)->textContent));
+        $this->assertSame('R$ 20,00', trim($cells->item(4)->textContent));
+        $this->assertSame('R$ 100,00', trim($cells->item(5)->textContent));
     }
 }

@@ -11,3 +11,44 @@
 .company-access-url{display:inline-block;overflow-wrap:anywhere;max-width:34rem;font-size:.8rem}.support-entry{margin-top:1rem}.platform-admin-card form{margin-top:1rem}
 
 .platform-main .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.platform-admin-card{padding:1rem 0;border-bottom:1px solid #dce4ef}.platform-admin-card summary{cursor:pointer;overflow-wrap:anywhere}@media(max-width:600px){.platform-main .form-grid{grid-template-columns:1fr}}
+
+.platform-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:clamp(1rem,4vw,3rem);padding-block:12px}
+.platform-header nav{gap:.3rem;font-size:14px;font-weight:600}
+.platform-header nav a,.platform-account button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 .85rem;border-radius:6px}
+.platform-header nav a[aria-current]{color:white;background:#203956;box-shadow:inset 0 -2px #52cbe7}
+.platform-header nav a:hover,.platform-account button:hover{background:#162d49;color:#fff;text-decoration:none}
+.platform-account{display:flex;align-items:center;gap:.45rem;min-width:0}
+.platform-account span{overflow-wrap:anywhere;max-width:15rem;font-size:13px}
+.platform-page-heading{align-items:center}.platform-page-heading h1{margin-top:0;overflow-wrap:anywhere}
+.settings-navigation{display:flex;flex-wrap:wrap;gap:.25rem .5rem;margin:0 0 1.35rem;border-bottom:1px solid #cad5e4}
+.settings-navigation a{display:inline-flex;align-items:center;min-height:44px;padding:.5rem .85rem;border-bottom:3px solid transparent;color:#34485f;font-weight:600}
+.settings-navigation a[aria-current]{color:#104cad;border-color:#1463eb}.settings-navigation a:hover{background:#e9f0f8;text-decoration:none}
+.platform-main .form-grid{row-gap:.85rem;margin-block:1rem}.form-grid .field{margin:0;min-width:0}
+.platform-main td,.platform-main th{font-size:13px}.platform-main th{font-size:12px;letter-spacing:0;color:#475971}
+.table-scroll a.company-access-url{white-space:normal}.table-scroll:focus-visible{outline-offset:-3px}
+.company-management{display:grid;gap:1rem;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:22px}
+.company-management .panel{margin:0;display:flex;flex-direction:column;align-items:flex-start}
+.company-management .button{margin-top:auto}.company-management p{margin:0 0 1rem}
+.button.danger{background:#a33142;border-color:#a33142}.button.danger:hover{background:#812032}
+.pagination:empty{display:none}.page-controls{display:flex;gap:1rem;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:1rem}
+.page-controls a{display:inline-flex;align-items:center;min-height:44px;padding:0 .8rem;border:1px solid var(--line);border-radius:6px;font-weight:600}
+@media(max-width:800px){
+ .platform-header{grid-template-columns:auto minmax(0,1fr);gap:.4rem .8rem;padding:10px 16px 6px}
+ .platform-header nav{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:.2rem}
+ .platform-header nav a{padding:0 .3rem;font-size:13px}.platform-account{justify-self:end}.platform-account span{max-width:10rem;text-align:right}
+}
+@media(max-width:600px){
+ .platform-account span{max-width:7rem;line-height:1.2}.platform-account button{padding:0 .4rem}
+ .settings-navigation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.2rem}
+ .settings-navigation a{padding:.4rem .65rem}.company-management{grid-template-columns:1fr}
+ .access-list thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+ .access-list table,.access-list tbody,.access-list tr,.access-list td{display:block}
+ .access-list tr{border-top:1px solid var(--line);padding:.75rem 0}.access-list td{padding:.35rem 0;border:0;min-width:0;overflow-wrap:anywhere}
+ .access-list td::before{content:attr(data-label);display:block;color:#52647b;font-size:12px;font-weight:600}
+ .access-list .field{margin:.4rem 0}.access-list form+form{margin-top:.8rem}
+}
+@media print{.platform-header,.settings-navigation,.page-controls{display:none}}
+.bank-environments{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));margin:1rem 0}
+.bank-environments .panel{max-width:none;margin:0}.bank-environments .bank-toggle{margin:.5rem 0}
+.bank-environments .bank-toggle label{display:flex;align-items:center;min-height:40px;gap:.5rem;margin:0;cursor:pointer}
+.bank-environments .bank-toggle input{margin:0}
