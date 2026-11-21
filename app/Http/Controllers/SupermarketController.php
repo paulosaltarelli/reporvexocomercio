@@ -47,8 +47,11 @@ final class SupermarketController extends Controller
     {
         $service->actor($request->attributes->get('currentUser')->id);
         $input = $request->validate(['code' => 'required|string|max:80']);
-        $product = $service->lookup($input['code']);
-        return response()->json($product->only(['id', 'name', 'sku', 'barcode', 'unit', 'sale_price']))
+        $scan = $service->scan($input['code']);
+        $product = $scan['product'];
+        return response()->json($product->only(['id', 'name', 'sku', 'barcode', 'unit', 'sale_price']) + [
+            'scanned_quantity' => $scan['quantity'], 'weighted_label' => $scan['label'],
+        ])
             ->header('Cache-Control', 'private, no-store');
     }
 

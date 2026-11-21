@@ -26,15 +26,37 @@ final class Supermarket
 
     public function lookup(string $code): Product
     {
+        return $this->scan($code)['product'];
+    }
+
+    public function scan(string $code): array
+    {
+        $code = trim($code);
         $products = Product::where('active', true)->where('type', 'product')
-            ->where(fn ($query) => $query->where('barcode', trim($code))->orWhere('sku', trim($code)))
+            ->where(fn ($query) => $query->where('barcode', $code)->orWhere('sku', $code))
+            ->orderBy('id')->limit(2)->get();
+        if ($products->count() > 1) {
+            throw ValidationException::withMessages(['code' => 'Este código corresponde a mais de um produto. Revise o cadastro.']);
+        }
+        if ($products->isNotEmpty()) return ['product' => $products->first(), 'label' => null, 'quantity' => null];
+
+        $labels = app(WeightedLabels::class);
+        $label = $labels->decode($code);
+        if (!$label) throw ValidationException::withMessages(['code' => 'Produto não encontrado. Confira o código de barras ou SKU.']);
+        $pluCodes = array_unique([$label['plu'], ltrim($label['plu'], '0') ?: '0']);
+        $products = Product::where('active', true)->where('type', 'product')
+            ->where(fn ($query) => $query->whereIn('sku', $pluCodes)->orWhereIn('barcode', $pluCodes))
             ->orderBy('id')->limit(2)->get();
         if ($products->count() !== 1) {
             throw ValidationException::withMessages(['code' => $products->isEmpty()
-                ? 'Produto não encontrado. Confira o código de barras ou SKU.'
-                : 'Este código corresponde a mais de um produto. Revise o cadastro.']);
+                ? 'O código PLU da etiqueta não possui produto ativo nesta loja.'
+                : 'O código PLU da etiqueta corresponde a mais de um produto. Revise o cadastro.']);
         }
-        return $products->first();
+        $product = $products->first();
+        if (strtoupper($product->unit) !== 'KG') {
+            throw ValidationException::withMessages(['code' => 'Etiquetas pesáveis deste formato exigem produto com unidade de venda KG.']);
+        }
+        return ['product' => $product, 'label' => $label, 'quantity' => $labels->quantity($label, (string) $product->sale_price)];
     }
 
     public function start(string $requestKey, int $userId): SupermarketCart
@@ -75,16 +97,30 @@ final class Supermarket
             $this->actor($userId);
             $cart = $this->owned($cartId, $userId, true);
             $this->editable($cart, $version);
-            $product = $this->lookup($code);
+            $scan = $this->scan($code);
+            $product = $scan['product'];
             $items = $cart->items;
             $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
-            $key = array_search($product->id, array_column($items, 'product_id'), true);
+            if ($scan['label'] !== null && bccomp($quantity, '1', 3) !== 0) {
+                throw ValidationException::withMessages(['quantity' => 'Para etiqueta pesável, mantenha a quantidade em 1 e leia cada embalagem separadamente.']);
+            }
+            $quantity = $scan['quantity'] ?? $quantity;
+            $key = false;
+            if ($scan['label'] === null) {
+                foreach ($items as $index => $existing) {
+                    if ($existing['product_id'] === $product->id && empty($existing['weighted_label'])) {
+                        $key = $index;
+                        break;
+                    }
+                }
+            }
             if ($key !== false) {
                 $quantity = Decimal::input(bcadd($items[$key]['quantity'], $quantity, 3), 3, 'quantity', '0.001', '999999999.999');
             } elseif (count($items) >= 200) {
-                throw ValidationException::withMessages(['code' => 'Esta venda atingiu o limite de 200 produtos diferentes.']);
+                throw ValidationException::withMessages(['code' => 'Esta venda atingiu o limite de 200 linhas de itens.']);
             }
             $line = $this->line($product, $quantity, $key === false ? (string) Str::uuid() : $items[$key]['line_key']);
+            if ($scan['label'] !== null) $line['weighted_label'] = $scan['label'];
             if ($key === false) $items[] = $line;
             else $items[$key] = $line;
             return $this->saveItems($cart, $items, $userId, 'supermarket_item_add');
@@ -113,6 +149,9 @@ final class Supermarket
                 $this->reason($reason);
                 unset($items[$key]);
             } else {
+                if (!empty($items[$key]['weighted_label'])) {
+                    throw ValidationException::withMessages(['quantity' => 'Retire a embalagem e leia a etiqueta novamente para alterar um item pesável.']);
+                }
                 $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
                 if (bccomp($quantity, $items[$key]['quantity'], 3) < 0) {
                     $this->actor($userId, 'supermarket.cancel');

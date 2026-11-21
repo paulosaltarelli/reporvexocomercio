@@ -47,6 +47,7 @@
 </form>
     @else<p class="hint">Aguardando entrega pelo atendimento.</p>
     @endif
+    @if($currentUser->allows('restaurant.print'))<p><a target="_blank" rel="noopener" href="{{ route('restaurant.orders.ticket',['company'=>$tenant->slug,'order'=>$item->order->id,'station'=>$item->station]) }}">Imprimir último envio da comanda</a></p>@endif
     @if($currentUser->allows('restaurant.use'))<p>
 <a href="{{ route('restaurant.orders.show',['company'=>$tenant->slug,'order'=>$item->order->id]) }}">Abrir comanda</a>
 </p>@endif

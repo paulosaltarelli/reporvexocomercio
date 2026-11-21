@@ -62,7 +62,11 @@ final class RestaurantOperations
     {
         $reference = RestaurantOrder::findOrFail($id);
         RestaurantTable::lockForUpdate()->findOrFail($reference->restaurant_table_id);
-        return RestaurantOrder::lockForUpdate()->findOrFail($id);
+        $order = RestaurantOrder::lockForUpdate()->findOrFail($id);
+        if ($order->restaurant_table_id !== $reference->restaurant_table_id) {
+            throw ValidationException::withMessages(['version' => 'A mesa foi alterada. Atualize a comanda antes de continuar.']);
+        }
+        return $order;
     }
 
     private function editable(RestaurantOrder $order, array $input): void
@@ -159,7 +163,7 @@ final class RestaurantOperations
         return $this->transaction(function () use ($id, $input, $actor) {
             $order = $this->locked($id);
             $items = $order->items()->where('status', '<>', 'cancelled')->orderBy('id')->get();
-            $payment = Validator::make($input, ['payment_option' => 'nullable|string|max:60', 'payment_method' => 'required|string|max:40', 'paid' => 'required|boolean',
+            $payment = Validator::make($input, ['payment_option' => 'nullable|string|max:60', 'payment_method' => 'required_without:payments|string|max:40', 'paid' => 'required_without:payments|boolean',
                 'due_date' => 'nullable|date', 'installments' => 'nullable|integer|min:1|max:120', 'salesperson_id' => 'nullable|integer',
                 'payments' => 'sometimes|array|min:1|max:20', 'payments.*' => 'array', 'card_brand' => 'nullable|string', 'card_installments' => 'nullable|integer|min:1|max:36'])->validate();
             if (!$order->sale_id) {
@@ -174,6 +178,43 @@ final class RestaurantOperations
                 $this->audit('restaurant_close', $actor, ['order_id' => $order->id, 'sale_id' => $sale->id]);
             }
             return $sale;
+        });
+    }
+
+    public function transfer(int $id, array $input, int $actor): RestaurantOrder
+    {
+        $data = Validator::make($input, ['request_key' => 'required|uuid', 'table_id' => 'required|integer',
+            'reason' => 'required|string|min:3|max:1000'])->validate();
+        return $this->transaction(function () use ($id, $input, $data, $actor) {
+            $reference = RestaurantOrder::findOrFail($id);
+            $tableIds = array_unique([$reference->restaurant_table_id, (int)$data['table_id']]);
+            $tables = RestaurantTable::whereIn('id', $tableIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $order = RestaurantOrder::lockForUpdate()->findOrFail($id);
+            $previous = OperationRecord::where('action', 'restaurant_transfer')->where('after->order_id', $order->id)
+                ->where('after->request_key', $data['request_key'])->first();
+            if ($previous) {
+                if ((int)$previous->user_id !== $actor || (int)$previous->after['to_table_id'] !== (int)$data['table_id']
+                    || $previous->after['reason'] !== $data['reason']) {
+                    throw ValidationException::withMessages(['request_key' => 'A tentativa já foi usada para outra transferência.']);
+                }
+                return $order;
+            }
+            if ($order->restaurant_table_id !== $reference->restaurant_table_id) {
+                throw ValidationException::withMessages(['version' => 'A mesa foi alterada. Atualize a comanda antes de continuar.']);
+            }
+            $this->editable($order, $input);
+            $target = $tables->get((int)$data['table_id']);
+            if (!$target || !$target->active || $target->id === $order->restaurant_table_id) {
+                throw ValidationException::withMessages(['table_id' => 'Escolha outra mesa ativa e livre.']);
+            }
+            if (RestaurantOrder::where('restaurant_table_id', $target->id)->where('status', 'open')->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages(['table_id' => 'A mesa de destino já está ocupada.']);
+            }
+            $sourceId = $order->restaurant_table_id;
+            $order->update(['restaurant_table_id' => $target->id, 'version' => $order->version + 1]);
+            $this->audit('restaurant_transfer', $actor, ['order_id' => $order->id, 'from_table_id' => $sourceId,
+                'to_table_id' => $target->id, 'request_key' => $data['request_key'], 'reason' => $data['reason']]);
+            return $order;
         });
     }
 

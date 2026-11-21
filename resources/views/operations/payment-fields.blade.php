@@ -1,3 +1,4 @@
+<div class="single-payment-fields" data-operation-single>
 <div class="field">
     <label for="operation-payment">Forma de pagamento</label>
     @include('components.payment-method-select',['paymentSelectId'=>'operation-payment','paymentDefault'=>'cash'])
@@ -24,5 +25,8 @@
 @include('components.sales.card-fees')
 <p class="card-sale-total notice" role="status" hidden>
 </p>
+</div>
+@include('components.sales.split-payments')
+<noscript><p class="hint">A divisão entre formas de pagamento usa JavaScript. O pagamento único continua disponível.</p></noscript>
 @include('components.sales.seller-field')
 <p class="hint">Confira o recebimento antes de finalizar. Pix e cartões são registrados manualmente.</p>

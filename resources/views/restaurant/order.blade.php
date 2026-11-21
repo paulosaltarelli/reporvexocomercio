@@ -2,6 +2,16 @@
 @section('title','Comanda #'.$order->id)
 @section('navigation-section','Restaurante')
 @section('subtitle',$order->table?->name.' · '.($order->customer?->name ?? 'Cliente não identificado'))
+@section('actions')
+<div class="actions">
+    @if($currentUser->allows('restaurant.use') && $order->status!=='cancelled')
+        <a class="button secondary" target="_blank" rel="noopener" href="{{ route('restaurant.orders.prebill',['company'=>$tenant->slug,'order'=>$order->id]) }}">Imprimir pré-conta</a>
+    @endif
+    @if($currentUser->allows('restaurant.print') && $order->items->contains(fn($item)=>!in_array($item->status,['draft','cancelled'],true)))
+        <a class="button secondary" target="_blank" rel="noopener" href="{{ route('restaurant.orders.ticket',['company'=>$tenant->slug,'order'=>$order->id]) }}">Imprimir último envio</a>
+    @endif
+</div>
+@endsection
 @section('content')
 <div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
 <div class="operation-grid restaurant-order-grid">
@@ -126,10 +136,22 @@
 </form>
 @endif
 </section>
+@if($currentUser->allows('restaurant.print') && $productionBatches->count()>1)
+<section class="operation-panel">
+    <details>
+        <summary>Reimprimir um envio anterior</summary>
+        <form method="get" target="_blank" action="{{ route('restaurant.orders.ticket',['company'=>$tenant->slug,'order'=>$order->id]) }}">
+            <div class="field"><label for="production-batch">Envio à produção</label><select id="production-batch" name="batch" required>@foreach($productionBatches as $batch)<option value="{{ $batch->id }}">#{{ $batch->id }} · {{ $batch->created_at->format('d/m/Y H:i') }}</option>@endforeach</select></div>
+            <div class="field"><label for="production-reprint-station">Destino</label><select id="production-reprint-station" name="station"><option value="">Cozinha e bar</option><option value="kitchen">Cozinha</option><option value="bar">Bar</option></select></div>
+            <div class="actions"><button class="button secondary">Abrir impressão</button></div>
+        </form>
+    </details>
+</section>
+@endif
 @if($order->status==='open')
 @php($billableItems=$order->items->where('status','<>','cancelled'))
 @if($currentUser->allows('restaurant.checkout') && $billableItems->isNotEmpty() && $billableItems->every(fn($item)=>$item->status==='delivered'))
-<details class="operation-panel operation-checkout" data-operation-checkout @if($errors->hasAny(['payment_option','paid','due_date','salesperson_id','card_brand'])) open @endif>
+<details class="operation-panel operation-checkout" data-operation-checkout @if(old('payments') || $errors->has('payments.*') || $errors->hasAny(['payments','payment_option','paid','due_date','salesperson_id','card_brand'])) open @endif>
 <summary>Fechar conta <kbd>F9</kbd>
 </summary>
 <form method="post" action="{{ route('restaurant.orders.close',['company'=>$tenant->slug,'order'=>$order->id]) }}" data-payment-total="{{ bcmul((string)$total,'100',0) }}">
@@ -139,6 +161,22 @@
 </form>
 </details>
 @elseif($billableItems->isNotEmpty())<p class="hint operation-status-message">Registre a entrega de todos os itens para fechar a conta.</p>
+@endif
+@if($currentUser->allows('restaurant.transfer'))
+<section class="operation-panel operation-transfer">
+    <details @if($errors->hasAny(['table_id','reason'])) open @endif>
+        <summary>Transferir para outra mesa</summary>
+        <form method="post" action="{{ route('restaurant.orders.transfer',['company'=>$tenant->slug,'order'=>$order->id]) }}">
+            @csrf
+            <input type="hidden" name="version" value="{{ $order->version }}">
+            <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
+            <div class="field"><label for="transfer-table">Mesa de destino</label><select id="transfer-table" name="table_id" required><option value="">Selecione uma mesa livre</option>@foreach($availableTables as $table)<option value="{{ $table->id }}" @selected((string)old('table_id')===(string)$table->id)>{{ $table->name }}</option>@endforeach</select></div>
+            <div class="field"><label for="transfer-reason">Motivo da transferência</label><input id="transfer-reason" name="reason" minlength="3" maxlength="1000" value="{{ old('reason') }}" required></div>
+            <button class="button secondary" @disabled($availableTables->isEmpty())>Confirmar transferência</button>
+            @if($availableTables->isEmpty())<p class="hint">Nenhuma outra mesa livre neste momento.</p>@endif
+        </form>
+    </details>
+</section>
 @endif
 @if($currentUser->allows('restaurant.cancel'))<section class="operation-panel">
 <details>

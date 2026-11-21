@@ -60,6 +60,25 @@
         <small class="hint">Esta regra se aplica quando a gestão de estoque está ativa. Em “Permitir e avisar”, o alerta aparece após o registro da saída.</small>
     </div>
 </div>
+@unless($installer)
+<details class="disclosure" @if($errors->has('weighed_labels') || collect($errors->keys())->contains(fn($key)=>str_starts_with($key,'weighed_labels.'))) open @endif>
+    <summary>Etiquetas de balança no caixa de supermercado</summary>
+    <div class="disclosure-content">
+        @php($labelSettings=old('weighed_labels',$configuration['weighed_labels']))
+        @php($labelSettings=is_array($labelSettings)?array_replace(\App\Services\WeightedLabels::DEFAULTS,$labelSettings):$configuration['weighed_labels'])
+        <input type="hidden" name="weighed_labels[enabled]" value="0">
+        <label class="setup-option" for="weighed-labels-enabled"><input id="weighed-labels-enabled" type="checkbox" name="weighed_labels[enabled]" value="1" @checked($labelSettings['enabled'])> Ler etiquetas EAN-13 de produtos pesáveis</label>
+        <p class="hint">Configure o mesmo formato emitido pela balança. O prefixo, o PLU e o valor ocupam os 12 primeiros dígitos. O último dígito verifica o código. O PLU deve corresponder ao código de catálogo do produto, cadastrado em KG.</p>
+        <div class="form-grid">
+            <div class="field"><label for="weighed-label-prefix">Prefixo da etiqueta</label><input id="weighed-label-prefix" name="weighed_labels[prefix]" value="{{ $labelSettings['prefix'] }}" inputmode="numeric" minlength="2" maxlength="4" pattern="[0-9]{2,4}"></div>
+            <div class="field"><label for="weighed-label-plu">Dígitos do PLU</label><input id="weighed-label-plu" name="weighed_labels[plu_length]" type="number" min="1" max="9" value="{{ $labelSettings['plu_length'] }}"></div>
+            <div class="field"><label for="weighed-label-value">Dígitos do valor</label><input id="weighed-label-value" name="weighed_labels[value_length]" type="number" min="1" max="9" value="{{ $labelSettings['value_length'] }}"></div>
+            <div class="field"><label for="weighed-label-content">Conteúdo do valor</label><select id="weighed-label-content" name="weighed_labels[content]"><option value="weight" @selected($labelSettings['content']==='weight')>Peso em quilogramas</option><option value="price" @selected($labelSettings['content']==='price')>Preço total em reais</option></select></div>
+            <div class="field"><label for="weighed-label-decimals">Casas decimais do valor</label><input id="weighed-label-decimals" name="weighed_labels[decimals]" type="number" min="0" max="3" value="{{ $labelSettings['decimals'] }}"><small class="hint">Para peso, normalmente 3 casas. Para preço, use 2 casas.</small></div>
+        </div>
+    </div>
+</details>
+@endunless
 <p class="form-note">Estoque: custo médio ponderado e política de preço automático/alerta continuam configuráveis por grupo ou produto. Descontos ainda respeitam os limites individuais. Desativar comissões zera a comissão de novas vendas; não apaga valores anteriores. O regime é registrado em cada venda. O relatório atual reconcilia recebimentos acumulados das vendas do período; não é um demonstrativo de pagamentos ao vendedor.</p>
 <button class="primary">Salvar e continuar</button>
 </form>

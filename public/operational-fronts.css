@@ -692,3 +692,63 @@
         gap:4px 12px;
     }
 }
+
+.operation-checkout .split-payments {
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    padding:10px 0;
+    margin:16px 0;
+}
+.operation-checkout .split-payment-content {
+    padding-top:10px;
+}
+.operation-checkout .split-payment-row {
+    min-width:0;
+    margin:14px 0;
+    padding:16px;
+    border:1px solid var(--line);
+    border-radius:8px;
+}
+.operation-checkout .split-payment-row legend {
+    padding:0 6px;
+    font-size:12px;
+    font-weight:600;
+}
+.operation-checkout .split-payment-row .form-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+}
+.operation-checkout .split-payment-row input,
+.operation-checkout .split-payment-row select {
+    width:100%;
+    min-width:0;
+}
+.operation-checkout .split-payment-row .field,
+.operation-checkout .split-payment-row .hint {
+    margin:0;
+}
+.operation-checkout .split-remove {
+    min-height:44px;
+    padding:10px 0;
+    margin-top:8px;
+}
+.operation-checkout .split-payment-balance {
+    padding:12px;
+    margin-top:14px;
+    background:#edf4ff;
+    border-radius:6px;
+    color:#23466f;
+    font-variant-numeric:tabular-nums;
+}
+.operation-transfer .field {
+    margin-bottom:14px;
+}
+@media(max-width:600px) {
+    .operation-checkout .split-payment-row .form-grid {
+        grid-template-columns:minmax(0,1fr);
+    }
+}
+.operational-shell .operation-checkout .split-payments:not([data-operation-split-ready]) {
+    display:none;
+}

@@ -7,6 +7,17 @@
         else window.addEventListener('resize', updateHeaderHeight);
     }
 
+    document.querySelectorAll('.operation-checkout .split-enabled').forEach(toggle => {
+        const form = toggle.closest('form');
+        if (form.dataset.splitPayment === undefined) return;
+        toggle.closest('.split-payments').dataset.operationSplitReady = '';
+        const single = form.querySelector('[data-operation-single]');
+        const updateSingleVisibility = () => {
+            if (single) single.hidden = toggle.checked;
+        };
+        toggle.addEventListener('change', updateSingleVisibility);
+        updateSingleVisibility();
+    });
     document.querySelectorAll('[data-operation-paid]').forEach(select => {
         const fields = select.closest('form').querySelector('[data-operation-credit]');
         const refresh = () => {
@@ -53,7 +64,8 @@
                 event.preventDefault();
                 checkout.open = true;
                 checkout.scrollIntoView({block: 'center', behavior: 'smooth'});
-                checkout.querySelector('select, input, button')?.focus();
+                const firstField = [...checkout.querySelectorAll('select:not([disabled]), input:not([type="hidden"]):not([disabled]), button:not([disabled])')].find(field => field.getClientRects().length);
+                firstField?.focus();
             }
         }
     });

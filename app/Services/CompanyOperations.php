@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 class CompanyOperations
 {
     public const DEFAULTS = [
+        'weighed_labels'=>WeightedLabels::DEFAULTS,
         'segment'=>'commerce', 'operation_modes'=>['commerce'], 'default_operation'=>'commerce',
         'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
         'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>false,
@@ -68,14 +69,19 @@ class CompanyOperations
         unset($defaults['nfse']);
         $productInvoices = config('fiscal.product_invoices_enabled', false);
         if (!$productInvoices) unset($defaults['nfe'], $defaults['nfce']);
-        foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock','segment','operation_modes','default_operation']) as $key) $rules[$key]='required|boolean';
+        foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock','segment','operation_modes','default_operation','weighed_labels']) as $key) $rules[$key]='required|boolean';
         $rules += [
+            'weighed_labels' => 'sometimes|required|array',
             'segment' => 'sometimes|required|in:commerce,restaurant,supermarket',
             'operation_modes' => 'sometimes|required|array|min:1|max:3',
             'operation_modes.*' => 'required|string|distinct|in:commerce,restaurant,supermarket',
             'default_operation' => 'sometimes|required|in:commerce,restaurant,supermarket',
         ];
+        if (array_key_exists('weighed_labels', $input)) {
+            abort_unless(InstallerAccess::adminActor($actor),403);
+        }
         $data=Validator::make($input,$rules)->validate();
+        if (array_key_exists('weighed_labels', $data)) $data['weighed_labels'] = WeightedLabels::normalize($data['weighed_labels']);
         foreach (array_keys($defaults) as $key) if (is_bool($defaults[$key])) $data[$key]=(bool)$data[$key];
         if ($data['catalog_mode']==='services' && ($data['inventory'] || ($data['nfce'] ?? false) || ($data['nfe'] ?? false))) {
             throw ValidationException::withMessages(['catalog_mode'=>$productInvoices ? 'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.' : 'Desabilite a gestão de estoque para operar somente com serviços.']);
@@ -90,6 +96,7 @@ class CompanyOperations
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
             $before=array_intersect_key(array_replace($defaults,$row->configuration),$defaults);
             $data['negative_stock'] ??= $before['negative_stock'];
+            $data['weighed_labels'] ??= $before['weighed_labels'];
             $data['segment'] ??= $before['segment'];
             $data['operation_modes'] ??= $before['operation_modes'];
             $data['default_operation'] ??= $before['default_operation'];

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Customer, Product, RestaurantOrder, RestaurantOrderItem, RestaurantTable, Seller};
+use App\Models\{Customer, Product, RestaurantOrder, RestaurantOrderItem, RestaurantTable, Seller, OperationRecord};
 use App\Services\{CardFees, OperationalModes, PaymentMethods, RestaurantOperations, OperationalReceipt};
 use Illuminate\Http\Request;
 
@@ -37,6 +37,8 @@ final class RestaurantController extends Controller
             'paymentMethods' => app(PaymentMethods::class)->options(),
             'cardBrands' => app(CardFees::class)->options('credit'),
             'statuses' => RestaurantOperations::STATUSES,
+            'availableTables' => RestaurantTable::where('active', true)->whereDoesntHave('orders', fn ($query) => $query->where('status', 'open'))->orderBy('name')->get(),
+            'productionBatches' => OperationRecord::where('action', 'restaurant_send')->where('after->order_id', $record->id)->orderByDesc('id')->get(['id', 'created_at']),
             'total' => $record->items->where('status', '<>', 'cancelled')->reduce(fn ($total, $item) => bcadd($total, \App\Services\Decimal::round(bcmul($item->quantity, $item->unit_price, 6), 2), 2), '0.00'),
         ]);
     }
@@ -113,6 +115,40 @@ final class RestaurantController extends Controller
             && $sale->request_key === $expectedKey, 404);
 
         return $receipt->render($sale, route('restaurant.orders.show', ['company' => $company, 'order' => $record->id]));
+    }
+
+    public function transfer(Request $request, string $company, int $order, RestaurantOperations $operations)
+    {
+        $operations->transfer($order, $request->all(), $request->attributes->get('currentUser')->id);
+        return $this->back($request, $order, 'Mesa transferida.');
+    }
+
+    public function prebill(Request $request, string $company, int $order)
+    {
+        $this->requireMode();
+        $record = RestaurantOrder::with('table', 'customer', 'items')->findOrFail($order);
+        $items = $record->items->where('status', '<>', 'cancelled');
+        $total = $items->reduce(fn ($sum, $item) => bcadd($sum, (string)$item->commercial_terms['total'], 2), '0.00');
+        return response()->view('restaurant.prebill', ['order' => $record, 'items' => $items, 'total' => $total,
+            'receiptSale' => true, 'receiptBackUrl' => route('restaurant.orders.show', ['company' => $company, 'order' => $record->id])])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function ticket(Request $request, string $company, int $order)
+    {
+        $this->requireMode();
+        $data = $request->validate(['batch' => 'nullable|integer|min:1', 'station' => 'nullable|in:kitchen,bar']);
+        $record = RestaurantOrder::with('table', 'customer')->findOrFail($order);
+        $query = OperationRecord::where('action', 'restaurant_send')->where('after->order_id', $record->id);
+        $batch = isset($data['batch']) ? $query->findOrFail($data['batch']) : $query->latest('id')->first();
+        $items = $record->items()->whereIn('id', $batch?->after['item_ids'] ?? [])
+            ->when($data['station'] ?? null, fn ($query, $station) => $query->where('station', $station))->orderBy('id')->get();
+        $backRoute = $request->attributes->get('currentUser')->allows('restaurant.use') ? 'restaurant.orders.show' : 'restaurant.production';
+        $backParameters = ['company' => $company];
+        if ($backRoute === 'restaurant.orders.show') $backParameters['order'] = $record->id;
+        return response()->view('restaurant.ticket', ['order' => $record, 'items' => $items, 'batch' => $batch,
+            'station' => $data['station'] ?? null, 'receiptSale' => true, 'receiptBackUrl' => route($backRoute, $backParameters)])
+            ->header('Cache-Control', 'private, no-store');
     }
 
     public function cancel(Request $request, string $company, int $order, RestaurantOperations $operations)

@@ -7,7 +7,7 @@ final class Permissions
 {
     public const GROUPS = [
         'Balcão e vendas' => ['desk.use'=>'Abrir a frente de caixa','sales.view'=>'Consultar vendas e comprovantes da empresa','sales.create'=>'Registrar vendas','sales.cancel'=>'Cancelar vendas e estornar','sales.receive'=>'Receber o saldo integral de uma venda','sales.seller'=>'Escolher outro vendedor'],
-        'Restaurante' => ['restaurant.use'=>'Atender mesas e comandas','restaurant.manage'=>'Cadastrar mesas','restaurant.kitchen'=>'Operar a produção da cozinha','restaurant.cancel'=>'Cancelar pedidos e itens','restaurant.checkout'=>'Fechar a conta do restaurante'],
+        'Restaurante' => ['restaurant.use'=>'Atender mesas e comandas','restaurant.manage'=>'Cadastrar mesas','restaurant.transfer'=>'Transferir comanda de mesa','restaurant.print'=>'Imprimir comandas de produção','restaurant.kitchen'=>'Operar a produção da cozinha','restaurant.deliver'=>'Registrar entrega de pedidos prontos','restaurant.cancel'=>'Cancelar pedidos e itens','restaurant.checkout'=>'Fechar a conta do restaurante'],
         'Supermercado' => ['supermarket.use'=>'Operar o caixa de supermercado','supermarket.cancel'=>'Cancelar itens e carrinhos','supermarket.checkout'=>'Concluir vendas do supermercado'],
         'Orçamentos e OS' => ['documents.view'=>'Consultar orçamentos e OS da empresa','documents.create'=>'Criar orçamentos e OS','documents.edit'=>'Editar OS abertas','documents.status'=>'Alterar etapas e cancelar documentos','documents.invoice'=>'Gerar venda a partir de orçamento/OS','documents.seller'=>'Reatribuir vendedor com justificativa'],
         'Cadastros' => ['products.view'=>'Consultar produtos e serviços','products.manage'=>'Cadastrar e editar produtos/serviços','customers.view'=>'Consultar clientes','customers.manage'=>'Cadastrar e editar clientes','suppliers.view'=>'Consultar fornecedores','suppliers.manage'=>'Cadastrar e editar fornecedores','groups.view'=>'Consultar grupos','groups.manage'=>'Alterar grupos e regras comerciais','sellers.manage'=>'Gerenciar vendedores'],
@@ -24,7 +24,7 @@ final class Permissions
         ['Contas a pagar e receber','finance',[],'finance.view'],['Caixa diário','cash',[],'cash.view'],['Fluxo e previsão','cashflow',[],'cashflow.view'],['Relatórios gerenciais','reports',[],'reports.view'],['Comissões','commissions',[],'commissions.view'],['Fiscal','fiscal',[],'fiscal.manage'],
     ];
     public const DEPENDENCIES = [
-        'restaurant.manage'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use'],
+        'restaurant.manage'=>['restaurant.use'], 'restaurant.transfer'=>['restaurant.use'], 'restaurant.deliver'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use'],
         'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use'],
         'sales.create'=>['desk.use','products.view','sales.view'], 'sales.cancel'=>['sales.view'], 'sales.receive'=>['sales.view'],
         'documents.create'=>['documents.view','products.view'], 'documents.edit'=>['documents.view','products.view'], 'documents.status'=>['documents.view'], 'documents.invoice'=>['documents.view','products.view','sales.view'], 'documents.seller'=>['documents.view','sales.seller'],
@@ -63,7 +63,7 @@ final class Permissions
             'DeskController'=>'desk.use',
             'RestaurantController'=>match($action) {
                 'createTable'=>'restaurant.manage', 'production','transitionItem'=>'restaurant.kitchen',
-                'close'=>'restaurant.checkout', 'cancel','cancelItem'=>'restaurant.cancel', default=>'restaurant.use',
+                'close','receipt'=>'restaurant.checkout', 'deliverItem'=>'restaurant.deliver', 'transfer'=>'restaurant.transfer', 'ticket'=>'restaurant.print', 'cancel','cancelItem'=>'restaurant.cancel', default=>'restaurant.use',
             },
             'SupermarketController'=>match($action) {
                 'checkout','receipt'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',

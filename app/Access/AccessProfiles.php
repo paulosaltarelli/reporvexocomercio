@@ -13,8 +13,8 @@ final class AccessProfiles
     private const KEY='_access_profiles';
     public const PRESETS = [
         'supermarket_cashier' => ['name'=>'Caixa de supermercado', 'permissions'=>['supermarket.use','supermarket.checkout']],
-        'waiter' => ['name'=>'Garçom', 'permissions'=>['restaurant.use']],
-        'kitchen' => ['name'=>'Cozinha', 'permissions'=>['restaurant.kitchen']],
+        'waiter' => ['name'=>'Garçom', 'permissions'=>['restaurant.use','restaurant.deliver','restaurant.transfer','restaurant.print']],
+        'kitchen' => ['name'=>'Cozinha', 'permissions'=>['restaurant.kitchen','restaurant.print']],
         'restaurant_cashier' => ['name'=>'Caixa de restaurante', 'permissions'=>['restaurant.use','restaurant.checkout']],
     ];
     public function state(bool $fresh=false): array

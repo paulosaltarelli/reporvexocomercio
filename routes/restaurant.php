@@ -16,5 +16,8 @@ Route::prefix('restaurante')->name('restaurant.')->group(function () {
     Route::post('comandas/{order}/itens/{item}/cancelar', [RestaurantController::class, 'cancelItem'])->whereNumber(['order', 'item'])->name('items.cancel');
     Route::get('comandas/{order}/comprovante', [RestaurantController::class, 'receipt'])->whereNumber('order')->name('orders.receipt');
     Route::post('comandas/{order}/fechar', [RestaurantController::class, 'close'])->whereNumber('order')->name('orders.close');
+    Route::post('comandas/{order}/transferir', [RestaurantController::class, 'transfer'])->whereNumber('order')->name('orders.transfer');
+    Route::get('comandas/{order}/pre-conta', [RestaurantController::class, 'prebill'])->whereNumber('order')->name('orders.prebill');
+    Route::get('comandas/{order}/ticket', [RestaurantController::class, 'ticket'])->whereNumber('order')->name('orders.ticket');
     Route::post('comandas/{order}/cancelar', [RestaurantController::class, 'cancel'])->whereNumber('order')->name('orders.cancel');
 });

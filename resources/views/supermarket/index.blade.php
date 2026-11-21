@@ -5,7 +5,7 @@
 @section('content')
 @if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Ler código</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
 <div class="operation-toolbar">
-    <p class="hint">Código de barras ou SKU · até 200 produtos distintos por venda</p>
+    <p class="hint">Código de barras ou SKU · até 200 lançamentos por venda</p>
     <form method="post" action="{{ route('supermarket.start',['company'=>$tenant->slug]) }}">
 @csrf
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
@@ -50,6 +50,7 @@
 </div>
         <button class="button">Adicionar item</button>
     </form>
+    @if($operationConfig['weighed_labels']['enabled'] ?? false)<p class="hint">Etiquetas pesáveis habilitadas. Use quantidade 1 para ler o peso ou o valor da etiqueta.</p>@endif
     @endif
 </section>
 @if($cart->status==='active')
@@ -92,10 +93,12 @@
 <strong class="amount">R$ {{ number_format($line['total'],2,',','.') }}</strong>
 </div>
         <small>{{ $line['sku'] ?? '' }} · {{ number_format($line['quantity'],3,',','.') }} {{ $line['unit'] ?? '' }} × R$ {{ number_format($line['unit_price'],2,',','.') }}</small>
+@if(!empty($line['weighted_label']))<p><span class="operation-badge">Etiqueta pesável</span></p><small>{{ $line['weighted_label']['content']==='weight'?'Peso lido na etiqueta':'Peso calculado a partir do preço da etiqueta' }} · {{ number_format($line['quantity'],3,',','.') }} {{ $line['unit'] ?? '' }}</small>@endif
         @if($cart->status==='active')
         <details class="operation-line-actions">
-<summary>Alterar quantidade ou retirar item</summary>
-            <form class="operation-inline-quantity" method="post" action="{{ route('supermarket.items.update',['company'=>$tenant->slug,'cart'=>$cart->id,'line'=>$line['line_key']]) }}">
+<summary>{{ !empty($line['weighted_label']) ? ($currentUser->allows('supermarket.cancel') ? 'Conferir ou retirar item' : 'Conferir etiqueta') : ($currentUser->allows('supermarket.cancel') ? 'Alterar quantidade ou retirar item' : 'Alterar quantidade') }}</summary>
+            @if(empty($line['weighted_label']))
+<form class="operation-inline-quantity" method="post" action="{{ route('supermarket.items.update',['company'=>$tenant->slug,'cart'=>$cart->id,'line'=>$line['line_key']]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">
 <label for="quantity-{{ $line['line_key'] }}">Quantidade de {{ $line['description'] }}</label>
@@ -103,6 +106,8 @@
 <input aria-label="Motivo da redução de quantidade" name="reason" minlength="3" maxlength="1000" placeholder="Motivo ao reduzir">
 <button class="button secondary">Atualizar</button>
 </form>
+@else<p class="hint">{{ $currentUser->allows('supermarket.cancel') ? 'Para corrigir uma etiqueta pesável, retire o item e leia a etiqueta novamente.' : 'Para corrigir uma etiqueta pesável, peça a um responsável com permissão de cancelamento para retirar o item.' }}</p>
+@endif
             @if($currentUser->allows('supermarket.cancel'))<form method="post" action="{{ route('supermarket.items.remove',['company'=>$tenant->slug,'cart'=>$cart->id,'line'=>$line['line_key']]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">
@@ -127,7 +132,7 @@
 <small>{{ count($cart->items ?? []) }} {{ count($cart->items ?? [])===1?'item':'itens' }}</small>
 </div>
     @if($currentUser->allows('supermarket.checkout') && $cart->status==='active' && !empty($cart->items))
-    <details class="operation-panel operation-checkout" data-operation-checkout @if($errors->hasAny(['payment_option','paid','due_date','salesperson_id','card_brand','payments'])) open @endif>
+    <details class="operation-panel operation-checkout" data-operation-checkout @if(old('payments') || $errors->has('payments.*') || $errors->hasAny(['payments','payment_option','paid','due_date','salesperson_id','card_brand'])) open @endif>
 <summary>Receber e finalizar <kbd>F9</kbd>
 </summary>
         <form method="post" action="{{ route('supermarket.checkout',['company'=>$tenant->slug,'cart'=>$cart->id]) }}" data-payment-total="{{ bcmul((string)$cart->total,'100',0) }}">
