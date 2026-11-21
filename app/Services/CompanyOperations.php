@@ -113,6 +113,12 @@ class CompanyOperations
                 && DB::connection('tenant')->table('supermarket_carts')->whereIn('status',['active','suspended'])->lockForUpdate()->first(['id'])) {
                 throw ValidationException::withMessages(['operation_modes'=>'Conclua ou cancele os carrinhos ativos e suspensos antes de desabilitar o supermercado.']);
             }
+            if ($before['inventory'] && !$data['inventory'] && \App\Models\RestaurantOrderItem::where('status','<>','cancelled')
+                ->whereHas('order',fn($query)=>$query->where('status','open'))
+                ->where(fn($query)=>$query->where('commercial_terms->_restaurant_catalog->recipe->mode','recipe')
+                    ->orWhereJsonLength('commercial_terms->_restaurant_catalog->recipe->ingredients','>',0))->exists()) {
+                throw ValidationException::withMessages(['inventory'=>'Conclua ou cancele as comandas com ingredientes antes de desativar a gestão de estoque.']);
+            }
             if ($before['inventory']!==$data['inventory'] && Product::where('quantity','<>',0)->sharedLock()->first()) {
                 throw ValidationException::withMessages(['inventory'=>'Concilie e zere os saldos por movimentações identificadas antes de mudar o controle de estoque.']);
             }

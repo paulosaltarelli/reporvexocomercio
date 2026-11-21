@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode=${1:-}
-[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 || $mode == --apply-central-settings || $mode == --apply-mail-history || $mode == --apply-segments ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 / --apply-central-settings / --apply-mail-history DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 || $mode == --apply-central-settings || $mode == --apply-mail-history || $mode == --apply-segments || $mode == --apply-operational-expansion ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 / --apply-central-settings / --apply-mail-history / --apply-operational-expansion DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -58,6 +58,14 @@ if sys.argv[3]=='--apply-accesses-v1' and {name for name in new if name.startswi
 if sys.argv[3]=='--apply-segments':
     expected={'database/tenant-migrations/2026_11_21_000002_create_supermarket_carts.php','database/tenant-migrations/2026_11_21_000101_create_restaurant_operations.php'}
     if {name for name in new if name.startswith('database/')}!=expected:raise SystemExit('Segmentos requerem somente as migrações aditivas tenant revisadas.')
+if sys.argv[3]=='--apply-operational-expansion':
+    profile=json.loads((release/'stage/ops/operational-schema-release.json').read_bytes())
+    expected=set(profile.get('migrations',[]))
+    if (profile.get('version')!=1 or not expected or any(not re.fullmatch(r'database/tenant-migrations/[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[a-z0-9_]+\.php',name) for name in expected)
+        or {name for name in new if name.startswith('database/')}!=expected or any(baseline[name]!='-' for name in expected)):
+        raise SystemExit('Expansão operacional requer somente migrações tenant novas do perfil revisado.')
+    if not {'ops/extend-operational-schema.php','ops/operational-schema-release.json','app/Tenancy/OperationalSchemaRelease.php'}<=set(new):
+        raise SystemExit('Expansão operacional requer o perfil e os adaptadores certificados no pacote.')
 if sys.argv[3]=='--apply-code-only' and any(name.startswith('database/') for name in new):raise SystemExit('Release somente de código não aceita migrações.')
 if sys.argv[3]=='--apply-central-settings':
     if any(name.startswith('database/') for name in new):raise SystemExit('Configurações da Central não aceitam migrações.')
@@ -102,7 +110,7 @@ clean_exit() {
     if (( status && overlay )); then
         web_paused=1
         systemctl stop vendra.service || exit 1
-        if [[ $mode == --apply-segments ]]; then
+        if [[ $mode == --apply-segments || $mode == --apply-operational-expansion ]]; then
             "${phpcli[@]}" ops/extend-operational-schema.php rollback "$journal" > "$journal/schema-rollback.log" 2>&1 || exit 1
             cp -p "$journal/environment.previous" .env || exit 1
         fi
@@ -132,7 +140,7 @@ VENDRA_BACKUP_ACK_QUIESCED=1 sh "$live/ops/backup.sh" > "$journal/backup.log"
 backup=$(sed -n 's/^Backup local criado em \(\/var\/backups\/vendra\/[0-9TZ]*-[A-Za-z0-9]*\)\..*/\1/p' "$journal/backup.log")
 [[ -n "$backup" && $(realpath "$backup") == "$backup" ]]
 (cd "$backup" && sha256sum -c SHA256SUMS) > "$journal/backup-check.log"
-if [[ $mode == --apply-segments ]]; then
+if [[ $mode == --apply-segments || $mode == --apply-operational-expansion ]]; then
     cp -p .env "$journal/environment.previous"
 fi
 while read -r h p; do
@@ -172,7 +180,7 @@ elif [[ $mode == --apply-mail-history ]]; then
     migrations=(database/migrations/2026_11_20_000008_create_platform_mail_attempts.php)
 elif [[ $mode == --apply-accesses-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000007_create_platform_installer_invitations.php)
-elif [[ $mode == --apply-code-only || $mode == --apply-central-settings || $mode == --apply-segments ]]; then
+elif [[ $mode == --apply-code-only || $mode == --apply-central-settings || $mode == --apply-segments || $mode == --apply-operational-expansion ]]; then
     migrations=()
 elif [[ $mode == --apply-nfse-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000006_add_contract_grace_periods.php)
@@ -188,7 +196,7 @@ fi
 for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1
 done
-if [[ $mode == --apply-segments ]]; then
+if [[ $mode == --apply-segments || $mode == --apply-operational-expansion ]]; then
     artisan config:clear > "$journal/schema-config-clear.log"
     "${phpcli[@]}" ops/extend-operational-schema.php apply "$journal" > "$journal/schema-apply.log" 2>&1
     python3 - "$journal/schema.applied" <<'PY_SCHEMA_ENV'

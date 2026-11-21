@@ -13,9 +13,10 @@ final class AccessProfiles
     private const KEY='_access_profiles';
     public const PRESETS = [
         'supermarket_cashier' => ['name'=>'Caixa de supermercado', 'permissions'=>['supermarket.use','supermarket.checkout']],
+        'supermarket_supervisor' => ['name'=>'Supervisor de supermercado', 'permissions'=>['supermarket.use','supermarket.checkout','supermarket.cancel','supermarket.supervise']],
         'waiter' => ['name'=>'Garçom', 'permissions'=>['restaurant.use','restaurant.deliver','restaurant.transfer','restaurant.print']],
         'kitchen' => ['name'=>'Cozinha', 'permissions'=>['restaurant.kitchen','restaurant.print']],
-        'restaurant_cashier' => ['name'=>'Caixa de restaurante', 'permissions'=>['restaurant.use','restaurant.checkout']],
+        'restaurant_cashier' => ['name'=>'Caixa de restaurante', 'permissions'=>['restaurant.use','restaurant.checkout','restaurant.receive']],
     ];
     public function state(bool $fresh=false): array
     {
@@ -60,7 +61,7 @@ final class AccessProfiles
     {
         if ($user->role !== 'operator') return false;
         $permissions = $this->permissions($user);
-        $operational = array_filter($permissions, fn ($permission) => str_starts_with($permission,'restaurant.') || str_starts_with($permission,'supermarket.'));
+        $operational = array_filter($permissions, fn ($permission) => str_starts_with($permission,'restaurant.') || str_starts_with($permission,'supermarket.') || str_starts_with($permission,'delivery.'));
         return (bool)$operational && !array_diff($permissions, [...$operational,'account.self']);
     }
     public function profileId(int $userId): string { return (string)($this->state()['assignments'][(string)$userId]??'operator'); }
@@ -69,7 +70,17 @@ final class AccessProfiles
         if (!$user->active || $user->role===User::ROLE_INSTALLER) return [];
         if ($user->role==='admin') return array_keys(Permissions::labels());
         $state=$this->state();$id=(string)($state['assignments'][(string)$user->id]??'operator');
-        return $state['profiles'][$id]['permissions']??[];
+        return Permissions::expand($state['profiles'][$id]['permissions']??[]);
+    }
+    /** Supervisor ceiling; product/group rules remain an independent upper bound. */
+    public function discountLimit(User $user): string
+    {
+        if (!$user->active || !$user->allows('supermarket.supervise')) return '0.00';
+        if ($user->role === 'admin') return '100.00';
+        $state = $this->state();
+        $value = (string)($state['profiles'][$this->profileId($user->id)]['max_discount_percent'] ?? '100');
+        if (!preg_match('/^\d{1,3}(?:\.\d{1,2})?$/D', $value) || bccomp($value,'100',2)>0) return '0.00';
+        return bcadd($value,'0',2);
     }
     public function profileName(User $user): string
     {
@@ -87,7 +98,8 @@ final class AccessProfiles
         $mode = match (class_basename($request->route()?->getControllerClass() ?? '')) {
             'DeskController' => 'commerce',
             'RestaurantController' => 'restaurant',
-            'SupermarketController' => 'supermarket',
+            'SupermarketController', 'SupermarketApprovalController', 'SupermarketDraftController', 'SupermarketHardwareController' => 'supermarket',
+            'RestaurantActivityController', 'RestaurantCatalogController', 'RestaurantPaymentController', 'DeliveryController' => 'restaurant',
             default => null,
         };
         if ($mode !== null) abort_unless(app(\App\Services\OperationalModes::class)->enabled($mode), 403, 'Este atendimento está desabilitado para a empresa.');
@@ -120,13 +132,15 @@ final class AccessProfiles
     {
         $this->admin($actor);
         if(is_string($input['name']??null))$input['name']=trim($input['name']);
-        $data=Validator::make($input,['version'=>'required|integer|min:0','name'=>'required|string|max:80','permissions'=>'present|array|max:100','permissions.*'=>['string','distinct',Rule::in(array_keys(Permissions::labels()))]])->validate();
+        $data=Validator::make($input,['version'=>'required|integer|min:0','name'=>'required|string|max:80','permissions'=>'present|array|max:100','permissions.*'=>['string','distinct',Rule::in(array_keys(Permissions::labels()))],'max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2'])->validate();
         $permissions=Permissions::expand($data['permissions']);
         return DB::connection('tenant')->transaction(function()use($data,$permissions,$actor,$id){
             $row=$this->locked((int)$data['version']);$state=$this->fromRow($row);
             if($id!==null&&!isset($state['profiles'][$id]))abort(404);
             foreach($state['profiles'] as $key=>$profile)if($key!==$id&&mb_strtolower($profile['name'])===mb_strtolower($data['name']))throw ValidationException::withMessages(['name'=>'Já existe um perfil com este nome.']);
             $key=$id??(string)Str::uuid();$before=$state['profiles'][$key]??[];$after=['name'=>$data['name'],'permissions'=>$permissions];
+            if(isset($data['max_discount_percent']))$after['max_discount_percent']=bcadd((string)$data['max_discount_percent'],'0',2);
+            elseif(isset($before['max_discount_percent']))$after['max_discount_percent']=$before['max_discount_percent'];
             if($before===$after)return $key;
             $state['profiles'][$key]=$after;$this->persist($row,$state,$actor,'access_profile_saved',['id'=>$key]+$before,['id'=>$key]+$after);
             return $key;

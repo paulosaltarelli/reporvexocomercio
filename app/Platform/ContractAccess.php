@@ -50,10 +50,12 @@ final class ContractAccess
     /** Permissions identify controllers and actions, including unnamed POST and quick-create routes. */
     public function modulesFor(Request $request): array
     {
+        if ($request->routeIs('restaurant.activity')) return ['sales'];
         $permission = Permissions::request($request);
         return match ($permission) {
             'documents.invoice' => ['documents', 'sales'],
-            'sales.receive' => ['sales', 'finance'],
+            'sales.receive','restaurant.receive','restaurant.refund' => ['sales', 'finance'],
+            'restaurant.catalog.manage' => ['catalog'],
             'commissions.pay' => ['commissions', 'finance'],
             'administration' => match (true) {
                 $request->routeIs('payment.methods*', 'payment.brands.*') => ['finance'],
@@ -61,7 +63,7 @@ final class ContractAccess
                 default => [],
             },
             default => match (strtok($permission, '.')) {
-                'desk', 'sales', 'restaurant', 'supermarket' => ['sales'],
+                'desk', 'sales', 'restaurant', 'supermarket', 'delivery' => ['sales'],
                 'documents' => ['documents'],
                 'products', 'customers', 'suppliers', 'groups', 'sellers' => ['catalog'],
                 'stock', 'prices' => ['stock'],

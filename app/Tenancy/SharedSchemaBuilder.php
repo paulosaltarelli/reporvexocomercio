@@ -118,7 +118,7 @@ final class SharedSchemaBuilder
             $restore = $this->admin->prepare("UPDATE $db._vendra_schema_manifest SET manifest_hash=?,guard_hash=?,body=? WHERE id=1");
             $restore->execute([$metadata['manifest_hash'], $metadata['guard_hash'], $metadata['body']]);
             $this->assertExistingSchema($target, $previous);
-            throw new RuntimeException('shared_schema_extension_failed_reverted');
+            throw new RuntimeException('shared_schema_extension_failed_reverted', 0, $error);
         }
     }
 

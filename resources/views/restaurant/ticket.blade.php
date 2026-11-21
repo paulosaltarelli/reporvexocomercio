@@ -15,6 +15,7 @@
     @forelse($items as $item)
         <div class="entry">
             <strong class="item-title">{{ number_format($item->quantity,3,',','.') }} · {{ $item->description }}</strong>
+            @foreach($item->commercial_terms['_restaurant_catalog']['addons'] ?? [] as $addon)<p><strong>{{ $addon['group_name'] }}</strong> · {{ $addon['name'] }}</p>@endforeach
             @unless($station)<p>{{ ['kitchen'=>'Cozinha','bar'=>'Bar'][$item->station] }}</p>@endunless
             @if(filled($item->notes))<p><strong>Observação</strong> {{ $item->notes }}</p>@endif
             @if($item->status === 'cancelled')<p><strong>ITEM CANCELADO</strong></p><p>{{ $item->cancellation_reason }}</p>@endif

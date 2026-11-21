@@ -41,7 +41,9 @@ Revisão da loja, das frentes de restaurante e supermercado, da Central Vexo e d
 - Autenticação da Central: controle de visibilidade da senha usando o componente existente.
 - Apresentação: instrução de implantação alinhada ao convite por e-mail e landing cobrindo os quatro segmentos.
 
-## Próximas evoluções priorizadas
+## Prioridades identificadas na revisão inicial
+
+Atualização posterior nesta data: ficha técnica, adicionais, recebimentos parciais, divisão de conta, destino padrão, supervisão de caixa e recuperação de rascunhos foram implementados. Consulte `OPERACAO_PILOTO_SEM_NF.md`. Integrações reais e dispositivos externos continuam dependendo das habilitações descritas naquele documento.
 
 | Prioridade | Evolução | Resultado esperado e dependências |
 | --- | --- | --- |

@@ -4,6 +4,7 @@
 @section('subtitle','Acompanhe os itens enviados e registre cada etapa do preparo.')
 @section('actions')<a class="button" href="{{ request()->fullUrl() }}">Atualizar pedidos</a>@endsection
 @section('content')
+@include('operations.activity',['activityScope'=>'production'])
 <form class="operation-toolbar" method="get" action="{{ route('restaurant.production',['company'=>$tenant->slug]) }}">
 <div class="field">
 <label for="production-station">Destino do pedido</label>
@@ -33,6 +34,7 @@
 <span class="operation-badge">{{ $item->station==='bar'?'Bar':'Cozinha' }}</span>
 </div>
     <h3>{{ number_format($item->quantity,3,',','.') }} × {{ $item->description }}</h3>
+    @if(!empty($item->commercial_terms['_restaurant_catalog']['addons']))<p class="operation-notes">{{ collect($item->commercial_terms['_restaurant_catalog']['addons'])->pluck('name')->join(' · ') }}</p>@endif
     @if(filled($item->notes))<p class="operation-notes">{{ $item->notes }}</p>
 @endif
     <p class="hint">Comanda #{{ $item->order->id }} · Enviado {{ $item->sent_at?->format('d/m H:i') }}</p>

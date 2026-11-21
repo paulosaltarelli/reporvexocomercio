@@ -15,6 +15,8 @@
         ['label' => 'Atendimento', 'icon' => 'sale', 'links' => [
             $link('sales', 'Vendas', request()->routeIs('sales', 'sale.*')),
             $link('documents', $documentLabel, request()->routeIs('documents', 'document.*')),
+            ...(app(\App\Services\OperationalModes::class)->enabled('restaurant') ? [$link('restaurant.catalog.index','Cardápio e fichas técnicas',request()->routeIs('restaurant.catalog.*')),$link('delivery.index','Integrações de pedidos',request()->routeIs('delivery.*'))] : []),
+            ...(app(\App\Services\OperationalModes::class)->enabled('supermarket') ? [$link('supermarket.approvals.index','Autorizações de caixa',request()->routeIs('supermarket.approvals.*'))] : []),
         ]],
         ['label' => 'Cadastros', 'icon' => 'users', 'links' => array_filter([
             $link('products', $catalogLabel, request()->routeIs('products', 'product.*')),
@@ -55,6 +57,7 @@
                 $link('users', 'Usuários e permissões', request()->routeIs('users', 'user.*')),
                 $link('payment.methods','Formas de pagamento',request()->routeIs('payment.methods*')),
                 $link('access.profiles', 'Perfis e permissões', request()->routeIs('access.profiles*')),
+                $link('devices.index','Dispositivos e impressão',request()->routeIs('devices.*')),
             ]],
         ]);
     }

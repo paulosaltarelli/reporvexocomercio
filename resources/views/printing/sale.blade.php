@@ -35,9 +35,11 @@
 <section class="block receipt-items">
     <h2>Itens da venda</h2>
     <div class="row item-detail"><span>Qtd. × preço unitário</span><span>Total do item</span></div>
+    @php($restaurantSaleOptions=app(\App\Services\RestaurantSaleOptions::class)->forSale($sale->id))
     @foreach($sale->items as $item)
         <div class="entry">
             <strong class="item-title">{{ $item->description }}</strong>
+            @foreach($restaurantSaleOptions[$item->id]??[] as $addon)<p class="item-detail">+ {{ $addon['name'] }}@if(bccomp((string)$addon['price'],'0',2)>0) · {{ $money($addon['price']) }} por un.@endif</p>@endforeach
             @if($item->product_id || $item->service_id)
                 <p class="item-detail">{{ $item->product_id ? 'Cód. do catálogo' : 'Cód. do serviço' }} {{ $item->product_id ?? $item->service_id }}</p>
             @endif

@@ -1,15 +1,15 @@
 <?php
 
 use App\Tenancy\ControlPlane;
+use App\Tenancy\OperationalSchemaRelease;
 use App\Tenancy\SchemaManifest;
 use App\Tenancy\SharedManifestFile;
 use App\Tenancy\SharedSchemaBuilder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
-require __DIR__.'/../vendor/autoload.php';
-$app = require __DIR__.'/../bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$privateJournalReady = false;
+$applicationBooted = false;
 
 try {
     if (PHP_SAPI !== 'cli' || !function_exists('posix_geteuid') || posix_geteuid() !== 0) {
@@ -21,6 +21,21 @@ try {
         || realpath($journal) !== $journal || fileowner($journal)!==0 || (fileperms($journal)&0077)!==0) {
         throw new RuntimeException('private_journal_required');
     }
+    $privateJournalReady = true;
+    // Privileged DDL never loads PHP from the web process' writable framework caches.
+    $frameworkCache = $journal.'/schema-framework';
+    if (!is_dir($frameworkCache) && !mkdir($frameworkCache, 0700)) throw new RuntimeException('root_cache_not_created');
+    if (is_link($frameworkCache) || realpath($frameworkCache) !== $frameworkCache
+        || fileowner($frameworkCache) !== 0 || (fileperms($frameworkCache)&0077)!==0) throw new RuntimeException('root_cache_invalid');
+    foreach (['APP_PACKAGES_CACHE'=>'packages.php','APP_SERVICES_CACHE'=>'services.php','APP_CONFIG_CACHE'=>'config.php',
+        'APP_EVENTS_CACHE'=>'events.php','APP_ROUTES_CACHE'=>'routes.php','VIEW_COMPILED_PATH'=>''] as $key=>$file) {
+        $value = $frameworkCache.($file!==''?'/'.$file:'');
+        putenv($key.'='.$value); $_ENV[$key]=$value; $_SERVER[$key]=$value;
+    }
+    require __DIR__.'/../vendor/autoload.php';
+    $app = require __DIR__.'/../bootstrap/app.php';
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    $applicationBooted = true;
     $pdo = ControlPlane::pdo();
     $builder = new SharedSchemaBuilder($pdo);
     $database = (string)config('tenancy.shared.database');
@@ -41,7 +56,11 @@ try {
         || !chmod($journal.'/schema.previous.json', 0600)) {
         throw new RuntimeException('previous_certificate_not_saved');
     }
-    $template = 'vendra_t_test_segments_'.substr(basename(dirname($journal)), 0, 12);
+    $template = 'vendra_t_test_segments_'.substr(basename(dirname($journal)), 0, 12).'_'.substr(hash('sha256', $journal), 0, 8);
+    if (file_put_contents($journal.'/schema.template', $template) !== strlen($template)
+        || !chmod($journal.'/schema.template', 0600)) {
+        throw new RuntimeException('template_identity_not_journaled');
+    }
     if ($pdo->query('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='.$pdo->quote($template))->fetchColumn()) {
         throw new RuntimeException('template_exists');
     }
@@ -56,6 +75,7 @@ try {
         throw new RuntimeException('template_migration_failed');
     }
     $next = SchemaManifest::capture($pdo, $template);
+    OperationalSchemaRelease::assertTransition($previous, $next);
     $result = $builder->extend($template, $database, $previous, $next);
     try {
         SharedManifestFile::save($next);
@@ -71,7 +91,11 @@ try {
     }
     $pdo->exec('DROP DATABASE `'.$template.'`');
     echo 'Estrutura ampliada: '.count($result['tables']).' tabelas. Hash '.$result['manifest_hash'].PHP_EOL;
-} catch (Throwable) {
+} catch (Throwable $error) {
+    if ($privateJournalReady) {
+        $errorFile = $journal.'/schema.error.private.log';
+        if (file_put_contents($errorFile, (string)$error.($applicationBooted?"\n".Artisan::output():''), LOCK_EX) !== false) chmod($errorFile, 0600);
+    }
     fwrite(STDERR, "Estrutura operacional não concluída. Consulte o journal privado antes de reabrir a aplicação.\n");
     exit(1);
 }

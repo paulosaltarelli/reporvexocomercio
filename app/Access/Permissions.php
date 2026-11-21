@@ -7,8 +7,9 @@ final class Permissions
 {
     public const GROUPS = [
         'Balcão e vendas' => ['desk.use'=>'Abrir a frente de caixa','sales.view'=>'Consultar vendas e comprovantes da empresa','sales.create'=>'Registrar vendas','sales.cancel'=>'Cancelar vendas e estornar','sales.receive'=>'Receber o saldo integral de uma venda','sales.seller'=>'Escolher outro vendedor'],
-        'Restaurante' => ['restaurant.use'=>'Atender mesas e comandas','restaurant.manage'=>'Cadastrar mesas','restaurant.transfer'=>'Transferir comanda de mesa','restaurant.print'=>'Imprimir comandas de produção','restaurant.kitchen'=>'Operar a produção da cozinha','restaurant.deliver'=>'Registrar entrega de pedidos prontos','restaurant.cancel'=>'Cancelar pedidos e itens','restaurant.checkout'=>'Fechar a conta do restaurante'],
-        'Supermercado' => ['supermarket.use'=>'Operar o caixa de supermercado','supermarket.cancel'=>'Cancelar itens e carrinhos','supermarket.checkout'=>'Concluir vendas do supermercado'],
+        'Restaurante' => ['restaurant.use'=>'Atender mesas e comandas','restaurant.manage'=>'Cadastrar mesas','restaurant.transfer'=>'Transferir comanda de mesa','restaurant.print'=>'Imprimir comandas de produção','restaurant.kitchen'=>'Operar a produção da cozinha','restaurant.deliver'=>'Registrar entrega de pedidos prontos','restaurant.cancel'=>'Cancelar pedidos e itens','restaurant.checkout'=>'Fechar a conta do restaurante','restaurant.receive'=>'Dividir contas e receber durante o atendimento','restaurant.refund'=>'Estornar recebimentos de comandas','restaurant.catalog.manage'=>'Configurar cardápio, adicionais e fichas técnicas'],
+        'Supermercado' => ['supermarket.use'=>'Operar o caixa de supermercado','supermarket.cancel'=>'Cancelar itens e carrinhos','supermarket.checkout'=>'Concluir vendas do supermercado','supermarket.supervise'=>'Autorizar ajustes e supervisionar o caixa'],
+        'Integrações de pedidos' => ['delivery.view'=>'Consultar pedidos de integrações','delivery.manage'=>'Configurar e testar integrações de pedidos'],
         'Orçamentos e OS' => ['documents.view'=>'Consultar orçamentos e OS da empresa','documents.create'=>'Criar orçamentos e OS','documents.edit'=>'Editar OS abertas','documents.status'=>'Alterar etapas e cancelar documentos','documents.invoice'=>'Gerar venda a partir de orçamento/OS','documents.seller'=>'Reatribuir vendedor com justificativa'],
         'Cadastros' => ['products.view'=>'Consultar produtos e serviços','products.manage'=>'Cadastrar e editar produtos/serviços','customers.view'=>'Consultar clientes','customers.manage'=>'Cadastrar e editar clientes','suppliers.view'=>'Consultar fornecedores','suppliers.manage'=>'Cadastrar e editar fornecedores','groups.view'=>'Consultar grupos','groups.manage'=>'Alterar grupos e regras comerciais','sellers.manage'=>'Gerenciar vendedores'],
         'Estoque e preços' => ['stock.view'=>'Consultar saldos e movimentações','stock.manage'=>'Movimentar estoque','costs.view'=>'Visualizar custos, margens e sugestões','prices.view'=>'Consultar preços e alertas','prices.manage'=>'Aplicar preços e atualizar regras','purchases.view'=>'Consultar compras e custos','purchases.manage'=>'Registrar compras'],
@@ -18,14 +19,15 @@ final class Permissions
     public const NAVIGATION = [
         ['Visão geral','dashboard',[],'dashboard.view'],['Frente de caixa','desk',[],'desk.use'],
         ['Mesas e comandas','restaurant.index',[],'restaurant.use'],['Cozinha','restaurant.production',[],'restaurant.kitchen'],['Caixa de supermercado','supermarket.index',[],'supermarket.use'],
+        ['Cardápio e fichas técnicas','restaurant.catalog.index',[],'restaurant.catalog.manage'],['Autorizações de caixa','supermarket.approvals.index',[],'supermarket.supervise'],['Integrações de pedidos','delivery.index',[],'delivery.view'],
         ['Vendas','sales',[],'sales.view'],['Orçamentos e OS','documents',[],'documents.view'],
         ['Produtos e serviços','products',[],'products.view'],['Clientes','catalog',['kind'=>'customers'],'customers.view'],['Fornecedores','catalog',['kind'=>'suppliers'],'suppliers.view'],['Grupos','catalog',['kind'=>'groups'],'groups.view'],
         ['Vendedores','sellers',[],'sellers.manage'],['Movimentações de estoque','stock',[],'stock.view'],['Compras','purchases',[],'purchases.view'],['Preços e alertas','prices',[],'prices.view'],
         ['Contas a pagar e receber','finance',[],'finance.view'],['Caixa diário','cash',[],'cash.view'],['Fluxo e previsão','cashflow',[],'cashflow.view'],['Relatórios gerenciais','reports',[],'reports.view'],['Comissões','commissions',[],'commissions.view'],['Fiscal','fiscal',[],'fiscal.manage'],
     ];
     public const DEPENDENCIES = [
-        'restaurant.manage'=>['restaurant.use'], 'restaurant.transfer'=>['restaurant.use'], 'restaurant.deliver'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use'],
-        'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use'],
+        'restaurant.manage'=>['restaurant.use'], 'restaurant.transfer'=>['restaurant.use'], 'restaurant.deliver'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use','restaurant.receive'], 'restaurant.receive'=>['restaurant.use'], 'restaurant.refund'=>['restaurant.receive'], 'restaurant.catalog.manage'=>['restaurant.use','products.view'],
+        'supermarket.supervise'=>['supermarket.use'], 'delivery.manage'=>['delivery.view'], 'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use'],
         'sales.create'=>['desk.use','products.view','sales.view'], 'sales.cancel'=>['sales.view'], 'sales.receive'=>['sales.view'],
         'documents.create'=>['documents.view','products.view'], 'documents.edit'=>['documents.view','products.view'], 'documents.status'=>['documents.view'], 'documents.invoice'=>['documents.view','products.view','sales.view'], 'documents.seller'=>['documents.view','sales.seller'],
         'products.manage'=>['products.view','groups.view','costs.view'],'customers.manage'=>['customers.view'],'suppliers.manage'=>['suppliers.view'],'groups.manage'=>['groups.view','costs.view'],
@@ -69,6 +71,14 @@ final class Permissions
                 'checkout','receipt'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
             },
             'ProductImageController'=>match($action) { 'show','sheet'=>'account.self', 'save'=>'products.manage', default=>'denied' },
+            'RestaurantActivityController'=>'account.self', // The endpoint checks kitchen or salon scope explicitly.
+            'RestaurantCatalogController'=>'restaurant.catalog.manage',
+            'RestaurantPaymentController'=>match($action){'refund'=>'restaurant.refund',default=>'restaurant.receive'},
+            'SupermarketApprovalController'=>match($action){'index','decide'=>'supermarket.supervise',default=>'supermarket.use'},
+            'SupermarketDraftController'=>'supermarket.use',
+            'SupermarketHardwareController'=>'supermarket.supervise',
+            'DeliveryController'=>in_array($action,['index','show'],true)?'delivery.view':'delivery.manage',
+            'DeviceController'=>'administration',
             'MeasureUnitController'=>'products.manage',
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},
             'CommerceController'=>match($action) {

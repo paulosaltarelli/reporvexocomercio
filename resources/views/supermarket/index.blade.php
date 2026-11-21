@@ -69,6 +69,9 @@
     @if($operationConfig['weighed_labels']['enabled'] ?? false)<p class="hint">Etiquetas pesáveis habilitadas. Use quantidade 1 para ler o peso ou o valor da etiqueta.</p>@endif
     @endif
 </section>
+@if($cart->status==='active')
+@include('operations.local-draft')
+@endif
 @if($cart->status==='active' && request()->filled('q'))
 <section class="operation-panel operation-search-results" id="supermarket-search-results" aria-labelledby="supermarket-results-heading" data-operation-search-results>
 <div class="operation-heading">
@@ -137,6 +140,7 @@
 </form>
 @endif
         </details>
+        @include('operations.approval-request',['approvalLine'=>$line,'approvalKey'=>$line['line_key']])
         @endif
     </article>
     @endforeach
@@ -174,9 +178,13 @@
 <a class="button" href="{{ route('supermarket.receipt',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">Imprimir comprovante</a>
 </section>
 @endif
+    @include('operations.cart-approvals')
     @if(in_array($cart->status,['active','suspended'],true))
     <section class="operation-panel">
 <h2>Gerenciar atendimento</h2>
+@if($cart->status==='active')
+@include('operations.approval-request',['approvalKey'=>'cart'])
+@endif
         @if($cart->status==='active')<form method="post" action="{{ route('supermarket.suspend',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">

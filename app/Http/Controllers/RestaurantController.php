@@ -16,9 +16,11 @@ final class RestaurantController extends Controller
     public function index()
     {
         $this->requireMode();
+        $tables=RestaurantTable::where('active',true)->with(['orders'=>fn($query)=>$query->where('status','open')->with('items')])->orderBy('name')->get();
+        $orders=RestaurantOrder::with('table','customer','items')->where('status','open')->oldest()->get();
         return view('restaurant.index', [
-            'tables' => RestaurantTable::where('active', true)->with(['orders' => fn ($query) => $query->where('status', 'open')->with('items')])->orderBy('name')->get(),
-            'orders' => RestaurantOrder::with('table', 'customer', 'items')->where('status', 'open')->oldest()->get(),
+            'tables'=>$tables,'orders'=>$orders,
+            'activityState'=>app(\App\Services\RestaurantActivity::class)->index($tables,$orders),
             'customers' => Customer::orderBy('name')->get(),
         ]);
     }
@@ -28,9 +30,13 @@ final class RestaurantController extends Controller
         $this->requireMode();
         $record = RestaurantOrder::with('table', 'customer', 'items', 'sale')->findOrFail($order);
         $actor = $request->attributes->get('currentUser');
+        $products=app(\App\Services\RestaurantCatalog::class)->menuQuery()->with('group')->orderBy('name')->get();
+        $catalog=app(\App\Services\RestaurantCatalog::class)->publicCatalog($products);
+        $paymentSummary=app(\App\Services\RestaurantPayments::class)->summary($record);
         return view('restaurant.order', [
             'order' => $record,
-            'products' => Product::with('group')->where('active', true)->where('type', 'product')->orderBy('name')->get(),
+            'products'=>$products,'catalogByProduct'=>$catalog,'paymentSummary'=>$paymentSummary,
+            'activityState'=>app(\App\Services\RestaurantActivity::class)->order($record,$products,$catalog),
             'customers' => Customer::orderBy('name')->get(),
             'sellers' => Seller::where('active', true)->orderBy('name')->get(),
             'currentSalesperson' => Seller::where('user_id', $actor->id)->first(),
@@ -39,7 +45,7 @@ final class RestaurantController extends Controller
             'statuses' => RestaurantOperations::STATUSES,
             'availableTables' => RestaurantTable::where('active', true)->whereDoesntHave('orders', fn ($query) => $query->where('status', 'open'))->orderBy('name')->get(),
             'productionBatches' => OperationRecord::where('action', 'restaurant_send')->where('after->order_id', $record->id)->orderByDesc('id')->get(['id', 'created_at']),
-            'total' => $record->items->where('status', '<>', 'cancelled')->reduce(fn ($total, $item) => bcadd($total, \App\Services\Decimal::round(bcmul($item->quantity, $item->unit_price, 6), 2), 2), '0.00'),
+            'total'=>$paymentSummary['total'],
         ]);
     }
 
@@ -47,11 +53,11 @@ final class RestaurantController extends Controller
     {
         $this->requireMode();
         $data = $request->validate(['station' => 'nullable|in:kitchen,bar']);
+        $items=RestaurantOrderItem::with('order.table')->whereIn('status',['queued','preparing','ready'])
+            ->whereHas('order',fn($query)=>$query->where('status','open'))
+            ->when($data['station']??null,fn($query,$station)=>$query->where('station',$station))->orderBy('sent_at')->orderBy('id')->get();
         return view('restaurant.production', [
-            'items' => RestaurantOrderItem::with('order.table')->whereIn('status', ['queued', 'preparing', 'ready'])
-                ->whereHas('order', fn ($query) => $query->where('status', 'open'))
-                ->when($data['station'] ?? null, fn ($query, $station) => $query->where('station', $station))
-                ->orderBy('sent_at')->orderBy('id')->get(),
+            'items'=>$items,'activityState'=>app(\App\Services\RestaurantActivity::class)->production($items),
             'station' => $data['station'] ?? null, 'statuses' => RestaurantOperations::STATUSES,
         ]);
     }
@@ -101,8 +107,8 @@ final class RestaurantController extends Controller
 
     public function close(Request $request, string $company, int $order, RestaurantOperations $operations)
     {
-        $operations->close($order, $request->all(), $request->attributes->get('currentUser')->id);
-        return $this->back($request, $order, 'Comanda encerrada.');
+        $sale=$operations->close($order, $request->all(), $request->attributes->get('currentUser')->id);
+        return $this->back($request, $order, 'Comanda encerrada.')->with('stock_warning',app(\App\Services\Inventory::class)->saleWarning($sale->id));
     }
 
     public function receipt(Request $request, string $company, int $order, OperationalReceipt $receipt)
@@ -130,6 +136,7 @@ final class RestaurantController extends Controller
         $items = $record->items->where('status', '<>', 'cancelled');
         $total = $items->reduce(fn ($sum, $item) => bcadd($sum, (string)$item->commercial_terms['total'], 2), '0.00');
         return response()->view('restaurant.prebill', ['order' => $record, 'items' => $items, 'total' => $total,
+            'paymentSummary'=>app(\App\Services\RestaurantPayments::class)->summary($record),
             'receiptSale' => true, 'receiptBackUrl' => route('restaurant.orders.show', ['company' => $company, 'order' => $record->id])])
             ->header('Cache-Control', 'private, no-store');
     }

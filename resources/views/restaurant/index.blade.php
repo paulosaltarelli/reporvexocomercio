@@ -3,6 +3,7 @@
 @section('navigation-section','Restaurante')
 @section('subtitle','Abra um atendimento, registre os pedidos e acompanhe a produção.')
 @section('content')
+@include('operations.activity',['activityScope'=>'index'])
 <div class="operation-grid">
 <div>
 <section class="operation-panel">

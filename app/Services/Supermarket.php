@@ -126,7 +126,9 @@ final class Supermarket
     {
         $product = $scan['product'];
         $items = $cart->items;
-        $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
+        $quantity = $scan['label'] === null && strtoupper($product->unit) === 'KG'
+            ? app(ManualWeightInput::class)->quantity($quantity)
+            : Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
         if ($scan['label'] !== null && bccomp($quantity, '1', 3) !== 0) {
             throw ValidationException::withMessages(['quantity' => 'Para etiqueta pesável, mantenha a quantidade em 1 e leia cada embalagem separadamente.']);
         }
@@ -237,8 +239,10 @@ final class Supermarket
                         throw ValidationException::withMessages(['items' => 'Um produto foi alterado ou desativado. Retire o item e confira o cadastro antes de continuar.']);
                     }
                 }
-                $lines[] = ['kind' => 'product', 'id' => $line['product_id'], 'quantity' => $line['quantity'],
+                $checkoutLine = ['kind' => 'product', 'id' => $line['product_id'], 'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'], 'catalog_price_seen' => $line['unit_price']];
+                if (array_key_exists('discount_percent', $line)) $checkoutLine['discount_percent'] = $line['discount_percent'];
+                $lines[] = $checkoutLine;
             }
             unset($payment['version']);
             $data = $payment + ['paid' => false, 'payment_method' => 'cash', 'installments' => 1];

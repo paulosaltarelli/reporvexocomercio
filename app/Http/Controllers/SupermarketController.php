@@ -40,6 +40,7 @@ final class SupermarketController extends Controller
         return view('supermarket.index', [
             'cart' => $cart, 'carts' => SupermarketCart::where('user_id', $actor->id)->whereIn('status', ['active', 'suspended'])->latest()->get(),
             'products' => $products, 'searchQuantity' => $searchQuantity, 'customers' => Customer::orderBy('name')->get(),
+            'approvals'=>$cart ? \App\Models\SupermarketApproval::where('cart_id',$cart->id)->where('requested_by',$actor->id)->latest()->limit(20)->get() : collect(),
             'sellers' => Seller::where('active', true)->orderBy('name')->get(), 'currentSalesperson' => $own,
             'selectedSalespersonId' => $own?->id, 'operationConfig' => app(CompanyOperations::class)->current(),
         ]);
@@ -124,8 +125,8 @@ final class SupermarketController extends Controller
             'paid' => 'required_without:payments|boolean', 'installments' => 'nullable|integer|min:1|max:24',
             'due_date' => ($request->has('payments') ? 'nullable|date_format:Y-m-d' : 'nullable|required_if:paid,0|date_format:Y-m-d'),
         ]));
-        $service->checkout($cart, $input['version'], $input, $request->attributes->get('currentUser')->id);
-        return $this->back($request, $cart)->with('success', 'Venda concluída. O comprovante está disponível neste atendimento.');
+        $sale=$service->checkout($cart, $input['version'], $input, $request->attributes->get('currentUser')->id);
+        return $this->back($request, $cart)->with('success', 'Venda concluída. O comprovante está disponível neste atendimento.')->with('stock_warning',app(\App\Services\Inventory::class)->saleWarning($sale->id));
     }
 
     public function receipt(Request $request, string $company, int $cart, Supermarket $service)

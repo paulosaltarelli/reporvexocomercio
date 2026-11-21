@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Document;
 use App\Models\Product;
+use App\Models\OperationRecord;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\Seller;
@@ -72,14 +73,14 @@ class Checkout
                     'kind' => 'product', 'id' => $item->product_id, 'description' => $item->description,
                 ]))->all(),
             ]);
-            return $this->completeInternal($data, $userId, null, null, true);
+            return $this->completeInternal($data, $userId, null, null, true, $orderId);
         }, 3);
     }
 
-    private function completeInternal(array $data, int $userId, ?Document $document = null, ?Seller $assignedSeller = null, bool $restaurantSnapshot = false): Sale
+    private function completeInternal(array $data, int $userId, ?Document $document = null, ?Seller $assignedSeller = null, bool $restaurantSnapshot = false, ?int $restaurantOrderId = null): Sale
     {
         try {
-            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller, $restaurantSnapshot) {
+            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller, $restaurantSnapshot, $restaurantOrderId) {
                 $configuration = app(CompanyOperations::class)->lock();
                 $existing = Sale::where('request_key', $data['request_key'])->first();
                 if ($existing) {
@@ -95,7 +96,10 @@ class Checkout
                     isset($data['salesperson_id']) ? (int) $data['salesperson_id'] : null);
                 if (! $seller) throw new \LogicException('O vendedor do documento não foi resolvido pelo fluxo autorizado.');
                 $split=array_key_exists('payments',$data);
-                $choice=app(PaymentMethods::class)->resolve($split?($data['payments'][array_key_first($data['payments'])]['payment_option']??null):($data['payment_option']??null),(string)($data['payment_method']??'cash'));
+                $historicalRestaurantPayment = $restaurantOrderId !== null && app(RestaurantPayments::class)->hasReceipts($restaurantOrderId)
+                    && empty($data['payments']) && empty($data['payment_method']) && empty($data['payment_option']);
+                $choice = $historicalRestaurantPayment ? app(RestaurantPayments::class)->headerChoice($restaurantOrderId)
+                    : app(PaymentMethods::class)->resolve($split?($data['payments'][array_key_first($data['payments'])]['payment_option']??null):($data['payment_option']??null),(string)($data['payment_method']??'cash'));
                 $method = FinancialService::paymentMethod($choice['type']);
                 $sale = Sale::create(['request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'seller_id' => $seller->user_id, 'salesperson_id' => $seller->id, 'seller_name' => ($document?->seller_name ?? $seller->name), 'document_id' => $document?->id, 'subtotal' => 0, 'discount_total' => 0, 'commission_total' => 0, 'commission_basis'=>$configuration['commission_basis'], 'payment_method' => $method, 'paid' => false, 'due_date' => $data['due_date'] ?? null, 'total' => 0, 'cost_total' => 0, 'notes' => $data['notes'] ?? null]);
                 OperationReplay::record($sale, $data, $userId);
@@ -105,6 +109,8 @@ class Checkout
                     throw ValidationException::withMessages(['items' => 'Informe de 1 a 200 itens.']);
                 }
                 usort($lines, fn ($a, $b) => strcmp($a['kind'], $b['kind']) ?: ($a['id'] <=> $b['id']));
+                $genericRecipes = $restaurantSnapshot ? [] : app(RecipeInventory::class)->plansForProducts(
+                    array_column(array_filter($lines, fn ($line) => ($line['kind'] ?? '') === 'product'), 'id'));
                 $total = '0';
                 $subtotal = '0';
                 $discountTotal = '0';
@@ -131,16 +137,29 @@ class Checkout
                     $saleItem = SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
                         'description' => ($document || $restaurantSnapshot) ? ($line['description'] ?? $item->name) : $item->name.$detail, 'unit_cost' => $unitCost], $terms));
+                    if ($restaurantSnapshot && !empty($line['_restaurant_catalog']['addons'])) {
+                        OperationRecord::create(['action' => 'restaurant_sale_options', 'version' => 1, 'user_id' => $userId,
+                            'before' => [], 'after' => ['sale_id' => $sale->id, 'sale_item_id' => $saleItem->id,
+                                'addons' => $line['_restaurant_catalog']['addons'],
+                                'recipe_revision' => (int)($line['_restaurant_catalog']['recipe']['revision'] ?? 0)], 'created_at' => now()]);
+                    }
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
                     $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
                     $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);
                     $lineCost = bcmul($qty, $unitCost, 8);
-                    if ($configuration['inventory'] && $product && $item->controlsStock()) {
+                    $recipe = $product ? ($restaurantSnapshot ? ($line['_restaurant_catalog']['recipe'] ?? null) : ($genericRecipes[$item->id] ?? null)) : null;
+                    if (!$restaurantSnapshot && ($recipe['requires_choices'] ?? false)) throw ValidationException::withMessages(['items' => 'Este produto tem escolhas obrigatórias. Registre o pedido na comanda para selecionar os adicionais.']);
+                    if ($recipe !== null && !is_array($recipe)) throw ValidationException::withMessages(['recipe' => 'A ficha registrada está incompleta. Revise o atendimento.']);
+                    $consumption = $product && $recipe !== null ? app(RecipeInventory::class)->consume($sale, $saleItem, $item, $qty, $recipe, $userId, $configuration)
+                        : ['handled_base' => false, 'cost' => '0'];
+                    if ($configuration['inventory'] && $product && $item->controlsStock() && !$consumption['handled_base']) {
                         $inventory = app(Inventory::class);
                         $movementKey = 'sale-'.$sale->id.'-'.$i;
                         $inventory->move($item->id, 'sale', $qty, $unitCost, 'Venda #'.$sale->id, $userId, $movementKey, $sale->id, null, $saleItem->id);
                         $lineCost = $inventory->movementValue($movementKey) ?? $lineCost;
                     }
+                    $lineCost = $consumption['handled_base'] ? $consumption['cost'] : bcadd($lineCost, $consumption['cost'], 8);
+                    if ($consumption['has_ingredients'] ?? false) $saleItem->update(['unit_cost' => Decimal::round(bcdiv($lineCost, $qty, 8), 4)]);
                     $total = bcadd($total, $amount, 2);
                     $cost = bcadd($cost, $lineCost, 8);
                 }
@@ -152,6 +171,10 @@ class Checkout
                 Decimal::input($commissionTotal, 2, 'items');
                 $sale->update(['total' => $total, 'cost_total' => $cost, 'subtotal' => $subtotal,
                     'discount_total' => $discountTotal, 'commission_total' => $commissionTotal]);
+                if ($restaurantOrderId !== null && app(RestaurantPayments::class)->hasReceipts($restaurantOrderId)) {
+                    app(RestaurantPayments::class)->settle($restaurantOrderId, $sale, $data, $userId);
+                    return $sale->fresh();
+                }
                 if (!$split && (!empty($data['card_brand']) || (in_array($method,['credit','debit'],true)&&app(CardFees::class)->options($method)))){
                     $data['payments']=[array_merge($data,['payment_option'=>$choice['id'],'amount'=>$total])];$split=true;
                 }
@@ -201,6 +224,7 @@ class Checkout
     {
         DB::connection('tenant')->transaction(function () use ($id, $userId, $refundConfirmed) {
             app(CompanyOperations::class)->lock();
+            InstallerAccess::authorizedActor($userId, 'sales.cancel');
             $sale = Sale::lockForUpdate()->findOrFail($id);
             if ($sale->status === 'cancelled') {
                 return;
@@ -208,6 +232,9 @@ class Checkout
             app(FinancialService::class)->cancelSale($sale->id, $userId, $refundConfirmed);
             $feeIds=[];foreach(app(SalePayments::class)->rows($sale->id) as $part)$feeIds=array_merge($feeIds,$part['fee_entry_ids']??[]);
             foreach(\App\Models\FinancialEntry::whereIn('id',$feeIds)->orderBy('id')->lockForUpdate()->get() as $expense){if(bccomp($expense->paid_amount,'0',2)===0)$expense->update(['cancelled_at'=>now()]);}
+            $baseUnitCosts = OperationRecord::where('action', 'restaurant_recipe_consumed')->where('after->sale_id', $sale->id)->get()
+                ->filter(fn ($record) => isset($record->after['base_unit_cost']))
+                ->mapWithKeys(fn ($record) => [$record->after['sale_item_id'] => $record->after['base_unit_cost']]);
             foreach ($sale->items()->whereNotNull('product_id')->orderBy('product_id')->get() as $line) {
                 // Historical participation, not today's product type, determines a stock return.
                 $hadStock = StockMovement::where('sale_id', $sale->id)->where('product_id', $line->product_id)->where('type', 'sale')->exists();
@@ -218,8 +245,9 @@ class Checkout
                 if (! $product->controlsStock()) {
                     throw ValidationException::withMessages(['product_id' => 'Reative o controle de estoque de '.$product->name.' antes de estornar a venda que originalmente baixou seu saldo.']);
                 }
-                app(Inventory::class)->move($line->product_id, 'return', $line->quantity, $line->unit_cost, 'Estorno venda #'.$sale->id, $userId, 'cancel-'.$line->id, $sale->id, app(Inventory::class)->saleValueForItem($sale->id, $line->id));
+                app(Inventory::class)->move($line->product_id, 'return', $line->quantity, $baseUnitCosts->get($line->id, $line->unit_cost), 'Estorno venda #'.$sale->id, $userId, 'cancel-'.$line->id, $sale->id, app(Inventory::class)->saleValueForItem($sale->id, $line->id));
             }
+            app(RecipeInventory::class)->cancel($sale, $userId);
             $sale->update(['status' => 'cancelled', 'paid' => false]);
         }, 3);
     }

@@ -99,6 +99,37 @@
         select.addEventListener('change', update);
         update();
     });
+    document.querySelectorAll('[data-product-base-cents]').forEach(form => {
+        const groups = [...form.querySelectorAll('[data-modifier-group]')];
+        if (!groups.length) return;
+        const update = () => {
+            let cents = BigInt(form.dataset.productBaseCents);
+            groups.forEach(group => {
+                const inputs = [...group.querySelectorAll('[data-modifier-cents]')];
+                const selected = inputs.filter(input => input.checked);
+                const minimum = Number(group.dataset.minChoices), maximum = Number(group.dataset.maxChoices);
+                const valid = selected.length >= minimum && selected.length <= maximum;
+                inputs.forEach(input => input.setCustomValidity(''));
+                if (!valid && inputs.length) inputs[0].setCustomValidity('Escolha entre ' + minimum + ' e ' + maximum + ' opções de ' + group.querySelector('legend').textContent + '.');
+                group.querySelector('[data-modifier-status]').textContent = selected.length + (selected.length === 1 ? ' opção escolhida' : ' opções escolhidas');
+                selected.forEach(input => cents += BigInt(input.dataset.modifierCents));
+            });
+            const price = form.querySelector('[data-modifier-price]');
+            if (price) price.textContent = 'Prévia por unidade: R$ ' + (cents/100n).toLocaleString('pt-BR') + ',' + String(cents%100n).padStart(2,'0') + '. O servidor confirma ao adicionar.';
+        };
+        groups.forEach(group => group.addEventListener('change', update));
+        form.addEventListener('invalid', () => { const details=form.querySelector('.operation-modifiers'); if (details) details.open=true; }, true);
+        update();
+    });
+    document.querySelectorAll('[data-approval-action]').forEach(select => {
+        const refresh = () => select.closest('form').querySelectorAll('[data-approval-field]').forEach(field => {
+            const active = field.dataset.approvalField === select.value;
+            field.hidden = !active;
+            field.querySelectorAll('input').forEach(input => { input.disabled = !active; input.required = active; });
+        });
+        select.addEventListener('change', refresh);
+        refresh();
+    });
     const updateElapsed = () => document.querySelectorAll('[data-operation-elapsed]').forEach(time => {
         const timestamp = Date.parse(time.dataset.operationElapsed);
         if (!Number.isFinite(timestamp)) return;

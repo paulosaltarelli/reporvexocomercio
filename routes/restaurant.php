@@ -4,6 +4,15 @@ use App\Http\Controllers\RestaurantController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('restaurante')->name('restaurant.')->group(function () {
+    Route::get('atividade', [\App\Http\Controllers\RestaurantActivityController::class,'show'])->name('activity');
+    Route::get('catalogo', [\App\Http\Controllers\RestaurantCatalogController::class,'index'])->name('catalog.index');
+    Route::get('catalogo/produtos/{product}', [\App\Http\Controllers\RestaurantCatalogController::class,'edit'])->whereNumber('product')->name('catalog.edit');
+    Route::post('catalogo/produtos/{product}', [\App\Http\Controllers\RestaurantCatalogController::class,'save'])->whereNumber('product')->name('catalog.save');
+    Route::post('comandas/{order}/divisoes', [\App\Http\Controllers\RestaurantPaymentController::class,'divide'])->whereNumber('order')->name('divisions.store');
+    Route::post('comandas/{order}/divisoes/{division}/cancelar', [\App\Http\Controllers\RestaurantPaymentController::class,'cancelDivision'])->whereNumber('order')->whereUuid('division')->name('divisions.cancel');
+    Route::post('comandas/{order}/recebimentos', [\App\Http\Controllers\RestaurantPaymentController::class,'store'])->whereNumber('order')->name('payments.store');
+    Route::post('comandas/{order}/recebimentos/{payment}/estornar', [\App\Http\Controllers\RestaurantPaymentController::class,'refund'])->whereNumber(['order','payment'])->name('payments.refund');
+
     Route::get('/', [RestaurantController::class, 'index'])->name('index');
     Route::post('mesas', [RestaurantController::class, 'createTable'])->name('table.store');
     Route::post('comandas', [RestaurantController::class, 'open'])->name('orders.open');

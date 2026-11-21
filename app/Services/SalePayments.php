@@ -21,10 +21,46 @@ final class SalePayments
 
     public function record(Sale $sale, array $input, int $actor): void
     {
+        $this->recordInternal($sale, $input, $actor, []);
+    }
+
+    /** Existing restaurant receipts are selected from the locked, persisted agreement only. */
+    public function recordWithPrepayments(Sale $sale, array $input, int $actor, \App\Models\RestaurantOrder $order): void
+    {
+        $expected = Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:restaurant:'.$order->request_key)->toString();
+        if ($sale->request_key !== $expected) throw new \LogicException('A venda não pertence à comanda informada.');
+        $receipts = \App\Models\RestaurantOrderPayment::where('restaurant_order_id', $order->id)->whereNull('refunded_at')
+            ->orderBy('id')->lockForUpdate()->get()->all();
+        if (!$receipts) throw new \LogicException('Não existem recebimentos prévios para esta comanda.');
+        $this->recordInternal($sale, $input, $actor, $receipts);
+    }
+
+    private function recordInternal(Sale $sale, array $input, int $actor, array $prepayments): void
+    {
         if(\Illuminate\Support\Facades\DB::connection('tenant')->transactionLevel()===0)throw new \LogicException('O plano de pagamento exige uma transação de venda.');
-        $input=Validator::make(['payments'=>$input],self::rules())->validate()['payments'];
+        $input = $input === [] && $prepayments ? [] : Validator::make(['payments'=>$input],self::rules())->validate()['payments'];
         ksort($input,SORT_NUMERIC);
         $rows=[];$sum='0.00';$chargedTotal='0.00';$passedTotal='0.00';$count=0;
+        $prepaidEntries = [];
+        foreach ($prepayments as $receipt) {
+            $entry = FinancialEntry::lockForUpdate()->findOrFail($receipt->financial_entry_id);
+            $payment = \App\Models\Payment::whereKey($receipt->payment_id)->firstOrFail();
+            if (($entry->sale_id && $entry->sale_id !== $sale->id) || $entry->cancelled_at || $entry->direction !== 'in'
+                || bccomp($entry->amount, $receipt->amount, 2) !== 0 || bccomp($entry->paid_amount, $receipt->amount, 2) !== 0
+                || $payment->entry_id !== $entry->id || $payment->reversal()->exists()) {
+                throw ValidationException::withMessages(['payments' => 'Um recebimento prévio precisa de conferência financeira antes de fechar.']);
+            }
+            $row = $receipt->payment_snapshot;
+            $row['restaurant_receipt_id'] = $receipt->id;
+            $row['paid'] = true;
+            $row['installments'] = 1;
+            $rows[] = $row;
+            $prepaidEntries[$receipt->id] = $entry;
+            $sum = bcadd($sum, $receipt->base_amount, 2);
+            $chargedTotal = bcadd($chargedTotal, $receipt->amount, 2);
+            $passedTotal = bcadd($passedTotal, $receipt->passed_fee, 2);
+            $count++;
+        }
         foreach(array_values($input) as $i=>$row){
             $choice=app(PaymentMethods::class)->resolve($row['payment_option'],'cash');
             $amount=Decimal::input((string)$row['amount'],2,'payments.'.$i.'.amount','0.01');
@@ -43,11 +79,18 @@ final class SalePayments
             $rows[]=$choice+$quote+['paid'=>$paid,'due_date'=>$date,'installments'=>$parts,'cash_received'=>$tendered,'change'=>$change];
             $sum=bcadd($sum,$amount,2);$chargedTotal=bcadd($chargedTotal,$quote['amount'],2);$passedTotal=bcadd($passedTotal,$quote['passed_fee'],2);$count+=$parts;
         }
-        if(bccomp($sum,$sale->total,2)!==0 || $count>24)throw ValidationException::withMessages(['payments'=>'A soma das formas deve corresponder exatamente ao total. Limite de 24 parcelas no conjunto.']);
+        if(bccomp($sum,$sale->total,2)!==0 || $count>($prepayments ? 200 : 24))throw ValidationException::withMessages(['payments'=>($prepayments ? 'A soma dos recebimentos anteriores e do saldo deve corresponder ao consumo. Limite de 200 títulos.' : 'A soma das formas deve corresponder exatamente ao total. Limite de 24 parcelas no conjunto.')]);
         Decimal::input($chargedTotal,2,'payments');$sale->update(['total'=>$chargedTotal]);
         $key=Uuid::uuid5(Uuid::NAMESPACE_URL,'vendra:sale-plan:'.$sale->request_key)->toString();
         $number=0;
         foreach($rows as $i=>&$row){
+            if (isset($row['restaurant_receipt_id'])) {
+                $number++;
+                $entry = $prepaidEntries[$row['restaurant_receipt_id']];
+                $entry->update(['sale_id' => $sale->id, 'schedule_key' => $key, 'installment_no' => $number, 'installments_count' => $count]);
+                $row['entry_ids'] = [$entry->id];
+                continue;
+            }
             $cents=bcmul($row['amount'],'100',0);$base=bcdiv($cents,(string)$row['installments'],0);$row['entry_ids']=[];
             for($part=1;$part<=$row['installments'];$part++){
                 $number++;$value=bcdiv($part===$row['installments']?bcsub($cents,bcmul($base,(string)($part-1),0),0):$base,'100',2);
@@ -67,6 +110,12 @@ final class SalePayments
             }
         }
         unset($row);
+        if ($prepayments) {
+            $entries = FinancialEntry::where('sale_id', $sale->id)->where('direction', 'in')->whereNull('cancelled_at')->get();
+            $paid = $entries->every(fn ($entry) => bccomp($entry->paid_amount, $entry->amount, 2) === 0);
+            $planned = $entries->reduce(fn ($sum, $entry) => bcadd($sum, $entry->amount, 2), '0.00');
+            $sale->update(['paid' => $paid && bccomp($planned, $sale->total, 2) === 0]);
+        }
         OperationRecord::create(['version'=>0,'user_id'=>$actor,'action'=>'sale_payment_plan','before'=>[],'after'=>['target_id'=>$sale->id,'rows'=>$rows,'total'=>$chargedTotal,'base_total'=>$sum,'passed_total'=>$passedTotal],'created_at'=>now()]);
     }
 

@@ -5,6 +5,7 @@
 @section('content')
 @php($editing=$selectedId!==null)
 @php($selected=$editing?$accessState['profiles'][$selectedId]:($presetId ? $presets[$presetId] : ['name'=>'','permissions'=>[]]))
+@php($selected['permissions']=\App\Access\Permissions::expand($selected['permissions']))
 <section class="panel"><h2>Perfis de operação prontos</h2><p>Escolha um perfil para revisar e salvar. Depois, vincule os usuários em Usuários e permissões.</p><div class="actions">
 @foreach($presets as $presetKey=>$preset)
 <a class="button {{ $presetId===$presetKey?'primary':'secondary' }}" href="{{ route('access.profiles',['company'=>$tenant->slug,'preset'=>$presetKey]) }}">{{ $preset['name'] }}</a>
@@ -20,6 +21,7 @@
 <section class="panel access-editor"><h2>{{ $editing?'Editar perfil':'Novo perfil' }}</h2><form method="post" action="{{ route('access.profiles.save',['company'=>$tenant->slug]) }}">
 @csrf<input type="hidden" name="permissions_present" value="1"><input type="hidden" name="version" value="{{ $accessState['version'] }}">@if($editing)<input type="hidden" name="profile_id" value="{{ $selectedId }}">@endif
 <div class="field"><label for="access-name">Nome do perfil</label><input id="access-name" name="name" maxlength="80" required value="{{ old('name',$selected['name']) }}" placeholder="Ex.: Caixa, Estoquista, Financeiro"></div>
+<div class="field"><label for="access-discount-limit">Limite de desconto do supervisor (%)</label><input id="access-discount-limit" name="max_discount_percent" type="number" min="0" max="100" step="0.01" value="{{ old('max_discount_percent',$selected['max_discount_percent']??'100') }}"><small class="hint">Usado nas autorizações do supermercado. As regras dos produtos também são respeitadas. Este limite não concede permissão para autorizar ajustes.</small></div>
 <p class="form-note">Marque somente as funções necessárias. Uma operação pode exigir consultas relacionadas: essas dependências também são liberadas ao salvar. Custos e margens ficam ocultos quando não autorizados.</p>
 @php($checkedPermissions=(array)(session()->hasOldInput('permissions_present')?old('permissions',[]):$selected['permissions']))
 @foreach($permissionGroups as $group=>$permissions)

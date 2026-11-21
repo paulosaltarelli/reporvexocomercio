@@ -2,7 +2,7 @@
 
 ## Situação
 
-Planejamento da conexão da Vendra com iFood, aiqfome e UaiRango. Os conectores dessas plataformas ainda precisam de implementação e homologação. Nenhum conector de marketplace está ativo nesta entrega.
+A base de pedidos, catálogo vinculado e eventos persistentes foi implementada com uma área de testes simulados isolada. Os conectores reais de iFood, aiqfome e UaiRango ainda precisam de credenciais, implementação do adaptador aplicável e homologação. Nenhum conector real de marketplace está ativo nesta entrega. Consulte `DELIVERY_INTEGRACOES.md` para o contrato implementado e `OPERACAO_PILOTO_SEM_NF.md` para os fluxos operacionais disponíveis.
 
 As frentes de restaurante e supermercado compartilham cadastros, estoque e financeiro. A importação de delivery precisará identificar o canal de atendimento e os dados de retirada ou entrega. As comandas atuais trabalham com mesas. O pedido externo deverá ter um canal próprio para seguir até a produção e o fechamento.
 

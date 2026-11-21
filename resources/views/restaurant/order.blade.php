@@ -16,12 +16,13 @@
 <link rel="stylesheet" href="/restaurant-menu.css?v={{ filemtime(public_path('restaurant-menu.css')) }}">
 @endpush
 @section('content')
+@include('operations.activity',['activityScope'=>'order','activityOrderId'=>$order->id])
 @php
     $productImages = app(\App\Services\ProductImages::class);
     $menuGroups = $products->groupBy(fn ($product) => $product->group?->id ? 'group-'.$product->group->id : 'other')
         ->sortBy(fn ($items, $key) => $key === 'other' ? "\u{FFFF}" : mb_strtolower((string)$items->first()->group?->name));
 @endphp
-<div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
+<div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($paymentSummary['grand_total']??$total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
 <div class="operation-grid restaurant-order-grid">
 <div>
 @if($order->status==='open')
@@ -62,7 +63,10 @@
         </div>
         <div class="operation-catalog restaurant-menu-products">
     @foreach($groupProducts as $product)
-    <form class="operation-product" data-category="{{ $groupKey }}" data-product-name="{{ mb_strtolower($product->name.' '.$product->sku.' '.$product->barcode.' '.($product->group?->name ?? 'Outros')) }}" method="post" action="{{ route('restaurant.orders.items.add',['company'=>$tenant->slug,'order'=>$order->id]) }}">
+    @php
+        $productCatalog=$catalogByProduct[$product->id]??['station'=>'kitchen','groups'=>[]];
+    @endphp
+    <form class="operation-product" data-product-base-cents="{{ bcmul((string)$product->sale_price,'100',0) }}" data-category="{{ $groupKey }}" data-product-name="{{ mb_strtolower($product->name.' '.$product->sku.' '.$product->barcode.' '.($product->group?->name ?? 'Outros')) }}" method="post" action="{{ route('restaurant.orders.items.add',['company'=>$tenant->slug,'order'=>$order->id]) }}">
 @csrf
         <input type="hidden" name="version" value="{{ $order->version }}">
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
@@ -79,11 +83,27 @@
         <div class="field">
 <label for="product-station-{{ $product->id }}">Destino</label>
 <select id="product-station-{{ $product->id }}" name="station">
-<option value="kitchen">Cozinha</option>
-<option value="bar">Bar</option>
+<option value="kitchen" @selected(($productCatalog['station']??'kitchen')==='kitchen')>Cozinha</option>
+<option value="bar" @selected(($productCatalog['station']??'kitchen')==='bar')>Bar</option>
 </select>
 </div>
         </div>
+        @if(!empty($productCatalog['groups']))
+        <details class="operation-modifiers">
+            <summary>Opções e adicionais</summary>
+            @foreach($productCatalog['groups'] as $modifierGroup)
+            <fieldset data-modifier-group data-min-choices="{{ $modifierGroup['min_choices'] }}" data-max-choices="{{ $modifierGroup['max_choices'] }}">
+                <legend>{{ $modifierGroup['name'] }}</legend>
+                <small class="hint">{{ (int)$modifierGroup['min_choices']>0 ? 'Escolha pelo menos '.$modifierGroup['min_choices'].'. ' : 'Opcional. ' }}Até {{ $modifierGroup['max_choices'] }} {{ (int)$modifierGroup['max_choices']===1?'opção':'opções' }}.</small>
+                @foreach($modifierGroup['options'] as $modifier)
+                <label class="operation-modifier-option"><input type="checkbox" name="modifier_ids[]" value="{{ $modifier['id'] }}" data-modifier-cents="{{ bcmul((string)$modifier['price'],'100',0) }}"><span>{{ $modifier['name'] }}</span><strong>+ R$ {{ number_format($modifier['price'],2,',','.') }}</strong></label>
+                @endforeach
+                <small class="hint" data-modifier-status role="status"></small>
+            </fieldset>
+            @endforeach
+            <p class="hint" data-modifier-price role="status">O servidor confirma o preço com as opções escolhidas.</p>
+        </details>
+        @endif
         <details>
 <summary>Observação de preparo</summary>
 <label class="sr-only" for="product-notes-{{ $product->id }}">Observação de {{ $product->name }}</label>
@@ -106,10 +126,10 @@
 </section>
 @endif
 </div>
-<div class="operation-summary" id="order-summary">
+<div class="operation-summary @if(isset($paymentSummary) && $currentUser->allows('restaurant.receive')) operation-with-payments @endif" id="order-summary">
 <div class="operation-total">
 <span>Total da comanda</span>
-<strong>R$ {{ number_format($total,2,',','.') }}</strong>
+<strong>R$ {{ number_format($paymentSummary['grand_total']??$total,2,',','.') }}</strong>
 <small>{{ $order->table?->name }} · {{ ['open'=>'Em atendimento','closed'=>'Encerrada','cancelled'=>'Cancelada'][$order->status] ?? $order->status }}</small>
 </div>
 <section class="operation-panel">
@@ -126,12 +146,15 @@
 <p>
 <span class="operation-badge {{ $item->status }}">{{ $statuses[$item->status] ?? $item->status }}</span>
 </p>
+@if(!empty($item->commercial_terms['_restaurant_catalog']['addons']))<p class="hint">{{ collect($item->commercial_terms['_restaurant_catalog']['addons'])->pluck('name')->join(' · ') }}</p>@endif
 @if(filled($item->notes))<p class="operation-notes">{{ $item->notes }}</p>
 @endif
 @if($item->status==='cancelled')<small>Motivo: {{ $item->cancellation_reason }}</small>
 @endif
 @if($currentUser->allows('restaurant.kitchen') && $order->status==='open' && in_array($item->status,['queued','preparing'],true))
-@php($nextStatus=['queued'=>'preparing','preparing'=>'ready','ready'=>'delivered'][$item->status])
+@php
+    $nextStatus=['queued'=>'preparing','preparing'=>'ready','ready'=>'delivered'][$item->status];
+@endphp
 <form method="post" action="{{ route('restaurant.items.status',['company'=>$tenant->slug,'order'=>$order->id,'item'=>$item->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $order->version }}">
@@ -183,16 +206,23 @@
     </details>
 </section>
 @endif
+@include('operations.restaurant-payments')
 @if($order->status==='open')
-@php($billableItems=$order->items->where('status','<>','cancelled'))
+@php
+    $billableItems=$order->items->where('status','<>','cancelled');
+@endphp
 @if($currentUser->allows('restaurant.checkout') && $billableItems->isNotEmpty() && $billableItems->every(fn($item)=>$item->status==='delivered'))
 <details class="operation-panel operation-checkout" data-operation-checkout @if(old('payments') || $errors->has('payments.*') || $errors->hasAny(['payments','payment_option','paid','due_date','salesperson_id','card_brand'])) open @endif>
 <summary>Fechar conta <kbd>F9</kbd>
 </summary>
-<form method="post" action="{{ route('restaurant.orders.close',['company'=>$tenant->slug,'order'=>$order->id]) }}" data-payment-total="{{ bcmul((string)$total,'100',0) }}">
+<form method="post" action="{{ route('restaurant.orders.close',['company'=>$tenant->slug,'order'=>$order->id]) }}" data-payment-total="{{ bcmul((string)($paymentSummary['balance']??$total),'100',0) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $order->version }}">
-@include('operations.payment-fields')<button class="button" type="submit">Confirmar recebimento e encerrar</button>
+@if(!isset($paymentSummary) || bccomp($paymentSummary['balance'],'0',2)>0)
+@include('operations.payment-fields')
+@else<p class="hint">O consumo já foi recebido. Encerre a comanda para concluir a venda e liberar a mesa.</p>
+@endif
+<button class="button" type="submit">Confirmar recebimento e encerrar</button>
 </form>
 </details>
 @elseif($billableItems->isNotEmpty())<p class="hint operation-status-message">Registre a entrega de todos os itens para fechar a conta.</p>

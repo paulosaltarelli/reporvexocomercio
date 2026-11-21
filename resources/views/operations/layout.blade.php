@@ -33,6 +33,7 @@
         @if(app(\App\Services\OperationalModes::class)->enabled('supermarket') && $currentUser->allows('supermarket.use'))
             <a href="{{ route('supermarket.index',['company'=>$tenant->slug]) }}" @if(request()->routeIs('supermarket.*')) aria-current="page" @endif>Caixa de supermercado</a>
         @endif
+        @if(\Illuminate\Support\Facades\Route::has('supermarket.approvals.index') && app(\App\Services\OperationalModes::class)->enabled('supermarket') && $currentUser->allows('supermarket.supervise'))<a href="{{ route('supermarket.approvals.index',['company'=>$tenant->slug]) }}">Autorizações do caixa</a>@endif
         @if($currentUser->allows('cash.view'))
             <a href="{{ route('cash',['company'=>$tenant->slug]) }}">Caixa diário</a>
         @endif

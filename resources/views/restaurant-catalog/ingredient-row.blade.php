@@ -1,0 +1,6 @@
+<div class="form-grid recipe-row">
+    <div class="field"><label>Ingrediente</label><select name="recipe[ingredients][{{ $ingredientIndex }}][product_id]" data-recipe-product required><option value="">Selecione</option>@foreach($ingredients as $ingredient)<option value="{{ $ingredient->id }}" data-units="{{ json_encode(\App\Services\MeasureUnits::options($ingredient,$catalogConfiguration,'sale')) }}" @selected((string)($row['product_id']??'')===(string)$ingredient->id)>{{ $ingredient->name }} · {{ $ingredient->unit }}{{ $ingredient->active?'':' · inativo' }}</option>@endforeach</select></div>
+    <div class="field"><label>Quantidade por unidade preparada</label><input type="number" min="0.001" max="999999" step="0.001" name="recipe[ingredients][{{ $ingredientIndex }}][quantity]" value="{{ $row['quantity']??'1' }}" required></div>
+    <div class="field"><label>Unidade do ingrediente</label><select name="recipe[ingredients][{{ $ingredientIndex }}][measure_unit]" data-recipe-unit data-selected="{{ $row['measure_unit']??$row['unit']??'' }}"></select><input type="hidden" name="recipe[ingredients][{{ $ingredientIndex }}][factor_seen]" data-recipe-factor></div>
+    <div class="actions"><button type="button" class="button secondary" data-remove-recipe-row>Retirar ingrediente</button></div>
+</div>

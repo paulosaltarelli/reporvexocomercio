@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="pt-BR" data-roll="80">
+@php($defaultRoll=app(\App\Services\DeviceSettings::class)->current()['receipt_width'])
+<html lang="pt-BR" data-roll="{{ $defaultRoll }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,8 +13,8 @@
             <a class="return-link" href="{{ $receiptBackUrl ?? request()->fullUrlWithoutQuery(['termica']) }}"><span aria-hidden="true">←</span> Voltar</a>
             <div class="roll-control"><label for="paper-width">Largura da bobina</label>
             <select id="paper-width">
-                <option value="80">80 mm</option>
-                <option value="58">58 mm</option>
+                <option value="80" @selected($defaultRoll===80)>80 mm</option>
+                <option value="58" @selected($defaultRoll===58)>58 mm</option>
             </select></div>
             <button type="button" id="print-ticket">Imprimir</button>
         </div>
@@ -26,7 +27,8 @@
         const paper = document.getElementById('paper-width');
         const preference = @json('vendra.print.roll.'.$tenant->slug);
         try {
-            if (localStorage.getItem(preference) === '58') paper.value = '58';
+            const savedRoll = localStorage.getItem(preference);
+            if (['58','80'].includes(savedRoll)) paper.value = savedRoll;
         } catch {}
         document.documentElement.dataset.roll = paper.value;
         paper.addEventListener('change', () => {

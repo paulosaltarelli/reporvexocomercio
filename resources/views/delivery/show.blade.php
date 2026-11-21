@@ -1,0 +1,37 @@
+@extends('layout')
+@section('title','Pedido de teste #'.$order->external_id)
+@section('subtitle',$providers[$order->provider].' · Área isolada de validação de pedidos')
+@section('content')
+<div class="actions"><a class="button secondary" href="{{ route('delivery.index',['company'=>$tenant->slug]) }}">Voltar às integrações</a><span class="badge">{{ $statuses[$order->status] }}</span></div>
+<section class="panel"><h2>Simulação · sem efeito nas operações reais</h2><p>Este pedido não foi recebido do provedor. As etapas abaixo validam somente o fluxo local; não enviam confirmações externas e não geram venda, caixa, estoque ou conta a receber.</p><div class="form-grid"><div><strong>Cliente de teste</strong><p>{{ $order->customer_name }}@if($order->customer_phone)<br>{{ $order->customer_phone }}@endif</p><p>{{ $order->delivery_address }}</p></div><div><strong>Total simulado</strong><p>R$ {{ number_format($order->total,2,',','.') }}</p><p class="hint">Itens: R$ {{ number_format($order->items_total,2,',','.') }} · Entrega: R$ {{ number_format($order->delivery_fee,2,',','.') }}</p></div><div><strong>{{ $order->payment_status==='prepaid'?'Pré-pago no cenário de teste':'Pagamento pendente no cenário de teste' }}</strong><p class="hint">@if($order->payment_status==='prepaid')O recebimento da plataforma representa repasse esperado, sem entrada no caixa da loja. Repasse simulado: R$ {{ number_format($order->expected_payout,2,',','.') }} após taxa de R$ {{ number_format($order->platform_fee,2,',','.') }}.@elseNenhum valor foi recebido. O cenário permanece sem movimento financeiro.@endif</p></div></div>
+@if($order->review_reason)<p><strong>Última justificativa:</strong> {{ $order->review_reason }}</p>@endif
+</section>
+<section class="panel"><h2>Conferência dos itens</h2><div class="table-wrap"><table><thead><tr><th>Item externo</th><th>Vínculo na loja</th><th>Quantidade</th><th>Preço externo</th><th>Preço do catálogo</th><th>Produção simulada</th></tr></thead><tbody>
+@foreach($order->items as $item)
+@php($mapping=$mappings->get($item->external_item_id))
+@php($catalogPrice=$item->catalog_unit_price ?? $mapping?->product?->sale_price)
+<tr><td>{{ $item->description }}<br><small>{{ $item->external_item_id }}</small>@if($item->notes)<p class="hint">{{ $item->notes }}</p>@endif</td><td>{{ $item->mapping_snapshot['product_name'] ?? $mapping?->product?->name ?? 'Pendente: vincule este código no catálogo' }}</td><td>{{ number_format($item->quantity,3,',','.') }}</td><td>R$ {{ number_format($item->unit_price,2,',','.') }}</td><td>@if($catalogPrice!==null)R$ {{ number_format($catalogPrice,2,',','.') }}@if(bccomp($catalogPrice,$item->unit_price,2)!==0)<br><strong>Preço divergente</strong>@endif @else—@endif</td><td>{{ ['review'=>'A conferir','accepted'=>'Aceito','queued'=>'Na fila de teste','preparing'=>'Em preparo de teste','ready'=>'Pronto de teste','cancelled'=>'Cancelado'][$item->status] ?? $item->status }}
+@if($currentUser->allows('delivery.manage') && $order->status==='production' && in_array($item->status,['queued','preparing'],true))
+<form method="post" action="{{ route('delivery.items.production',['company'=>$tenant->slug,'order'=>$order->id,'item'=>$item->id]) }}">@csrf<input type="hidden" name="version" value="{{ $order->version }}"><input type="hidden" name="status" value="{{ $item->status==='queued'?'preparing':'ready' }}"><button class="secondary">{{ $item->status==='queued'?'Iniciar preparo de teste':'Marcar pronto no teste' }}</button></form>
+@endif
+</td></tr>@endforeach
+</tbody></table></div></section>
+@if($currentUser->allows('delivery.manage') && in_array($order->status,['review','accepted','production'],true))
+<section class="panel"><h2>Próxima etapa do teste</h2>
+<form method="post" action="{{ route('delivery.transition',['company'=>$tenant->slug,'order'=>$order->id]) }}">@csrf<input type="hidden" name="version" value="{{ $order->version }}"><input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
+@if($order->status==='review')
+<input type="hidden" name="status" value="accepted"><p class="hint">Antes de aceitar, confira o mapeamento, as quantidades e os preços. A aceitação preserva uma cópia do vínculo e do preço vigente do catálogo.</p><label class="checkbox-line"><input type="checkbox" name="confirm_prices" value="1"> Conferi e autorizo os preços externos que diferem do catálogo neste teste</label><div class="field"><label for="accept-reason">Justificativa de preço divergente (quando houver)</label><input id="accept-reason" name="reason" minlength="3" maxlength="1000"></div><button class="primary">Aceitar pedido de teste</button>
+@elseif($order->status==='accepted')
+<input type="hidden" name="status" value="production"><p class="hint">Os itens aparecem apenas neste pedido de teste, separados da fila da cozinha real.</p><button class="primary">Enviar à produção simulada</button>
+@else
+<input type="hidden" name="status" value="completed"><p class="hint">Conclua quando todos os itens do teste estiverem prontos.</p><button class="primary">Concluir entrega simulada</button>
+@endif
+</form>
+<details class="disclosure"><summary>{{ $order->status==='review'?'Recusar ou cancelar o teste':'Cancelar pedido de teste' }}</summary><form class="disclosure-content" method="post" action="{{ route('delivery.transition',['company'=>$tenant->slug,'order'=>$order->id]) }}">@csrf<input type="hidden" name="version" value="{{ $order->version }}"><input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}"><div class="field"><label for="cancel-action">Ação</label><select name="status" id="cancel-action">@if($order->status==='review')<option value="rejected">Recusar pedido</option>@endif<option value="cancelled">Cancelar pedido</option></select></div><div class="field"><label for="cancel-reason">Motivo</label><textarea id="cancel-reason" name="reason" required minlength="3" maxlength="1000"></textarea></div><button class="secondary">Registrar no teste</button></form></details>
+</section>
+@endif
+<section class="panel"><h2>Histórico de eventos</h2><p class="hint">Entradas e saídas são identificadas por uma chave única por canal e empresa. Saídas simuladas nunca são enviadas ao provedor.</p><div class="table-wrap"><table><thead><tr><th>Data</th><th>Direção</th><th>Evento</th><th>Situação</th><th>Tentativas externas</th></tr></thead><tbody>@foreach($events as $event)<tr><td>{{ $event->created_at->format('d/m/Y H:i') }}</td><td>{{ $event->direction==='inbox'?'Entrada':'Saída' }}</td><td>{{ $event->action }}<br><small>{{ $event->event_key }}</small></td><td>{{ ['processed'=>'Importação processada','simulated'=>'Somente simulado','pending'=>'Na fila','failed'=>'Falhou','blocked'=>'Aguardando habilitação'][$event->status] ?? $event->status }}@if($event->last_error)<p class="hint">{{ $event->last_error }}</p>@endif</td><td>{{ $event->direction==='outbox'?$event->attempts:'—' }}</td></tr>@endforeach</tbody></table></div>{{ $events->links() }}
+<details class="disclosure"><summary>Snapshot original do pedido de teste</summary><pre class="disclosure-content delivery-json" tabindex="0">{{ json_encode($order->snapshot,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) }}</pre></details></section>
+@endsection
+
+@push('styles')<link rel="stylesheet" href="{{ asset('delivery-admin.css') }}?v={{ filemtime(public_path('delivery-admin.css')) }}">@endpush

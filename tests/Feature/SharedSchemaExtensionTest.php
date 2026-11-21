@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Tenancy\OperationalSchemaRelease;
 use App\Tenancy\SchemaManifest;
 use App\Tenancy\SharedSchemaBuilder;
 use Illuminate\Support\Facades\Artisan;
@@ -26,8 +27,8 @@ final class SharedSchemaExtensionTest extends TestCase
         $users = ['vxs_0000000000000001_'.$suffix, 'vxs_0000000000000002_'.$suffix];
         $password = str_repeat('Q', 48);
         $definer = 'vxd_'.substr(hash('sha256', $target), 0, 24);
-        $additions = ['restaurant_order_items', 'restaurant_orders', 'restaurant_tables', 'supermarket_carts'];
-        $newMigrations = ['2026_11_21_000002_create_supermarket_carts', '2026_11_21_000101_create_restaurant_operations'];
+        $additions = OperationalSchemaRelease::profile()['tables'];
+        $newMigrations = OperationalSchemaRelease::migrationNames();
         $admin->exec("CREATE DATABASE `$source` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         try {
             config(['database.connections.tenant'=>[
@@ -35,12 +36,6 @@ final class SharedSchemaExtensionTest extends TestCase
                 'username'=>'root', 'password'=>'', 'charset'=>'utf8mb4', 'collation'=>'utf8mb4_unicode_ci', 'strict'=>true,
             ]]);
             DB::purge('tenant');
-            $this->assertSame(0, Artisan::call('migrate', ['--database'=>'tenant','--path'=>'database/tenant-migrations','--force'=>true]));
-            foreach ($additions as $table) {
-                $admin->exec("DROP TABLE `$source`.`$table`");
-            }
-            $delete = $admin->prepare("DELETE FROM `$source`.migrations WHERE migration IN (?,?)");
-            $delete->execute($newMigrations);
             mkdir($temporary.'/tenant-migrations', 0700, true);
             foreach (glob($originalPath.'/tenant-migrations/*.php') as $file) {
                 if (!in_array(basename($file, '.php'), $newMigrations, true)) {
@@ -48,12 +43,33 @@ final class SharedSchemaExtensionTest extends TestCase
                 }
             }
             $this->app->useDatabasePath($temporary);
+            $this->assertSame(0, Artisan::call('migrate', ['--database'=>'tenant','--path'=>$temporary.'/tenant-migrations','--realpath'=>true,'--force'=>true]));
             $previous = SchemaManifest::capture($admin, $source);
             $builder = new SharedSchemaBuilder($admin);
             $builder->build($source, $target, $previous);
             $this->app->useDatabasePath($originalPath);
             $this->assertSame(0, Artisan::call('migrate', ['--database'=>'tenant','--path'=>'database/tenant-migrations','--force'=>true]));
             $next = SchemaManifest::capture($admin, $source);
+            OperationalSchemaRelease::assertTransition($previous, $next);
+            $outsideRelease = $next;
+            $outsideRelease['tables'][] = 'unreviewed_operations';
+            try {
+                OperationalSchemaRelease::assertTransition($previous, $outsideRelease);
+                $this->fail('A allowlist da release deve impedir tabelas extras.');
+            } catch (RuntimeException $error) {
+                $this->assertSame('schema_extension_outside_reviewed_release', $error->getMessage());
+            }
+            $admin->exec("ALTER TABLE `$source`.customers ADD COLUMN unreviewed_change INT NULL");
+            try {
+                $changedSource = SchemaManifest::capture($admin, $source);
+                $builder->extend($source, $target, $previous, $changedSource);
+                $this->fail('Alterações de DDL legado não são uma expansão aditiva.');
+            } catch (RuntimeException $error) {
+                $this->assertSame('existing_template_tables_changed', $error->getMessage());
+            } finally {
+                $admin->exec("ALTER TABLE `$source`.customers DROP COLUMN unreviewed_change");
+            }
+            $builder->assertExistingSchema($target, $previous);
             foreach ($users as $index=>$user) {
                 $builder->registerRuntime($target, $index+1, $user, $password);
             }
@@ -71,7 +87,7 @@ final class SharedSchemaExtensionTest extends TestCase
             $builder->assertExistingSchema($target, $previous);
             $admin->exec("REVOKE SELECT ON `$source`.customers FROM '{$users[0]}'@'127.0.0.1'");
             $result = $builder->extend($source, $target, $previous, $next);
-            $this->assertCount(4, $result['tables']);
+            $this->assertEqualsCanonicalizing($additions, $result['tables']);
             $newUser = 'vxs_0000000000000003_'.$suffix;
             $builder->registerRuntime($target, 3, $newUser, $password);
             $newTenant = new PDO("mysql:host=127.0.0.1;dbname=$target", $newUser, $password, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
@@ -81,10 +97,33 @@ final class SharedSchemaExtensionTest extends TestCase
             $this->assertSame(SharedSchemaBuilder::manifestHash($next), $newTenant->query('SELECT schema_hash FROM __vendra_identity')->fetchColumn());
             $this->assertSame('Cliente anterior', $a->query('SELECT name FROM customers')->fetchColumn());
             $this->assertSame(0, (int)$b->query('SELECT COUNT(*) FROM customers')->fetchColumn());
-            $a->exec("INSERT INTO restaurant_tables(name) VALUES ('Mesa 1')");
-            $this->assertSame(0, (int)$b->query('SELECT COUNT(*) FROM restaurant_tables')->fetchColumn());
-            $b->exec("INSERT INTO restaurant_tables(name) VALUES ('Mesa 1')");
-            $this->assertSame(1, (int)$a->query('SELECT COUNT(*) FROM restaurant_tables')->fetchColumn());
+            $products = [];
+            foreach ([$a, $b] as $runtime) {
+                $runtime->exec("INSERT INTO product_groups(name) VALUES ('Grupo compartilhado QA')");
+                $groupId = (int)$runtime->lastInsertId();
+                $runtime->exec("INSERT INTO products(product_group_id,name,sku,sale_price) VALUES ($groupId,'Produto anterior QA','SAME-SKU','10.00')");
+                $products[] = (int)$runtime->lastInsertId();
+                $runtime->exec("INSERT INTO delivery_integrations(provider) VALUES ('ifood')");
+            }
+            // Unique providers may repeat across namespaces; physical tables are never granted.
+            $this->assertSame(1, (int)$a->query('SELECT COUNT(*) FROM delivery_integrations')->fetchColumn());
+            $this->assertSame(1, (int)$b->query('SELECT COUNT(*) FROM delivery_integrations')->fetchColumn());
+            $a->exec("INSERT INTO restaurant_modifier_groups(product_id,name) VALUES ({$products[0]},'Acompanhamentos')");
+            $this->assertSame(0, (int)$b->query('SELECT COUNT(*) FROM restaurant_modifier_groups')->fetchColumn());
+            try {
+                $a->exec("INSERT INTO restaurant_modifier_groups(product_id,name) VALUES ({$products[1]},'Produto de outra loja')");
+                $this->fail('Uma FK nova não pode apontar para o produto de outra empresa.');
+            } catch (\PDOException $error) {
+                $this->assertSame('23000', $error->getCode());
+            }
+            try {
+                $a->query('SELECT COUNT(*) FROM _p_delivery_integrations');
+                $this->fail('O runtime não deve ler a tabela física nova.');
+            } catch (\PDOException $error) {
+                $this->assertSame('42000', $error->getCode());
+            }
+            $b->exec("INSERT INTO restaurant_modifier_groups(product_id,name) VALUES ({$products[1]},'Acompanhamentos')");
+            foreach ([1, 2, 3] as $tenantId) $builder->assertTenantIntegrity($target, $tenantId, $next);
             foreach ([$a, $b] as $runtime) {
                 $this->assertSame(SharedSchemaBuilder::manifestHash($next), $runtime->query('SELECT schema_hash FROM __vendra_identity')->fetchColumn());
             }
@@ -95,8 +134,10 @@ final class SharedSchemaExtensionTest extends TestCase
                 $this->assertSame('extension_contains_data_requires_reconciliation', $error->getMessage());
             }
             $builder->assertExistingSchema($target, $next);
-            $a->exec('DELETE FROM restaurant_tables');
-            $b->exec('DELETE FROM restaurant_tables');
+            foreach ([$a, $b] as $runtime) {
+                $runtime->exec('DELETE FROM restaurant_modifier_groups');
+                $runtime->exec('DELETE FROM delivery_integrations');
+            }
             $builder->revertEmptyExtension($target, $previous, $next);
             $builder->assertExistingSchema($target, $previous);
             $this->assertSame(SharedSchemaBuilder::manifestHash($previous), $a->query('SELECT schema_hash FROM __vendra_identity')->fetchColumn());

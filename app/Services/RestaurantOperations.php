@@ -12,12 +12,13 @@ final class RestaurantOperations
 {
     public const STATUSES = ['draft' => 'A lançar', 'queued' => 'Na fila', 'preparing' => 'Em preparo', 'ready' => 'Pronto', 'delivered' => 'Entregue', 'cancelled' => 'Cancelado'];
 
-    private function transaction(callable $operation)
+    private function transaction(int $actor, string $permission, callable $operation)
     {
         try {
-            return DB::connection('tenant')->transaction(function () use ($operation) {
+            return DB::connection('tenant')->transaction(function () use ($actor, $permission, $operation) {
                 app(CompanyOperations::class)->lock();
                 app(OperationalModes::class)->require('restaurant');
+                InstallerAccess::authorizedActor($actor, $permission);
                 return $operation();
             }, 3);
         } catch (UniqueConstraintViolationException) {
@@ -28,7 +29,7 @@ final class RestaurantOperations
     public function createTable(array $input, int $actor): RestaurantTable
     {
         $data = Validator::make($input, ['name' => 'required|string|max:80|unique:tenant.restaurant_tables,name'])->validate();
-        return $this->transaction(function () use ($data, $actor) {
+        return $this->transaction($actor, 'restaurant.manage', function () use ($data, $actor) {
             $table = RestaurantTable::create($data);
             $this->audit('restaurant_table', $actor, ['table_id' => $table->id, 'name' => $table->name]);
             return $table;
@@ -38,7 +39,7 @@ final class RestaurantOperations
     public function open(array $input, int $actor): RestaurantOrder
     {
         $data = Validator::make($input, ['request_key' => 'required|uuid', 'table_id' => 'required|integer', 'customer_id' => 'nullable|integer'])->validate();
-        return $this->transaction(function () use ($data, $actor) {
+        return $this->transaction($actor, 'restaurant.use', function () use ($data, $actor) {
             $table = RestaurantTable::where('active', true)->lockForUpdate()->findOrFail($data['table_id']);
             $existing = RestaurantOrder::where('request_key', $data['request_key'])->lockForUpdate()->first();
             if ($existing) {
@@ -79,14 +80,15 @@ final class RestaurantOperations
     public function addItem(int $id, array $input, int $actor): RestaurantOrderItem
     {
         $data = Validator::make($input, ['request_key' => 'required|uuid', 'product_id' => 'required|integer',
-            'quantity' => 'required', 'notes' => 'nullable|string|max:1000', 'station' => 'required|in:kitchen,bar'])->validate();
+            'quantity' => 'required', 'notes' => 'nullable|string|max:1000', 'station' => 'nullable|in:kitchen,bar', 'modifier_ids' => 'sometimes|array|max:50', 'modifier_ids.*' => 'required|integer|min:1|distinct'])->validate();
         $quantity = Decimal::input((string)$data['quantity'], 3, 'quantity', '0.001', '999999.999');
-        return $this->transaction(function () use ($id, $input, $data, $quantity, $actor) {
+        return $this->transaction($actor, 'restaurant.use', function () use ($id, $input, $data, $quantity, $actor) {
             $order = $this->locked($id);
             $existing = RestaurantOrderItem::where('request_key', $data['request_key'])->lockForUpdate()->first();
             if ($existing) {
                 if ($existing->restaurant_order_id !== $order->id || $existing->user_id !== $actor || $existing->product_id !== (int)$data['product_id']
-                    || bccomp($existing->quantity, $quantity, 3) !== 0 || $existing->station !== $data['station'] || ($existing->notes ?? '') !== ($data['notes'] ?? '')) {
+                    || bccomp($existing->quantity, $quantity, 3) !== 0 || ($existing->commercial_terms['_restaurant_catalog']['requested_station'] ?? $existing->station) !== ($data['station'] ?? $existing->station) || ($existing->notes ?? '') !== ($data['notes'] ?? '')
+                    || collect($existing->commercial_terms['_restaurant_catalog']['addons'] ?? [])->pluck('id')->sort()->values()->all() !== collect($data['modifier_ids'] ?? [])->map(fn ($id) => (int)$id)->sort()->values()->all()) {
                     throw ValidationException::withMessages(['request_key' => 'A tentativa já foi usada para outro lançamento.']);
                 }
                 return $existing;
@@ -95,9 +97,11 @@ final class RestaurantOperations
             if ($order->items()->where('status', '<>', 'cancelled')->count() >= 200) throw ValidationException::withMessages(['items' => 'Esta comanda atingiu o limite de 200 lançamentos.']);
             $product = Product::with('group')->where('active', true)->where('type', 'product')->sharedLock()->findOrFail($data['product_id']);
             app(CompanyOperations::class)->assertItem($product->type);
-            $terms = app(CommercialRules::class)->quote($product, ['quantity' => $quantity, 'unit_price' => $product->sale_price]);
-            $item = $order->items()->create(['request_key' => $data['request_key'], 'product_id' => $product->id, 'description' => $product->name,
-                'quantity' => $quantity, 'unit_price' => $product->sale_price, 'station' => $data['station'], 'notes' => $data['notes'] ?? null,
+            $quote = app(RestaurantCatalog::class)->quote($product, $data['modifier_ids'] ?? [], $quantity);
+            $terms = app(CommercialRules::class)->quote($product, ['quantity' => $quantity, 'unit_price' => $quote['unit_price']]);
+            $terms['_restaurant_catalog'] = ['version' => 1, 'addons' => $quote['addons'], 'recipe' => $quote['recipe'], 'requested_station' => $data['station'] ?? null];
+            $item = $order->items()->create(['request_key' => $data['request_key'], 'product_id' => $product->id, 'description' => $quote['description'],
+                'quantity' => $quantity, 'unit_price' => $quote['unit_price'], 'station' => $data['station'] ?? $quote['station'], 'notes' => $data['notes'] ?? null,
                 'status' => 'draft', 'user_id' => $actor, 'commercial_terms' => $terms]);
             $order->increment('version');
             $this->audit('restaurant_add', $actor, ['order_id' => $order->id, 'item_id' => $item->id, 'quantity' => $quantity, 'unit_price' => $item->unit_price]);
@@ -107,7 +111,7 @@ final class RestaurantOperations
 
     public function send(int $id, array $input, int $actor): void
     {
-        $this->transaction(function () use ($id, $input, $actor) {
+        $this->transaction($actor, 'restaurant.use', function () use ($id, $input, $actor) {
             $order = $this->locked($id);
             $this->editable($order, $input);
             $ids = $order->items()->where('status', 'draft')->lockForUpdate()->pluck('id');
@@ -121,17 +125,17 @@ final class RestaurantOperations
     public function transitionItem(int $id, int $itemId, array $input, int $actor): void
     {
         $data = Validator::make($input, ['status' => 'required|in:preparing,ready'])->validate();
-        $this->changeItemState($id, $itemId, $input, $data['status'], $actor);
+        $this->changeItemState($id, $itemId, $input, $data['status'], $actor, 'restaurant.kitchen');
     }
 
     public function deliverItem(int $id, int $itemId, array $input, int $actor): void
     {
-        $this->changeItemState($id, $itemId, $input, 'delivered', $actor);
+        $this->changeItemState($id, $itemId, $input, 'delivered', $actor, 'restaurant.deliver');
     }
 
-    private function changeItemState(int $id, int $itemId, array $input, string $status, int $actor): void
+    private function changeItemState(int $id, int $itemId, array $input, string $status, int $actor, string $permission): void
     {
-        $this->transaction(function () use ($id, $itemId, $input, $status, $actor) {
+        $this->transaction($actor, $permission, function () use ($id, $itemId, $input, $status, $actor) {
             $order = $this->locked($id);
             $this->editable($order, $input);
             $item = $order->items()->lockForUpdate()->findOrFail($itemId);
@@ -147,10 +151,11 @@ final class RestaurantOperations
     public function cancelItem(int $id, int $itemId, array $input, int $actor): void
     {
         $data = Validator::make($input, ['reason' => 'required|string|min:3|max:1000'])->validate();
-        $this->transaction(function () use ($id, $itemId, $input, $data, $actor) {
+        $this->transaction($actor, 'restaurant.cancel', function () use ($id, $itemId, $input, $data, $actor) {
             $order = $this->locked($id);
             $this->editable($order, $input);
             $item = $order->items()->lockForUpdate()->findOrFail($itemId);
+            app(RestaurantPayments::class)->assertCanCancelItem($order, $item);
             if ($item->status === 'cancelled') throw ValidationException::withMessages(['item' => 'Este item já está cancelado.']);
             $item->update(['status' => 'cancelled', 'cancellation_reason' => $data['reason']]);
             $order->increment('version');
@@ -160,10 +165,11 @@ final class RestaurantOperations
 
     public function close(int $id, array $input, int $actor): Sale
     {
-        return $this->transaction(function () use ($id, $input, $actor) {
+        return $this->transaction($actor, 'restaurant.checkout', function () use ($id, $input, $actor) {
             $order = $this->locked($id);
             $items = $order->items()->where('status', '<>', 'cancelled')->orderBy('id')->get();
-            $payment = Validator::make($input, ['payment_option' => 'nullable|string|max:60', 'payment_method' => 'required_without:payments|string|max:40', 'paid' => 'required_without:payments|boolean',
+            $hasReceipts = app(RestaurantPayments::class)->hasReceipts($order->id);
+            $payment = Validator::make($input, ['payment_option' => 'nullable|string|max:60', 'payment_method' => ($hasReceipts ? 'nullable' : 'required_without:payments').'|string|max:40', 'paid' => ($hasReceipts ? 'nullable' : 'required_without:payments').'|boolean',
                 'due_date' => 'nullable|date', 'installments' => 'nullable|integer|min:1|max:120', 'salesperson_id' => 'nullable|integer',
                 'payments' => 'sometimes|array|min:1|max:20', 'payments.*' => 'array', 'card_brand' => 'nullable|string', 'card_installments' => 'nullable|integer|min:1|max:36'])->validate();
             if (!$order->sale_id) {
@@ -185,7 +191,7 @@ final class RestaurantOperations
     {
         $data = Validator::make($input, ['request_key' => 'required|uuid', 'table_id' => 'required|integer',
             'reason' => 'required|string|min:3|max:1000'])->validate();
-        return $this->transaction(function () use ($id, $input, $data, $actor) {
+        return $this->transaction($actor, 'restaurant.transfer', function () use ($id, $input, $data, $actor) {
             $reference = RestaurantOrder::findOrFail($id);
             $tableIds = array_unique([$reference->restaurant_table_id, (int)$data['table_id']]);
             $tables = RestaurantTable::whereIn('id', $tableIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -221,9 +227,10 @@ final class RestaurantOperations
     public function cancel(int $id, array $input, int $actor): void
     {
         $data = Validator::make($input, ['reason' => 'required|string|min:3|max:1000'])->validate();
-        $this->transaction(function () use ($id, $input, $data, $actor) {
+        $this->transaction($actor, 'restaurant.cancel', function () use ($id, $input, $data, $actor) {
             $order = $this->locked($id);
             $this->editable($order, $input);
+            if (app(RestaurantPayments::class)->hasReceipts($order->id)) throw ValidationException::withMessages(['payments' => 'Estorne os recebimentos antes de cancelar a comanda.']);
             if ($order->items()->where('status', '<>', 'cancelled')->exists()) throw ValidationException::withMessages(['items' => 'Cancele os itens individualmente antes de cancelar a comanda.']);
             $order->update(['status' => 'cancelled', 'closed_at' => now(), 'version' => $order->version + 1]);
             $this->audit('restaurant_cancel', $actor, ['order_id' => $order->id, 'reason' => $data['reason']]);

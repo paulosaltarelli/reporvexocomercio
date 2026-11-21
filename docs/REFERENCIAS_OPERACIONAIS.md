@@ -1,5 +1,7 @@
 # Referências para as frentes operacionais
 
+Evolução posterior nesta data: adicionais, fichas técnicas, pagamentos parciais, divisão da conta, autorizações de supervisor e recuperação de rascunhos foram implementados no pacote descrito em `OPERACAO_PILOTO_SEM_NF.md`. Os limites abaixo registram o estado examinado na revisão inicial.
+
 Consulta em 21/11/2026. Estudo de páginas e manuais públicos oficiais, acompanhado de leitura do código da Vendra. Não houve acesso a instalações, contas pagas ou testes práticos dos concorrentes. As descrições abaixo registram o que as fontes apresentam; os ajustes são recomendações próprias para a Vendra, sem reproduzir marcas, textos comerciais ou layouts.
 
 ## Padrões observados e aplicação
