@@ -37,7 +37,7 @@ return new class extends Migration
             $table->json('payload');
             $table->uuid('line_key');
             $table->unsignedInteger('cart_version');
-            $table->timestamp('created_at')->useCurrent();
+            $table->timestamp('created_at');
             $table->index(['cart_id', 'user_id']);
         });
     }

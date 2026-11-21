@@ -69,7 +69,7 @@ final class SupermarketDrafts
                 SupermarketDraftImport::create(['request_key' => $line['request_key'], 'cart_id' => $cart->id,
                     'user_id' => $userId, 'payload' => ['code' => $line['code'], 'quantity' => $line['quantity']],
                     'payload_hash' => $this->fingerprint($cartId, $userId, $line),
-                    'line_key' => $cart->lastScannedLineKey, 'cart_version' => $cart->version]);
+                    'line_key' => $cart->lastScannedLineKey, 'cart_version' => $cart->version, 'created_at' => now()]);
             }
             if ($pending) OperationRecord::create(['action' => 'market_draft_import', 'version' => 1, 'user_id' => $userId, 'before' => [],
                 'after' => ['cart_id' => $cartId, 'request_keys' => array_column($pending, 'request_key'), 'batch_key' => $data['request_key']], 'created_at' => now()]);
