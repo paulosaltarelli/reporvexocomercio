@@ -283,7 +283,13 @@ trait InstallerAccessCases
             ->assertRedirect('/app/a/setup?step=2')->assertSessionHasNoErrors();
         $connect->connect($this->a);
         $operation = CompanyOperation::findOrFail(1);
-        $this->post('/app/a/setup', $this->operationPayload(['version' => $operation->version]))
+        $operationInput = $this->operationPayload(['version' => $operation->version]);
+        $this->get('/app/a/setup?step=2')->assertOk()->assertDontSee('name="weighed_labels[enabled]"', false);
+        $this->post('/app/a/setup', $operationInput)->assertForbidden();
+        $connect->connect($this->a);
+        $this->assertSame($operation->version, $operation->fresh()->version);
+        unset($operationInput['weighed_labels']);
+        $this->post('/app/a/setup', $operationInput)
             ->assertRedirect('/app/a/setup?step=4')->assertSessionHasNoErrors();
         $this->get('/app/a/setup?step=4')->assertOk()->assertDontSee('name="password"', false);
         $account = ['name' => 'Operador QA', 'email' => 'operador@example.test', 'role' => 'admin',
