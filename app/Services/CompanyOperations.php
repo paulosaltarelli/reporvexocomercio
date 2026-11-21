@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 class CompanyOperations
 {
     public const DEFAULTS = [
+        'segment'=>'commerce', 'operation_modes'=>['commerce'], 'default_operation'=>'commerce',
         'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
         'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>false,
     ];
@@ -20,6 +21,15 @@ class CompanyOperations
             $configuration['nfe'] = false;
         }
         $configuration['nfse'] = false;
+        $configuration['operation_modes'] = array_values(array_intersect(
+            array_keys(OperationalModes::MODES),
+            is_array($configuration['operation_modes']) ? $configuration['operation_modes'] : ['commerce']
+        ));
+        if (!$configuration['operation_modes']) $configuration['operation_modes'] = ['commerce'];
+        if (!in_array($configuration['default_operation'], $configuration['operation_modes'], true)) {
+            $configuration['default_operation'] = $configuration['operation_modes'][0];
+        }
+        if (!isset(OperationalModes::SEGMENTS[$configuration['segment']])) $configuration['segment'] = 'commerce';
         return $configuration;
     }
 
@@ -58,7 +68,13 @@ class CompanyOperations
         unset($defaults['nfse']);
         $productInvoices = config('fiscal.product_invoices_enabled', false);
         if (!$productInvoices) unset($defaults['nfe'], $defaults['nfce']);
-        foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock']) as $key) $rules[$key]='required|boolean';
+        foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock','segment','operation_modes','default_operation']) as $key) $rules[$key]='required|boolean';
+        $rules += [
+            'segment' => 'sometimes|required|in:commerce,restaurant,supermarket',
+            'operation_modes' => 'sometimes|required|array|min:1|max:3',
+            'operation_modes.*' => 'required|string|distinct|in:commerce,restaurant,supermarket',
+            'default_operation' => 'sometimes|required|in:commerce,restaurant,supermarket',
+        ];
         $data=Validator::make($input,$rules)->validate();
         foreach (array_keys($defaults) as $key) if (is_bool($defaults[$key])) $data[$key]=(bool)$data[$key];
         if ($data['catalog_mode']==='services' && ($data['inventory'] || ($data['nfce'] ?? false) || ($data['nfe'] ?? false))) {
@@ -74,6 +90,22 @@ class CompanyOperations
             if ($row->version!==(int)$data['version']) throw ValidationException::withMessages(['version'=>'A configuração mudou. Recarregue e confira antes de salvar.']);
             $before=array_intersect_key(array_replace($defaults,$row->configuration),$defaults);
             $data['negative_stock'] ??= $before['negative_stock'];
+            $data['segment'] ??= $before['segment'];
+            $data['operation_modes'] ??= $before['operation_modes'];
+            $data['default_operation'] ??= $before['default_operation'];
+            $data['operation_modes'] = array_values(array_intersect(array_keys(OperationalModes::MODES), $data['operation_modes']));
+            if (!in_array($data['default_operation'], $data['operation_modes'], true)) {
+                throw ValidationException::withMessages(['default_operation'=>'Escolha um atendimento inicial entre os modos habilitados.']);
+            }
+            $disabledModes = array_diff($before['operation_modes'], $data['operation_modes']);
+            if (in_array('restaurant', $disabledModes, true)
+                && DB::connection('tenant')->table('restaurant_orders')->where('status','open')->lockForUpdate()->first(['id'])) {
+                throw ValidationException::withMessages(['operation_modes'=>'Feche ou cancele as comandas abertas antes de desabilitar o restaurante.']);
+            }
+            if (in_array('supermarket', $disabledModes, true)
+                && DB::connection('tenant')->table('supermarket_carts')->whereIn('status',['active','suspended'])->lockForUpdate()->first(['id'])) {
+                throw ValidationException::withMessages(['operation_modes'=>'Conclua ou cancele os carrinhos ativos e suspensos antes de desabilitar o supermercado.']);
+            }
             if ($before['inventory']!==$data['inventory'] && Product::where('quantity','<>',0)->sharedLock()->first()) {
                 throw ValidationException::withMessages(['inventory'=>'Concilie e zere os saldos por movimentações identificadas antes de mudar o controle de estoque.']);
             }

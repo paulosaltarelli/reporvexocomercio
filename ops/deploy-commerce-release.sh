@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 mode=${1:-}
-[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 || $mode == --apply-central-settings || $mode == --apply-mail-history ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 / --apply-central-settings / --apply-mail-history DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
+[[ $EUID == 0 && ( $mode == --apply || $mode == --apply-licensing-v1 || $mode == --apply-nfse-v1 || $mode == --apply-code-only || $mode == --apply-accesses-v1 || $mode == --apply-central-settings || $mode == --apply-mail-history || $mode == --apply-segments ) ]] || { echo 'Uso: --apply, --apply-licensing-v1, --apply-nfse-v1 ou --apply-code-only / --apply-accesses-v1 / --apply-central-settings / --apply-mail-history DIRETORIO_PRIVADO_DA_RELEASE'; exit 64; }
 release=${2:?}
 [[ $release =~ ^/var/lib/vendra/releases/[a-f0-9]{40}$ && $(realpath "$release") == "$release" && $(stat -c '%u-%a' "$release") == 0-700 ]]
 stage="$release/stage"
@@ -55,6 +55,9 @@ if sys.argv[3]=='--apply-mail-history' and {name for name in new if name.startsw
     raise SystemExit('O histórico de e-mails requer somente a migração central de tentativas.')
 if sys.argv[3]=='--apply-accesses-v1' and {name for name in new if name.startswith('database/')}!={'database/migrations/2026_11_20_000007_create_platform_installer_invitations.php'}:
     raise SystemExit('A release de acessos requer apenas a migração central de convites.')
+if sys.argv[3]=='--apply-segments':
+    expected={'database/tenant-migrations/2026_11_21_000002_create_supermarket_carts.php','database/tenant-migrations/2026_11_21_000101_create_restaurant_operations.php'}
+    if {name for name in new if name.startswith('database/')}!=expected:raise SystemExit('Segmentos requerem somente as migrações aditivas tenant revisadas.')
 if sys.argv[3]=='--apply-code-only' and any(name.startswith('database/') for name in new):raise SystemExit('Release somente de código não aceita migrações.')
 if sys.argv[3]=='--apply-central-settings':
     if any(name.startswith('database/') for name in new):raise SystemExit('Configurações da Central não aceitam migrações.')
@@ -64,7 +67,7 @@ if sys.argv[3] not in ('--apply','--apply-central-settings'):
     legacy={'app/Http/Controllers/Platform/AuthController.php','app/Http/Middleware/PlatformAuthenticated.php','app/Platform/SupportAccess.php','resources/views/platform/login.blade.php'}
     if not legacy<=set(protected):raise SystemExit('Login de transição precisa estar protegido.')
 for name in new:
-    if name not in ('bootstrap/app.php','composer.json') and not name.startswith(('app/','config/','database/migrations/','ops/','public/','resources/views/','routes/')):raise SystemExit('Arquivo fora do escopo: '+name)
+    if name not in ('bootstrap/app.php','composer.json') and not name.startswith(('app/','config/','database/migrations/','database/tenant-migrations/','ops/','public/','resources/views/','routes/')):raise SystemExit('Arquivo fora do escopo: '+name)
     if (name=='resources/views/welcome.blade.php' and not (licensing or nfse)) or name in ('ops/apache.conf','public/index.php') or name.startswith(('public/brand/','public/marketing')):raise SystemExit('Arquivo protegido: '+name)
 PY
 cd "$live"
@@ -99,6 +102,10 @@ clean_exit() {
     if (( status && overlay )); then
         web_paused=1
         systemctl stop vendra.service || exit 1
+        if [[ $mode == --apply-segments ]]; then
+            "${phpcli[@]}" ops/extend-operational-schema.php rollback "$journal" > "$journal/schema-rollback.log" 2>&1 || exit 1
+            cp -p "$journal/environment.previous" .env || exit 1
+        fi
         while read -r h p; do
             if [[ "$h" == - ]]; then rm -f -- "$live/$p"; else cp -p -- "$journal/previous/$p" "$live/$p" || exit 1; fi
         done < "$release/baseline.sha256"
@@ -125,6 +132,9 @@ VENDRA_BACKUP_ACK_QUIESCED=1 sh "$live/ops/backup.sh" > "$journal/backup.log"
 backup=$(sed -n 's/^Backup local criado em \(\/var\/backups\/vendra\/[0-9TZ]*-[A-Za-z0-9]*\)\..*/\1/p' "$journal/backup.log")
 [[ -n "$backup" && $(realpath "$backup") == "$backup" ]]
 (cd "$backup" && sha256sum -c SHA256SUMS) > "$journal/backup-check.log"
+if [[ $mode == --apply-segments ]]; then
+    cp -p .env "$journal/environment.previous"
+fi
 while read -r h p; do
     if [[ $h != - ]]; then mkdir -p "$journal/previous/$(dirname "$p")"; cp -p "$live/$p" "$journal/previous/$p"; fi
 done < "$release/baseline.sha256"
@@ -162,7 +172,7 @@ elif [[ $mode == --apply-mail-history ]]; then
     migrations=(database/migrations/2026_11_20_000008_create_platform_mail_attempts.php)
 elif [[ $mode == --apply-accesses-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000007_create_platform_installer_invitations.php)
-elif [[ $mode == --apply-code-only || $mode == --apply-central-settings ]]; then
+elif [[ $mode == --apply-code-only || $mode == --apply-central-settings || $mode == --apply-segments ]]; then
     migrations=()
 elif [[ $mode == --apply-nfse-v1 ]]; then
     migrations=(database/migrations/2026_11_20_000006_add_contract_grace_periods.php)
@@ -178,6 +188,26 @@ fi
 for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1
 done
+if [[ $mode == --apply-segments ]]; then
+    artisan config:clear > "$journal/schema-config-clear.log"
+    "${phpcli[@]}" ops/extend-operational-schema.php apply "$journal" > "$journal/schema-apply.log" 2>&1
+    python3 - "$journal/schema.applied" <<'PY_SCHEMA_ENV'
+import os,pathlib,re,tempfile,sys
+source=pathlib.Path('.env')
+new_hash=pathlib.Path(sys.argv[1]).read_text().strip()
+if not re.fullmatch(r'[a-f0-9]{64}',new_hash):raise SystemExit('Invalid schema hash')
+text=source.read_text()
+pattern=r'^VENDRA_SHARED_SCHEMA_HASH=.*$'
+if len(re.findall(pattern,text,re.M))!=1:raise SystemExit('Expected exactly one schema hash')
+text=re.sub(pattern,'VENDRA_SHARED_SCHEMA_HASH='+new_hash,text,flags=re.M)
+info=source.stat()
+with tempfile.NamedTemporaryFile(dir='.',delete=False) as file:
+    file.write(text.encode());file.flush();os.fsync(file.fileno())
+    os.fchmod(file.fileno(),info.st_mode&0o777);os.fchown(file.fileno(),info.st_uid,info.st_gid)
+    temporary=file.name
+os.replace(temporary,source)
+PY_SCHEMA_ENV
+fi
 cache > "$journal/cache.log" 2>&1
 systemctl start vendra.service
 health

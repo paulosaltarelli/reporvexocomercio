@@ -7,6 +7,8 @@ final class Permissions
 {
     public const GROUPS = [
         'Balcão e vendas' => ['desk.use'=>'Abrir a frente de caixa','sales.view'=>'Consultar vendas e comprovantes da empresa','sales.create'=>'Registrar vendas','sales.cancel'=>'Cancelar vendas e estornar','sales.receive'=>'Receber o saldo integral de uma venda','sales.seller'=>'Escolher outro vendedor'],
+        'Restaurante' => ['restaurant.use'=>'Atender mesas e comandas','restaurant.manage'=>'Cadastrar mesas','restaurant.kitchen'=>'Operar a produção da cozinha','restaurant.cancel'=>'Cancelar pedidos e itens','restaurant.checkout'=>'Fechar a conta do restaurante'],
+        'Supermercado' => ['supermarket.use'=>'Operar o caixa de supermercado','supermarket.cancel'=>'Cancelar itens e carrinhos','supermarket.checkout'=>'Concluir vendas do supermercado'],
         'Orçamentos e OS' => ['documents.view'=>'Consultar orçamentos e OS da empresa','documents.create'=>'Criar orçamentos e OS','documents.edit'=>'Editar OS abertas','documents.status'=>'Alterar etapas e cancelar documentos','documents.invoice'=>'Gerar venda a partir de orçamento/OS','documents.seller'=>'Reatribuir vendedor com justificativa'],
         'Cadastros' => ['products.view'=>'Consultar produtos e serviços','products.manage'=>'Cadastrar e editar produtos/serviços','customers.view'=>'Consultar clientes','customers.manage'=>'Cadastrar e editar clientes','suppliers.view'=>'Consultar fornecedores','suppliers.manage'=>'Cadastrar e editar fornecedores','groups.view'=>'Consultar grupos','groups.manage'=>'Alterar grupos e regras comerciais','sellers.manage'=>'Gerenciar vendedores'],
         'Estoque e preços' => ['stock.view'=>'Consultar saldos e movimentações','stock.manage'=>'Movimentar estoque','costs.view'=>'Visualizar custos, margens e sugestões','prices.view'=>'Consultar preços e alertas','prices.manage'=>'Aplicar preços e atualizar regras','purchases.view'=>'Consultar compras e custos','purchases.manage'=>'Registrar compras'],
@@ -15,12 +17,15 @@ final class Permissions
     ];
     public const NAVIGATION = [
         ['Visão geral','dashboard',[],'dashboard.view'],['Frente de caixa','desk',[],'desk.use'],
+        ['Mesas e comandas','restaurant.index',[],'restaurant.use'],['Caixa de supermercado','supermarket.index',[],'supermarket.use'],
         ['Vendas','sales',[],'sales.view'],['Orçamentos e OS','documents',[],'documents.view'],
         ['Produtos e serviços','products',[],'products.view'],['Clientes','catalog',['kind'=>'customers'],'customers.view'],['Fornecedores','catalog',['kind'=>'suppliers'],'suppliers.view'],['Grupos','catalog',['kind'=>'groups'],'groups.view'],
         ['Vendedores','sellers',[],'sellers.manage'],['Movimentações de estoque','stock',[],'stock.view'],['Compras','purchases',[],'purchases.view'],['Preços e alertas','prices',[],'prices.view'],
         ['Contas a pagar e receber','finance',[],'finance.view'],['Caixa diário','cash',[],'cash.view'],['Fluxo e previsão','cashflow',[],'cashflow.view'],['Relatórios gerenciais','reports',[],'reports.view'],['Comissões','commissions',[],'commissions.view'],['Fiscal','fiscal',[],'fiscal.manage'],
     ];
     public const DEPENDENCIES = [
+        'restaurant.manage'=>['restaurant.use'], 'restaurant.kitchen'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use','sales.create'],
+        'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use','sales.create'],
         'sales.create'=>['desk.use','products.view','sales.view'], 'sales.cancel'=>['sales.view'], 'sales.receive'=>['sales.view'],
         'documents.create'=>['documents.view','products.view'], 'documents.edit'=>['documents.view','products.view'], 'documents.status'=>['documents.view'], 'documents.invoice'=>['documents.view','products.view','sales.view'], 'documents.seller'=>['documents.view','sales.seller'],
         'products.manage'=>['products.view','groups.view','costs.view'],'customers.manage'=>['customers.view'],'suppliers.manage'=>['suppliers.view'],'groups.manage'=>['groups.view','costs.view'],
@@ -56,6 +61,13 @@ final class Permissions
             'LicenseSelfServiceController','CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',
             'SicoobPixController'=>'finance.manage',
             'DeskController'=>'desk.use',
+            'RestaurantController'=>match($action) {
+                'createTable'=>'restaurant.manage', 'production','transitionItem'=>'restaurant.kitchen',
+                'close'=>'restaurant.checkout', 'cancel','cancelItem'=>'restaurant.cancel', default=>'restaurant.use',
+            },
+            'SupermarketController'=>match($action) {
+                'checkout'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
+            },
             'MeasureUnitController'=>'products.manage',
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},
             'CommerceController'=>match($action) {

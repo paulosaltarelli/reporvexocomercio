@@ -50,6 +50,136 @@ final class SharedSchemaBuilder
         }
     }
 
+    /** Add certified empty tables without replacing existing business data or runtime credentials. */
+    public function extend(string $template, string $target, array $previous, array $next): array
+    {
+        $this->assertExistingSchema($target, $previous);
+        if (($previous['guard_policy_sha256'] ?? null) !== ($next['guard_policy_sha256'] ?? null)) {
+            $this->fail('additive_extension_cannot_change_guard_policy');
+        }
+        SchemaManifest::assertTemplate($this->admin, $template, $next);
+        $oldTables = $this->tableNames($previous);
+        $newTables = array_values(array_diff($this->tableNames($next), $oldTables));
+        if (!$newTables || array_diff($oldTables, $this->tableNames($next))) {
+            $this->fail('extension_must_only_add_tables');
+        }
+        foreach ($previous['migrations'] as $name => $digest) {
+            if (($next['migrations'][$name] ?? null) !== $digest) {
+                $this->fail('existing_migration_changed');
+            }
+        }
+        $sourceSchema = [];
+        foreach ($oldTables as $table) {
+            $row = $this->admin->query('SHOW CREATE TABLE '.$this->id($template).'.'.$this->id($table))->fetch(PDO::FETCH_NUM);
+            $ddl = preg_replace('/ AUTO_INCREMENT=\d+\b/', '', $row[1]);
+            $sourceSchema[$table] = str_replace('`'.$template.'`.', '', $ddl);
+        }
+        $fingerprint = hash('sha256', json_encode($sourceSchema, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+        if (!hash_equals($previous['source_fingerprint'], $fingerprint)) {
+            $this->fail('existing_template_tables_changed');
+        }
+        $db = $this->id($target);
+        $metadata = $this->rows("SELECT * FROM $db._vendra_schema_manifest WHERE id=1")[0];
+        $definer = $this->account($metadata['definer_login'], 'localhost');
+        $principals = $this->rows("SELECT login,kind FROM $db._vendra_principals ORDER BY login");
+        foreach ($newTables as $table) {
+            if ($this->rows('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME IN (?,?)', [$target, $table, '_p_'.$table])) {
+                $this->fail('extension_object_already_exists');
+            }
+        }
+        $created = [];
+        try {
+            foreach ($newTables as $table) {
+                $created[] = $table;
+                $this->cloneTable($template, $target, $table);
+            }
+            foreach ($this->foreignKeys($template) as $fk) {
+                if (in_array($fk['table'], $newTables, true)) {
+                    $this->createForeignKey($target, $fk, $this->tableNames($next));
+                }
+            }
+            foreach ($newTables as $table) {
+                $this->guardsAndView($target, $table, $definer);
+                foreach ($principals as $principal) {
+                    $this->admin->exec('GRANT SELECT,INSERT,UPDATE,DELETE ON '.$db.'.'.$this->id($table).' TO '.$this->account($principal['login'], '127.0.0.1'));
+                }
+            }
+            $this->replaceIdentity($target, $definer, $next);
+            $update = $this->admin->prepare("UPDATE $db._vendra_schema_manifest SET manifest_hash=?,guard_hash=?,body=? WHERE id=1");
+            $update->execute([$this->hash($next), $this->guardHash($target), json_encode($next, JSON_THROW_ON_ERROR)]);
+            $this->assertExistingSchema($target, $next);
+            foreach ($principals as $principal) {
+                $this->assertGrants($target, $principal['login'], '127.0.0.1', $principal['kind'], $next, true);
+            }
+            return ['tables' => $newTables, 'manifest_hash' => $this->hash($next), 'guard_hash' => $this->guardHash($target)];
+        } catch (\Throwable $error) {
+            $this->removeEmptyExtension($target, $created, $principals, $metadata['definer_login']);
+            $this->replaceIdentity($target, $definer, $previous);
+            $restore = $this->admin->prepare("UPDATE $db._vendra_schema_manifest SET manifest_hash=?,guard_hash=?,body=? WHERE id=1");
+            $restore->execute([$metadata['manifest_hash'], $metadata['guard_hash'], $metadata['body']]);
+            $this->assertExistingSchema($target, $previous);
+            throw new RuntimeException('shared_schema_extension_failed_reverted');
+        }
+    }
+
+    /** Restore the preceding certificate only while the added tables are still empty. */
+    public function revertEmptyExtension(string $target, array $previous, array $current): void
+    {
+        $this->assertExistingSchema($target, $current);
+        $newTables = array_values(array_diff($this->tableNames($current), $this->tableNames($previous)));
+        if (!$newTables || array_diff($this->tableNames($previous), $this->tableNames($current))) {
+            $this->fail('invalid_extension_reversal');
+        }
+        $db = $this->id($target);
+        $metadata = $this->rows("SELECT definer_login FROM $db._vendra_schema_manifest WHERE id=1")[0];
+        $principals = $this->rows("SELECT login,kind FROM $db._vendra_principals ORDER BY login");
+        $this->removeEmptyExtension($target, $newTables, $principals, $metadata['definer_login']);
+        $this->replaceIdentity($target, $this->account($metadata['definer_login'], 'localhost'), $previous);
+        $restore = $this->admin->prepare("UPDATE $db._vendra_schema_manifest SET manifest_hash=?,guard_hash=?,body=? WHERE id=1");
+        $restore->execute([$this->hash($previous), $this->guardHash($target), json_encode($previous, JSON_THROW_ON_ERROR)]);
+        $this->assertExistingSchema($target, $previous);
+    }
+
+    private function revokeTableGrants(string $target, string $table, string $username, string $host): void
+    {
+        $grantee = "'".$username."'@'".$host."'";
+        if ($this->rows('SELECT PRIVILEGE_TYPE FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND TABLE_NAME=?', [$grantee, $target, $table])) {
+            $this->admin->exec('REVOKE ALL PRIVILEGES ON '.$this->id($target).'.'.$this->id($table).' FROM '.$this->account($username, $host));
+        }
+    }
+
+    private function replaceIdentity(string $target, string $definer, array $manifest): void
+    {
+        $scope = $this->scopeExpression();
+        $schema = $this->admin->quote($this->hash($manifest));
+        $policy = $this->admin->quote($manifest['guard_policy_sha256']);
+        $this->admin->exec('CREATE OR REPLACE ALGORITHM=MERGE DEFINER='.$definer.' SQL SECURITY DEFINER VIEW '.$this->id($target).'.__vendra_identity AS SELECT '.$scope.' AS tenant_id,'.$schema.' AS schema_hash,'.$policy.' AS guard_policy_hash WHERE '.$scope.'>0');
+    }
+
+    private function removeEmptyExtension(string $target, array $tables, array $principals, string $definer): void
+    {
+        $db = $this->id($target);
+        $tables = array_values(array_filter($tables, fn ($table) => $this->rows('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?', [$target, '_p_'.$table]) !== []));
+        foreach ($tables as $table) {
+            if ((int)$this->admin->query('SELECT COUNT(*) FROM '.$db.'.'.$this->id('_p_'.$table))->fetchColumn() !== 0) {
+                $this->fail('extension_contains_data_requires_reconciliation');
+            }
+        }
+        foreach ($this->foreignKeys($target, true) as $fk) {
+            if (in_array(substr($fk['table'], 3), $tables, true)) {
+                $this->admin->exec('ALTER TABLE '.$db.'.'.$this->id($fk['table']).' DROP FOREIGN KEY '.$this->id($fk['name']));
+            }
+        }
+        foreach (array_reverse($tables) as $table) {
+            foreach ($principals as $principal) {
+                $this->revokeTableGrants($target, $table, $principal['login'], '127.0.0.1');
+            }
+            $this->revokeTableGrants($target, '_p_'.$table, $definer, 'localhost');
+            $this->admin->exec('DROP VIEW IF EXISTS '.$db.'.'.$this->id($table));
+            $this->admin->exec('DROP TABLE '.$db.'.'.$this->id('_p_'.$table));
+        }
+    }
+
     public function assertExistingSchema(string $target, array $manifest): void
     {
         $this->cli(); $this->database($target); $this->tableNames($manifest);

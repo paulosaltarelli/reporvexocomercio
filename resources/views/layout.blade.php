@@ -20,6 +20,7 @@
 @endif
 <link rel="stylesheet" href="/company-brand.css?v={{ filemtime(public_path('company-brand.css')) }}">
 <script defer src="/company-brand.js?v={{ filemtime(public_path('company-brand.js')) }}"></script>
+@stack('styles')
 </head>
 <body @if($wizardMode??false) class="onboarding-shell" @endif>
 <a class="skip-link" href="#main-content">Ir para o conteúdo</a>

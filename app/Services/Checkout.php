@@ -51,10 +51,35 @@ class Checkout
         }, 3);
     }
 
-    private function completeInternal(array $data, int $userId, ?Document $document = null, ?Seller $assignedSeller = null): Sale
+    /** Reload the persisted restaurant agreement; HTTP payloads cannot supply trusted prices. */
+    public function completeFromRestaurant(int $orderId, array $payment, int $userId): Sale
+    {
+        return DB::connection('tenant')->transaction(function () use ($orderId, $payment, $userId) {
+            app(CompanyOperations::class)->lock();
+            app(OperationalModes::class)->require('restaurant');
+            $reference = \App\Models\RestaurantOrder::findOrFail($orderId);
+            \App\Models\RestaurantTable::lockForUpdate()->findOrFail($reference->restaurant_table_id);
+            $order = \App\Models\RestaurantOrder::with('table')->lockForUpdate()->findOrFail($orderId);
+            $items = $order->items()->where('status', '<>', 'cancelled')->orderBy('id')->get();
+            if (!$order->sale_id && ($order->status !== 'open' || $items->isEmpty() || $items->contains(fn ($item) => $item->status !== 'delivered'))) {
+                throw ValidationException::withMessages(['items' => 'Confira a comanda e entregue os itens antes de fechar a conta.']);
+            }
+            $data = array_merge($payment, [
+                'request_key' => Uuid::uuid5(Uuid::NAMESPACE_URL, 'vendra:restaurant:'.$order->request_key)->toString(),
+                'customer_id' => $order->customer_id,
+                'notes' => 'Comanda #'.$order->id.' · '.$order->table->name,
+                'items' => $items->map(fn ($item) => array_merge($item->commercial_terms, [
+                    'kind' => 'product', 'id' => $item->product_id, 'description' => $item->description,
+                ]))->all(),
+            ]);
+            return $this->completeInternal($data, $userId, null, null, true);
+        }, 3);
+    }
+
+    private function completeInternal(array $data, int $userId, ?Document $document = null, ?Seller $assignedSeller = null, bool $restaurantSnapshot = false): Sale
     {
         try {
-            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller) {
+            return DB::connection('tenant')->transaction(function () use ($data, $userId, $document, $assignedSeller, $restaurantSnapshot) {
                 $configuration = app(CompanyOperations::class)->lock();
                 $existing = Sale::where('request_key', $data['request_key'])->first();
                 if ($existing) {
@@ -76,8 +101,8 @@ class Checkout
                 OperationReplay::record($sale, $data, $userId);
                 app(PaymentMethods::class)->snapshot('sale_payment_method',$sale->id,$choice,$userId);
                 $lines = $data['items'];
-                if ($lines === [] || count($lines) > 50) {
-                    throw ValidationException::withMessages(['items' => 'Informe de 1 a 50 itens.']);
+                if ($lines === [] || count($lines) > 200) {
+                    throw ValidationException::withMessages(['items' => 'Informe de 1 a 200 itens.']);
                 }
                 usort($lines, fn ($a, $b) => strcmp($a['kind'], $b['kind']) ?: ($a['id'] <=> $b['id']));
                 $total = '0';
@@ -97,13 +122,15 @@ class Checkout
                     if (!$document && isset($line['measure_unit']) && $item instanceof Product) {
                         [$line['quantity'], , $detail] = MeasureUnits::convert($item, $configuration, $line, 'sale');
                     }
-                    $terms = $document ? $rules->fromDocument($item, $line, (int) $document->commercial_version) : $rules->quote($item, $line);
+                    $terms = ($document || $restaurantSnapshot)
+                        ? $rules->fromDocument($item, $line, $document ? (int) $document->commercial_version : 1)
+                        : $rules->quote($item, $line);
                     $qty = $terms['quantity'];
                     $unitCost = $item instanceof Product ? ($configuration['inventory'] ? $item->pricingCost() : (string)$item->reference_cost) : $item->cost;
                     $amount = $terms['total'];
                     $saleItem = SaleItem::create(array_merge(['fiscal_kind' => $item instanceof Product ? $item->type : 'service', 'sale_id' => $sale->id, 'product_id' => $product ? $item->id : null,
                         'service_id' => $product ? null : (int) $line['id'],
-                        'description' => $document ? ($line['description'] ?? $item->name) : $item->name.$detail, 'unit_cost' => $unitCost], $terms));
+                        'description' => ($document || $restaurantSnapshot) ? ($line['description'] ?? $item->name) : $item->name.$detail, 'unit_cost' => $unitCost], $terms));
                     $subtotal = bcadd($subtotal, $terms['gross_total'], 2);
                     $discountTotal = bcadd($discountTotal, $terms['discount_amount'], 2);
                     $commissionTotal = bcadd($commissionTotal, $terms['commission_amount'], 2);

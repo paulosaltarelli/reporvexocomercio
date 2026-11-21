@@ -54,6 +54,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('users/{id}', [AccountController::class, 'updateUser'])->whereNumber('id')->name('user.update');
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/', [CommerceController::class, 'dashboard'])->name('dashboard');
+        require __DIR__.'/restaurant.php';
+        require __DIR__.'/supermarket.php';
         Route::get('prices',[PricingController::class,'index'])->name('prices');
         Route::post('prices/refresh',[PricingController::class,'refresh'])->name('price.refresh');
         Route::post('prices/{id}/apply',[PricingController::class,'apply'])->whereNumber('id')->name('price.apply');

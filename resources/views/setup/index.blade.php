@@ -19,6 +19,22 @@
 @elseif($step===2)
 <form class="panel" method="post" action="{{ route('setup.save',['company'=>$tenant->slug]) }}">@csrf
 <input type="hidden" name="version" value="{{ old('version',$setup?->version??0) }}">
+<h2>Segmento e atendimento</h2>
+<div class="form-grid">
+    <div class="field"><label for="company-segment">Segmento da empresa</label><select id="company-segment" name="segment">
+        @foreach(\App\Services\OperationalModes::SEGMENTS as $key=>$label)<option value="{{ $key }}" @selected(old('segment',$configuration['segment'])===$key)>{{ $label }}</option>@endforeach
+    </select></div>
+    <div class="field"><label for="default-operation">Atendimento inicial da equipe</label><select id="default-operation" name="default_operation">
+        @foreach(\App\Services\OperationalModes::MODES as $key=>$label)<option value="{{ $key }}" @selected(old('default_operation',$configuration['default_operation'])===$key)>{{ $label }}</option>@endforeach
+    </select><small class="hint">Escolha um atendimento habilitado. Cada usuário acessa as funções liberadas no seu perfil.</small></div>
+</div>
+<fieldset><legend>Modos de atendimento habilitados</legend><input type="hidden" name="operation_modes" value=""><div class="setup-options">
+    @php($selectedModes=old('operation_modes',$configuration['operation_modes']))
+    @php($selectedModes=is_array($selectedModes)?$selectedModes:[])
+    @foreach(\App\Services\OperationalModes::MODES as $key=>$label)
+        <label class="setup-option" for="operation-mode-{{ $key }}"><input id="operation-mode-{{ $key }}" type="checkbox" name="operation_modes[]" value="{{ $key }}" @checked(in_array($key,$selectedModes,true))> {{ $label }}</label>
+    @endforeach
+</div><p class="hint">Habilite mais de um modo para empresas com operações mistas. Os cadastros, o estoque e o financeiro são compartilhados nesta empresa.</p></fieldset>
 <h2>Como a empresa trabalha</h2>
 <div class="form-grid">
 <div><label for="catalog-mode">O que comercializa?</label><select id="catalog-mode" name="catalog_mode">@foreach(['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'] as $value=>$label)<option value="{{ $value }}" @selected(old('catalog_mode',$configuration['catalog_mode'])===$value)>{{ $label }}</option>@endforeach</select></div>
@@ -63,7 +79,7 @@
 @else
 <section class="panel"><h2>Revisão da implantação</h2><p>Empresa, operação e equipe serão mantidas nos seus cadastros definitivos. Produtos, serviços, clientes e movimentações serão cadastrados depois.</p><dl><dt>Empresa</dt><dd>{{ $profile?->legal_name }}</dd><dt>CNPJ</dt><dd>{{ $profile?->document }}</dd>@unless($installer)<dt>Usuários de acesso</dt><dd>{{ $users->count() }}</dd>@endunless<dt>Responsáveis pelo caixa</dt><dd>{{ $sellers->pluck('name')->implode(', ') ?: 'Cadastre na etapa Equipe' }}</dd></dl>
 @if($configuration['nfce'] || $configuration['nfe'])<p class="form-note">Emissão fiscal permanece em homologação/preparação; concluir o cadastro não libera produção.</p>@endif
-<dl><dt>Operação</dt><dd>{{ ['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'][$configuration['catalog_mode']] }}</dd><dt>Estoque</dt><dd>{{ $configuration['inventory']?'Habilitado':'Desabilitado' }}</dd><dt>Comissões</dt><dd>{{ $configuration['commissions']?($configuration['commission_basis']==='cash'?'Caixa':'Competência'):'Desabilitadas' }}</dd></dl>
+<dl><dt>Segmento</dt><dd>{{ \App\Services\OperationalModes::SEGMENTS[$configuration['segment']] }}</dd><dt>Atendimentos habilitados</dt><dd>{{ collect($configuration['operation_modes'])->map(fn($mode)=>\App\Services\OperationalModes::MODES[$mode])->implode(', ') }}</dd><dt>Atendimento inicial</dt><dd>{{ \App\Services\OperationalModes::MODES[$configuration['default_operation']] }}</dd><dt>Operação</dt><dd>{{ ['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'][$configuration['catalog_mode']] }}</dd><dt>Estoque</dt><dd>{{ $configuration['inventory']?'Habilitado':'Desabilitado' }}</dd><dt>Comissões</dt><dd>{{ $configuration['commissions']?($configuration['commission_basis']==='cash'?'Caixa':'Competência'):'Desabilitadas' }}</dd></dl>
 @if($pending)<h3>Resolva as pendências para concluir</h3><ul>@foreach($pending as $message=>$targetStep)<li>{{ $message }} <a href="{{ route('setup',['company'=>$tenant->slug,'step'=>$targetStep]) }}">Corrigir na etapa {{ $steps[$targetStep] }}</a></li>@endforeach</ul>@endif
 <form method="post" action="{{ route('setup.complete',['company'=>$tenant->slug]) }}">@csrf<input type="hidden" name="version" value="{{ $setup?->version??0 }}"><label class="setup-option"><input type="checkbox" name="reviewed" value="1" required @disabled($pending)> {{ $installer ? 'Revisei os dados da empresa, a equipe e as escolhas da operação.' : 'Revisei os dados, usuários e escolhas desta empresa.' }}</label><button class="primary" @disabled($pending)>{{ $installer ? 'Concluir implantação e ver resumo' : 'Concluir implantação e abrir sistema' }}</button></form>
 </section>

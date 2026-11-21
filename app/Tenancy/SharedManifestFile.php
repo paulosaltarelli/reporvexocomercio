@@ -26,6 +26,20 @@ final class SharedManifestFile
         return $manifest;
     }
 
+    /** Privileged upgrade inspection of the currently certified preceding release. */
+    public static function installed(): array
+    {
+        self::privileged();
+        if (is_link(self::PATH) || !is_file(self::PATH) || realpath(self::PATH)!==self::PATH || fileowner(self::PATH)!==0 || (fileperms(self::PATH)&0077)!==0) {
+            throw new RuntimeException('Manifesto privado de estrutura indisponível.');
+        }
+        $manifest = json_decode(file_get_contents(self::PATH), true, flags: JSON_THROW_ON_ERROR);
+        if (!is_array($manifest) || ($manifest['version'] ?? null)!==1 || !is_array($manifest['migrations'] ?? null)) {
+            throw new RuntimeException('Manifesto instalado inválido.');
+        }
+        return $manifest;
+    }
+
     public static function save(array $manifest): void
     {
         self::privileged();$parent=dirname(self::PATH);

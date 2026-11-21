@@ -71,12 +71,20 @@ final class AccessProfiles
             abort_unless(\App\Services\InstallerAccess::permits($request),403);
             return;
         }
+        $mode = match (class_basename($request->route()?->getControllerClass() ?? '')) {
+            'DeskController' => 'commerce',
+            'RestaurantController' => 'restaurant',
+            'SupermarketController' => 'supermarket',
+            default => null,
+        };
+        if ($mode !== null) abort_unless(app(\App\Services\OperationalModes::class)->enabled($mode), 403, 'Este atendimento está desabilitado para a empresa.');
         abort_unless($user && $this->allows($user,Permissions::request($request)),403,'Seu perfil não libera esta função.');
     }
     public function landing(User $user): string
     {
         if ($user->role===User::ROLE_INSTALLER) return \App\Services\InstallerAccess::open() ? 'setup' : 'installer.home';
-        foreach(['desk'=>'desk.use','dashboard'=>'dashboard.view','sales'=>'sales.view','finance'=>'finance.view','stock'=>'stock.view','products'=>'products.view','reports'=>'reports.view'] as $route=>$permission)if($this->allows($user,$permission))return $route;
+        if ($route = app(\App\Services\OperationalModes::class)->landing($user)) return $route;
+        foreach(['desk'=>'desk.use','dashboard'=>'dashboard.view','sales'=>'sales.view','finance'=>'finance.view','stock'=>'stock.view','products'=>'products.view','reports'=>'reports.view'] as $route=>$permission)if(($route !== 'desk' || app(\App\Services\OperationalModes::class)->enabled('commerce')) && $this->allows($user,$permission))return $route;
         if($this->allows($user,'commissions.self'))return 'commissions.mine';
         return 'account.password';
     }
@@ -99,7 +107,7 @@ final class AccessProfiles
     {
         $this->admin($actor);
         if(is_string($input['name']??null))$input['name']=trim($input['name']);
-        $data=Validator::make($input,['version'=>'required|integer|min:0','name'=>'required|string|max:80','permissions'=>'present|array|max:50','permissions.*'=>['string','distinct',Rule::in(array_keys(Permissions::labels()))]])->validate();
+        $data=Validator::make($input,['version'=>'required|integer|min:0','name'=>'required|string|max:80','permissions'=>'present|array|max:100','permissions.*'=>['string','distinct',Rule::in(array_keys(Permissions::labels()))]])->validate();
         $permissions=Permissions::expand($data['permissions']);
         return DB::connection('tenant')->transaction(function()use($data,$permissions,$actor,$id){
             $row=$this->locked((int)$data['version']);$state=$this->fromRow($row);

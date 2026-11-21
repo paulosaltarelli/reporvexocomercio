@@ -84,7 +84,12 @@
             @if($currentUser->allows('dashboard.view'))
                 <a class="nav nav-primary {{ request()->routeIs('dashboard') ? 'selected' : '' }}" href="{{ route('dashboard', ['company' => $tenant->slug]) }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif><x-navigation-icon name="grid"/><span>Visão geral</span></a>
             @endif
-            @if($currentUser->allows('desk.use'))<a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Frente de caixa</span></a>@endif
+            @if($currentUser->allows('desk.use') && app(\App\Services\OperationalModes::class)->enabled('commerce'))<a class="nav nav-primary {{ request()->routeIs('desk') ? 'selected' : '' }}" href="{{ route('desk', ['company' => $tenant->slug]) }}" @if(request()->routeIs('desk')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Frente de caixa</span></a>@endif
+            @foreach(['restaurant'=>'Mesas e comandas', 'supermarket'=>'Caixa de supermercado'] as $operationMode=>$operationLabel)
+                @if(app(\App\Services\OperationalModes::class)->enabled($operationMode) && $currentUser->allows(\App\Services\OperationalModes::PERMISSIONS[$operationMode]))
+                    <a class="nav nav-primary {{ request()->routeIs($operationMode.'.*') ? 'selected' : '' }}" href="{{ route(\App\Services\OperationalModes::ROUTES[$operationMode], ['company'=>$tenant->slug]) }}" @if(request()->routeIs($operationMode.'.*')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>{{ $operationLabel }}</span></a>
+                @endif
+            @endforeach
             <span class="navigation-caption navigation-section-caption">GESTÃO</span>
             @foreach($groups as $group)
                 @if(count($group['links']))

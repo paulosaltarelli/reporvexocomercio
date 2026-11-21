@@ -48,6 +48,9 @@ class AuthController extends Controller
         $r->session()->put(['tenant_id' => $r->attributes->get('tenant')->id, 'user_id' => $user->id, 'auth_version' => $user->auth_version]);
 
         $start=$user->role==='admin'?'dashboard':app(\App\Access\AccessProfiles::class)->landing($user);
+        if ($user->role==='admin' && app(\App\Services\OperationalModes::class)->current()['default_operation'] !== 'commerce') {
+            $start = app(\App\Services\OperationalModes::class)->landing($user) ?? 'dashboard';
+        }
         if ($user->role==='admin' && app(\App\Services\CompanyOnboarding::class)->required($r->attributes->get('tenant'))) $start='setup';
         return redirect()->route($start, ['company' => $r->route('company')]);
     }
