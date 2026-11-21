@@ -1,12 +1,7 @@
-@extends('layout')
+@extends('operations.layout')
 @section('title','Mesas e comandas')
 @section('navigation-section','Restaurante')
 @section('subtitle','Abra um atendimento, registre os pedidos e acompanhe a produção.')
-@push('styles')<link rel="stylesheet" href="/operational-fronts.css?v={{ filemtime(public_path('operational-fronts.css')) }}">
-@endpush
-@section('actions')@if($currentUser->allows('restaurant.kitchen'))<a class="button secondary" href="{{ route('restaurant.production',['company'=>$tenant->slug]) }}">Cozinha e bar</a>
-@endif
-@endsection
 @section('content')
 <div class="operation-grid">
 <div>

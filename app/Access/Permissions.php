@@ -17,15 +17,15 @@ final class Permissions
     ];
     public const NAVIGATION = [
         ['Visão geral','dashboard',[],'dashboard.view'],['Frente de caixa','desk',[],'desk.use'],
-        ['Mesas e comandas','restaurant.index',[],'restaurant.use'],['Caixa de supermercado','supermarket.index',[],'supermarket.use'],
+        ['Mesas e comandas','restaurant.index',[],'restaurant.use'],['Cozinha','restaurant.production',[],'restaurant.kitchen'],['Caixa de supermercado','supermarket.index',[],'supermarket.use'],
         ['Vendas','sales',[],'sales.view'],['Orçamentos e OS','documents',[],'documents.view'],
         ['Produtos e serviços','products',[],'products.view'],['Clientes','catalog',['kind'=>'customers'],'customers.view'],['Fornecedores','catalog',['kind'=>'suppliers'],'suppliers.view'],['Grupos','catalog',['kind'=>'groups'],'groups.view'],
         ['Vendedores','sellers',[],'sellers.manage'],['Movimentações de estoque','stock',[],'stock.view'],['Compras','purchases',[],'purchases.view'],['Preços e alertas','prices',[],'prices.view'],
         ['Contas a pagar e receber','finance',[],'finance.view'],['Caixa diário','cash',[],'cash.view'],['Fluxo e previsão','cashflow',[],'cashflow.view'],['Relatórios gerenciais','reports',[],'reports.view'],['Comissões','commissions',[],'commissions.view'],['Fiscal','fiscal',[],'fiscal.manage'],
     ];
     public const DEPENDENCIES = [
-        'restaurant.manage'=>['restaurant.use'], 'restaurant.kitchen'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use','sales.create'],
-        'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use','sales.create'],
+        'restaurant.manage'=>['restaurant.use'], 'restaurant.cancel'=>['restaurant.use'], 'restaurant.checkout'=>['restaurant.use'],
+        'supermarket.cancel'=>['supermarket.use'], 'supermarket.checkout'=>['supermarket.use'],
         'sales.create'=>['desk.use','products.view','sales.view'], 'sales.cancel'=>['sales.view'], 'sales.receive'=>['sales.view'],
         'documents.create'=>['documents.view','products.view'], 'documents.edit'=>['documents.view','products.view'], 'documents.status'=>['documents.view'], 'documents.invoice'=>['documents.view','products.view','sales.view'], 'documents.seller'=>['documents.view','sales.seller'],
         'products.manage'=>['products.view','groups.view','costs.view'],'customers.manage'=>['customers.view'],'suppliers.manage'=>['suppliers.view'],'groups.manage'=>['groups.view','costs.view'],
@@ -66,7 +66,7 @@ final class Permissions
                 'close'=>'restaurant.checkout', 'cancel','cancelItem'=>'restaurant.cancel', default=>'restaurant.use',
             },
             'SupermarketController'=>match($action) {
-                'checkout'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
+                'checkout','receipt'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
             },
             'MeasureUnitController'=>'products.manage',
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},

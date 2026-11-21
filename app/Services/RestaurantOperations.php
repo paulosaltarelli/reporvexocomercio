@@ -116,15 +116,25 @@ final class RestaurantOperations
 
     public function transitionItem(int $id, int $itemId, array $input, int $actor): void
     {
-        $data = Validator::make($input, ['status' => 'required|in:preparing,ready,delivered'])->validate();
-        $this->transaction(function () use ($id, $itemId, $input, $data, $actor) {
+        $data = Validator::make($input, ['status' => 'required|in:preparing,ready'])->validate();
+        $this->changeItemState($id, $itemId, $input, $data['status'], $actor);
+    }
+
+    public function deliverItem(int $id, int $itemId, array $input, int $actor): void
+    {
+        $this->changeItemState($id, $itemId, $input, 'delivered', $actor);
+    }
+
+    private function changeItemState(int $id, int $itemId, array $input, string $status, int $actor): void
+    {
+        $this->transaction(function () use ($id, $itemId, $input, $status, $actor) {
             $order = $this->locked($id);
             $this->editable($order, $input);
             $item = $order->items()->lockForUpdate()->findOrFail($itemId);
             $next = ['queued' => 'preparing', 'preparing' => 'ready', 'ready' => 'delivered'];
-            if (($next[$item->status] ?? null) !== $data['status']) throw ValidationException::withMessages(['status' => 'Confira a etapa atual do item antes de avançar.']);
+            if (($next[$item->status] ?? null) !== $status) throw ValidationException::withMessages(['status' => 'Confira a etapa atual do item antes de avançar.']);
             $before = $item->status;
-            $item->update(['status' => $data['status']]);
+            $item->update(['status' => $status]);
             $order->increment('version');
             $this->audit('restaurant_status', $actor, ['order_id' => $order->id, 'item_id' => $item->id, 'from' => $before, 'status' => $item->status]);
         });

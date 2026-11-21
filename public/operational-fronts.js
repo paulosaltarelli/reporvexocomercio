@@ -1,4 +1,12 @@
 (() => {
+    const header = document.querySelector('[data-operational-header]');
+    if (header) {
+        const updateHeaderHeight = () => document.body.style.setProperty('--operational-header-height', header.getBoundingClientRect().height + 'px');
+        updateHeaderHeight();
+        if (window.ResizeObserver) new ResizeObserver(updateHeaderHeight).observe(header);
+        else window.addEventListener('resize', updateHeaderHeight);
+    }
+
     document.querySelectorAll('[data-operation-paid]').forEach(select => {
         const fields = select.closest('form').querySelector('[data-operation-credit]');
         const refresh = () => {
@@ -30,12 +38,14 @@
     if (scanner && !document.getElementById('validation-errors')) {
         scanner.focus();
         scanner.select();
+        scanner.scrollIntoView({block: 'center'});
     }
     document.addEventListener('keydown', event => {
         if (event.key === 'F2' && scanner) {
             event.preventDefault();
             scanner.focus();
             scanner.select();
+            scanner.scrollIntoView({block: 'center'});
         }
         if (event.key === 'F9') {
             const checkout = document.querySelector('[data-operation-checkout]');

@@ -9,7 +9,7 @@
 <body>
     <section class="print-tools" aria-label="Opções de impressão">
         <div class="print-actions">
-            <a class="return-link" href="{{ request()->fullUrlWithoutQuery(['termica']) }}"><span aria-hidden="true">←</span> Voltar</a>
+            <a class="return-link" href="{{ $receiptBackUrl ?? request()->fullUrlWithoutQuery(['termica']) }}"><span aria-hidden="true">←</span> Voltar</a>
             <div class="roll-control"><label for="paper-width">Largura da bobina</label>
             <select id="paper-width">
                 <option value="80">80 mm</option>
@@ -19,7 +19,7 @@
         </div>
         <p>Na janela do navegador, selecione a impressora, escolha a largura correspondente, use escala de 100% e desative cabeçalhos e rodapés.</p>
     </section>
-    <main class="ticket {{ request()->routeIs('sale.show') ? 'sale-ticket' : '' }}">
+    <main class="ticket {{ ($receiptSale ?? request()->routeIs('sale.show')) ? 'sale-ticket' : '' }}">
         @yield('content')
     </main>
     <script>

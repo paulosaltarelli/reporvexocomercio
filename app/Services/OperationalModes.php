@@ -54,6 +54,9 @@ final class OperationalModes
         $configuration = $this->current();
         $modes = array_unique([$configuration['default_operation'], ...$configuration['operation_modes']]);
         foreach ($modes as $mode) {
+            if ($mode === 'restaurant' && in_array($mode, $configuration['operation_modes'], true) && !$user->allows('restaurant.use') && $user->allows('restaurant.kitchen')) {
+                return 'restaurant.production';
+            }
             if (in_array($mode, $configuration['operation_modes'], true) && $user->allows(self::PERMISSIONS[$mode])) {
                 return self::ROUTES[$mode];
             }

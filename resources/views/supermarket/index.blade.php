@@ -1,15 +1,9 @@
-@extends('layout')
+@extends('operations.layout')
 @section('title','Caixa do supermercado')
 @section('navigation-section','Operação')
 @section('subtitle','Leia o código do produto, confira os itens e finalize o recebimento.')
-@push('styles')<link rel="stylesheet" href="/operational-fronts.css?v={{ filemtime(public_path('operational-fronts.css')) }}">
-@endpush
-@push('scripts')<script src="/operational-fronts.js?v={{ filemtime(public_path('operational-fronts.js')) }}" defer>
-</script>
-@endpush
-@section('actions')<a class="button secondary" href="{{ route('cash',['company'=>$tenant->slug]) }}">Consultar caixa</a>
-@endsection
 @section('content')
+@if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Ler código</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
 <div class="operation-toolbar">
     <p class="hint">Código de barras ou SKU · até 200 produtos distintos por venda</p>
     <form method="post" action="{{ route('supermarket.start',['company'=>$tenant->slug]) }}">
@@ -126,7 +120,7 @@
     @endif
 </section>
 </div>
-<div class="operation-summary">
+<div class="operation-summary" id="market-payment">
     <div class="operation-total">
 <span>Total da venda</span>
 <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong>
@@ -154,7 +148,7 @@
     @endif
     @if($cart->status==='completed' && $cart->sale_id)<section class="operation-panel">
 <h2>Venda concluída</h2>
-<a class="button" href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$cart->sale_id]) }}">Abrir venda #{{ $cart->sale_id }}</a>
+<a class="button" href="{{ route('supermarket.receipt',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">Imprimir comprovante</a>
 </section>
 @endif
     @if(in_array($cart->status,['active','suspended'],true))

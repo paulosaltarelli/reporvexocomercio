@@ -1,20 +1,10 @@
-@extends('layout')
+@extends('operations.layout')
 @section('title','Comanda #'.$order->id)
 @section('navigation-section','Restaurante')
 @section('subtitle',$order->table?->name.' · '.($order->customer?->name ?? 'Cliente não identificado'))
-@push('styles')<link rel="stylesheet" href="/operational-fronts.css?v={{ filemtime(public_path('operational-fronts.css')) }}">
-@endpush
-@push('scripts')<script src="/operational-fronts.js?v={{ filemtime(public_path('operational-fronts.js')) }}" defer>
-</script>
-@endpush
-@section('actions')<div class="actions">
-<a class="button secondary" href="{{ route('restaurant.index',['company'=>$tenant->slug]) }}">Mesas e comandas</a>
-@if($currentUser->allows('restaurant.kitchen'))<a class="button secondary" href="{{ route('restaurant.production',['company'=>$tenant->slug]) }}">Cozinha e bar</a>
-@endif
-</div>
-@endsection
 @section('content')
-<div class="operation-grid">
+<div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
+<div class="operation-grid restaurant-order-grid">
 <div>
 @if($order->status==='open')
 <section class="operation-panel">
@@ -71,7 +61,7 @@
 </section>
 @endif
 </div>
-<div class="operation-summary">
+<div class="operation-summary" id="order-summary">
 <div class="operation-total">
 <span>Total da comanda</span>
 <strong>R$ {{ number_format($total,2,',','.') }}</strong>
@@ -95,13 +85,20 @@
 @endif
 @if($item->status==='cancelled')<small>Motivo: {{ $item->cancellation_reason }}</small>
 @endif
-@if($currentUser->allows('restaurant.kitchen') && $order->status==='open' && !in_array($item->status,['draft','cancelled','delivered'],true))
+@if($currentUser->allows('restaurant.kitchen') && $order->status==='open' && in_array($item->status,['queued','preparing'],true))
 @php($nextStatus=['queued'=>'preparing','preparing'=>'ready','ready'=>'delivered'][$item->status])
 <form method="post" action="{{ route('restaurant.items.status',['company'=>$tenant->slug,'order'=>$order->id,'item'=>$item->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $order->version }}">
 <input type="hidden" name="status" value="{{ $nextStatus }}">
 <button class="button secondary">{{ ['preparing'=>'Iniciar preparo','ready'=>'Marcar pronto','delivered'=>'Registrar entrega'][$nextStatus] }}</button>
+</form>
+@endif
+@if($currentUser->allows('restaurant.deliver') && $order->status==='open' && $item->status==='ready')
+<form method="post" action="{{ route('restaurant.items.deliver',['company'=>$tenant->slug,'order'=>$order->id,'item'=>$item->id]) }}">
+@csrf
+<input type="hidden" name="version" value="{{ $order->version }}">
+<button class="button">Registrar entrega</button>
 </form>
 @endif
 @if($currentUser->allows('restaurant.cancel') && $order->status==='open' && $item->status!=='cancelled')
@@ -162,9 +159,13 @@
 </section>
 @endif
 @elseif($order->sale_id)<section class="operation-panel">
-@if($currentUser->allows('sales.view'))<a class="button" href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$order->sale_id]) }}">Abrir venda #{{ $order->sale_id }}</a>
-@else
+<h2>Comanda encerrada</h2>
 <p>Venda registrada #{{ $order->sale_id }}</p>
+@if($currentUser->allows('restaurant.checkout') && (int)$order->sale?->user_id === (int)$currentUser->id)
+<a class="button" href="{{ route('restaurant.orders.receipt',['company'=>$tenant->slug,'order'=>$order->id]) }}">Imprimir comprovante</a>
+@endif
+@if($currentUser->role==='admin' && $currentUser->allows('sales.view'))
+<p><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$order->sale_id]) }}">Consultar venda na gestão</a></p>
 @endif
 </section>
 @endif

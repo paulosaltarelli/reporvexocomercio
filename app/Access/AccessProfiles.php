@@ -11,6 +11,12 @@ use Illuminate\Validation\{Rule,ValidationException};
 final class AccessProfiles
 {
     private const KEY='_access_profiles';
+    public const PRESETS = [
+        'supermarket_cashier' => ['name'=>'Caixa de supermercado', 'permissions'=>['supermarket.use','supermarket.checkout']],
+        'waiter' => ['name'=>'Garçom', 'permissions'=>['restaurant.use']],
+        'kitchen' => ['name'=>'Cozinha', 'permissions'=>['restaurant.kitchen']],
+        'restaurant_cashier' => ['name'=>'Caixa de restaurante', 'permissions'=>['restaurant.use','restaurant.checkout']],
+    ];
     public function state(bool $fresh=false): array
     {
         $db=DB::connection('tenant');
@@ -47,8 +53,15 @@ final class AccessProfiles
         if ($permission==='denied'||(!array_key_exists($permission,Permissions::labels())&&!in_array($permission,['administration','home'],true))) return false;
         if ($user->role==='admin') return true;
         if ($permission==='administration') return false;
-        if ($permission==='home') return true;
+        if ($permission==='home') return !$this->operationalOnly($user);
         return in_array($permission,$this->permissions($user),true);
+    }
+    public function operationalOnly(User $user): bool
+    {
+        if ($user->role !== 'operator') return false;
+        $permissions = $this->permissions($user);
+        $operational = array_filter($permissions, fn ($permission) => str_starts_with($permission,'restaurant.') || str_starts_with($permission,'supermarket.'));
+        return (bool)$operational && !array_diff($permissions, [...$operational,'account.self']);
     }
     public function profileId(int $userId): string { return (string)($this->state()['assignments'][(string)$userId]??'operator'); }
     public function permissions(User $user): array

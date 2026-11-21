@@ -112,8 +112,21 @@ final class SupermarketController extends Controller
             'paid' => 'required_without:payments|boolean', 'installments' => 'nullable|integer|min:1|max:24',
             'due_date' => ($request->has('payments') ? 'nullable|date_format:Y-m-d' : 'nullable|required_if:paid,0|date_format:Y-m-d'),
         ]));
-        $sale = $service->checkout($cart, $input['version'], $input, $request->attributes->get('currentUser')->id);
-        return redirect()->route('sale.show', ['company' => $company, 'id' => $sale->id])->with('success', 'Venda concluída.');
+        $service->checkout($cart, $input['version'], $input, $request->attributes->get('currentUser')->id);
+        return $this->back($request, $cart)->with('success', 'Venda concluída. O comprovante está disponível neste atendimento.');
+    }
+
+    public function receipt(Request $request, string $company, int $cart, Supermarket $service)
+    {
+        $actor = $request->attributes->get('currentUser');
+        $service->actor($actor->id, 'supermarket.checkout');
+        $record = $service->owned($cart, $actor->id);
+        abort_unless($record->status === 'completed' && $record->sale_id, 404);
+        $sale = \App\Models\Sale::whereKey($record->sale_id)->where('user_id', $actor->id)
+            ->where('request_key', $record->request_key)->firstOrFail();
+
+        return app(\App\Services\OperationalReceipt::class)->render($sale,
+            route('supermarket.show', ['company' => $company, 'cart' => $record->id]));
     }
 
     private function back(Request $request, int $cart)

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\{Customer, Product, RestaurantOrder, RestaurantOrderItem, RestaurantTable, Seller};
-use App\Services\{CardFees, OperationalModes, PaymentMethods, RestaurantOperations};
+use App\Services\{CardFees, OperationalModes, PaymentMethods, RestaurantOperations, OperationalReceipt};
 use Illuminate\Http\Request;
 
 final class RestaurantController extends Controller
@@ -85,6 +85,12 @@ final class RestaurantController extends Controller
         return $this->back($request, $order, 'Etapa atualizada.');
     }
 
+    public function deliverItem(Request $request, string $company, int $order, int $item, RestaurantOperations $operations)
+    {
+        $operations->deliverItem($order, $item, $request->all(), $request->attributes->get('currentUser')->id);
+        return $this->back($request, $order, 'Entrega registrada.');
+    }
+
     public function cancelItem(Request $request, string $company, int $order, int $item, RestaurantOperations $operations)
     {
         $operations->cancelItem($order, $item, $request->all(), $request->attributes->get('currentUser')->id);
@@ -93,8 +99,20 @@ final class RestaurantController extends Controller
 
     public function close(Request $request, string $company, int $order, RestaurantOperations $operations)
     {
-        $sale = $operations->close($order, $request->all(), $request->attributes->get('currentUser')->id);
-        return redirect()->route('sale.show', ['company' => $request->route('company'), 'id' => $sale->id])->with('success', 'Comanda encerrada.');
+        $operations->close($order, $request->all(), $request->attributes->get('currentUser')->id);
+        return $this->back($request, $order, 'Comanda encerrada.');
+    }
+
+    public function receipt(Request $request, string $company, int $order, OperationalReceipt $receipt)
+    {
+        $this->requireMode();
+        $record = RestaurantOrder::with('sale')->where('status', 'closed')->findOrFail($order);
+        $sale = $record->sale;
+        $expectedKey = \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'vendra:restaurant:'.$record->request_key)->toString();
+        abort_unless($sale && (int)$sale->user_id === (int)$request->attributes->get('currentUser')->id
+            && $sale->request_key === $expectedKey, 404);
+
+        return $receipt->render($sale, route('restaurant.orders.show', ['company' => $company, 'order' => $record->id]));
     }
 
     public function cancel(Request $request, string $company, int $order, RestaurantOperations $operations)

@@ -1,14 +1,8 @@
-@extends('layout')
+@extends('operations.layout')
 @section('title','Cozinha e bar')
 @section('navigation-section','Restaurante')
 @section('subtitle','Acompanhe os itens enviados e registre cada etapa do preparo.')
-@push('styles')<link rel="stylesheet" href="/operational-fronts.css?v={{ filemtime(public_path('operational-fronts.css')) }}">
-@endpush
-@section('actions')<div class="actions">
-<a class="button secondary" href="{{ route('restaurant.index',['company'=>$tenant->slug]) }}">Mesas e comandas</a>
-<a class="button" href="{{ request()->fullUrl() }}">Atualizar pedidos</a>
-</div>
-@endsection
+@section('actions')<a class="button" href="{{ request()->fullUrl() }}">Atualizar pedidos</a>@endsection
 @section('content')
 <form class="operation-toolbar" method="get" action="{{ route('restaurant.production',['company'=>$tenant->slug]) }}">
 <div class="field">
@@ -42,6 +36,7 @@
     @if(filled($item->notes))<p class="operation-notes">{{ $item->notes }}</p>
 @endif
     <p class="hint">Comanda #{{ $item->order->id }} · Enviado {{ $item->sent_at?->format('d/m H:i') }}</p>
+    @if($status!=='ready')
     @php($nextStatus=['queued'=>'preparing','preparing'=>'ready','ready'=>'delivered'][$status])
     <form method="post" action="{{ route('restaurant.items.status',['company'=>$tenant->slug,'order'=>$item->order->id,'item'=>$item->id]) }}">
 @csrf
@@ -50,9 +45,11 @@
 <input type="hidden" name="return_to" value="production">
 <button class="button {{ $status==='ready'?'secondary':'' }}">{{ ['preparing'=>'Iniciar preparo','ready'=>'Marcar pronto','delivered'=>'Registrar entrega'][$nextStatus] }}</button>
 </form>
-    <p>
+    @else<p class="hint">Aguardando entrega pelo atendimento.</p>
+    @endif
+    @if($currentUser->allows('restaurant.use'))<p>
 <a href="{{ route('restaurant.orders.show',['company'=>$tenant->slug,'order'=>$item->order->id]) }}">Abrir comanda</a>
-</p>
+</p>@endif
 </article>
 @endforeach
 </section>

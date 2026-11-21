@@ -12,7 +12,9 @@ Route::prefix('restaurante')->name('restaurant.')->group(function () {
     Route::post('comandas/{order}/itens', [RestaurantController::class, 'addItem'])->whereNumber('order')->name('orders.items.add');
     Route::post('comandas/{order}/enviar', [RestaurantController::class, 'send'])->whereNumber('order')->name('orders.send');
     Route::post('comandas/{order}/itens/{item}/etapa', [RestaurantController::class, 'transitionItem'])->whereNumber(['order', 'item'])->name('items.status');
+    Route::post('comandas/{order}/itens/{item}/entregar', [RestaurantController::class, 'deliverItem'])->whereNumber(['order', 'item'])->name('items.deliver');
     Route::post('comandas/{order}/itens/{item}/cancelar', [RestaurantController::class, 'cancelItem'])->whereNumber(['order', 'item'])->name('items.cancel');
+    Route::get('comandas/{order}/comprovante', [RestaurantController::class, 'receipt'])->whereNumber('order')->name('orders.receipt');
     Route::post('comandas/{order}/fechar', [RestaurantController::class, 'close'])->whereNumber('order')->name('orders.close');
     Route::post('comandas/{order}/cancelar', [RestaurantController::class, 'cancel'])->whereNumber('order')->name('orders.cancel');
 });

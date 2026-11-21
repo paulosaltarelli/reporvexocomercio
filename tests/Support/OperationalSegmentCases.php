@@ -81,7 +81,7 @@ trait OperationalSegmentCases
         $this->post($path.'/enviar', ['version' => $order->fresh()->version])->assertRedirect()->assertSessionHasNoErrors();
         foreach (['preparing', 'ready', 'delivered'] as $status) {
             app(TenantConnection::class)->connect($this->a);
-            $this->post($path.'/itens/'.$item->id.'/etapa', ['version' => $order->fresh()->version, 'status' => $status])
+            $this->post($path.'/itens/'.$item->id.($status === 'delivered' ? '/entregar' : '/etapa'), ['version' => $order->fresh()->version, 'status' => $status])
                 ->assertRedirect()->assertSessionHasNoErrors();
         }
         app(TenantConnection::class)->connect($this->a);
@@ -230,7 +230,8 @@ trait OperationalSegmentCases
             'product_id' => $this->product->id, 'quantity' => '2', 'station' => 'kitchen'], $this->user->id);
         $service->send($order->id, ['version' => $order->fresh()->version], $this->user->id);
         foreach (['preparing', 'ready', 'delivered'] as $status) {
-            $service->transitionItem($order->id, $item->id, ['version' => $order->fresh()->version, 'status' => $status], $this->user->id);
+            if ($status === 'delivered') $service->deliverItem($order->id, $item->id, ['version' => $order->fresh()->version], $this->user->id);
+            else $service->transitionItem($order->id, $item->id, ['version' => $order->fresh()->version, 'status' => $status], $this->user->id);
         }
         $payment = ['version' => $order->fresh()->version, 'payment_method' => 'invoice', 'paid' => false,
             'installments' => 1, 'due_date' => now()->addDay()->toDateString()];
@@ -312,7 +313,8 @@ trait OperationalSegmentCases
             'product_id' => $this->product->id, 'quantity' => '1', 'station' => 'bar'], $dba->id);
         $restaurant->send($order->id, ['version' => $order->fresh()->version], $dba->id);
         foreach (['preparing', 'ready', 'delivered'] as $status) {
-            $restaurant->transitionItem($order->id, $item->id, ['version' => $order->fresh()->version, 'status' => $status], $dba->id);
+            if ($status === 'delivered') $restaurant->deliverItem($order->id, $item->id, ['version' => $order->fresh()->version], $dba->id);
+            else $restaurant->transitionItem($order->id, $item->id, ['version' => $order->fresh()->version, 'status' => $status], $dba->id);
         }
         $this->post('/app/a/restaurante/comandas/'.$order->id.'/fechar', $payment + ['version' => $order->fresh()->version])
             ->assertRedirect()->assertSessionHasNoErrors();

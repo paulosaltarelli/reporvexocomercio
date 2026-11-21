@@ -4,7 +4,12 @@
 @section('actions')<a class="button secondary" href="{{ route('users',['company'=>$tenant->slug]) }}">Vincular usuários</a>@endsection
 @section('content')
 @php($editing=$selectedId!==null)
-@php($selected=$editing?$accessState['profiles'][$selectedId]:['name'=>'','permissions'=>[]])
+@php($selected=$editing?$accessState['profiles'][$selectedId]:($presetId ? $presets[$presetId] : ['name'=>'','permissions'=>[]]))
+<section class="panel"><h2>Perfis de operação prontos</h2><p>Escolha um perfil para revisar e salvar. Depois, vincule os usuários em Usuários e permissões.</p><div class="actions">
+@foreach($presets as $presetKey=>$preset)
+<a class="button {{ $presetId===$presetKey?'primary':'secondary' }}" href="{{ route('access.profiles',['company'=>$tenant->slug,'preset'=>$presetKey]) }}">{{ $preset['name'] }}</a>
+@endforeach
+</div><p class="hint">Esses perfis abrem diretamente o painel da função. Cancelamentos, descontos especiais e funções gerenciais podem ser liberados separadamente pelo administrador.</p></section>
 <div class="access-layout">
 <section class="panel access-list"><h2>Perfis desta empresa</h2><a class="button secondary" href="{{ route('access.profiles',['company'=>$tenant->slug]) }}">+ Novo perfil</a><div class="access-admin-card"><strong>Administrador</strong><small>Acesso completo. Usuários e perfis são gerenciados somente por administradores.</small></div>
 @foreach($accessState['profiles'] as $id=>$profile)

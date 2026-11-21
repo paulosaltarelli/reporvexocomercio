@@ -157,8 +157,7 @@ final class Supermarket
     public function checkout(int $cartId, int $version, array $payment, int $userId): Sale
     {
         return DB::connection('tenant')->transaction(function () use ($cartId, $version, $payment, $userId) {
-            $actor = $this->actor($userId, 'supermarket.checkout');
-            abort_unless($actor->allows('sales.create'), 403);
+            $this->actor($userId, 'supermarket.checkout');
             $cart = $this->owned($cartId, $userId, true);
             if ($cart->status !== 'completed') $this->editable($cart, $version);
             if (!$cart->items) throw ValidationException::withMessages(['items' => 'Adicione produtos antes de concluir a venda.']);

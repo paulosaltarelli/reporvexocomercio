@@ -22,6 +22,7 @@ use Tests\TestCase;
 
 class CommerceTest extends TestCase
 {
+    use \Tests\Support\OperationalRoleCases;
     use \Tests\Support\OperationalSegmentCases;
     use \Tests\Support\InstallerAccessCases;
     use \Tests\Support\TenantPasswordResetCases;

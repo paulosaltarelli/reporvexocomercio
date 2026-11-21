@@ -14,5 +14,6 @@ Route::prefix('supermarket')->name('supermarket.')->controller(SupermarketContro
     Route::post('carts/{cart}/suspend', 'suspend')->whereNumber('cart')->name('suspend');
     Route::post('carts/{cart}/resume', 'resume')->whereNumber('cart')->name('resume');
     Route::post('carts/{cart}/cancel', 'cancel')->whereNumber('cart')->name('cancel');
+    Route::get('carts/{cart}/receipt', 'receipt')->whereNumber('cart')->name('receipt');
     Route::post('carts/{cart}/checkout', 'checkout')->whereNumber('cart')->name('checkout');
 });

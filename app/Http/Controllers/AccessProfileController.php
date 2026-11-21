@@ -12,8 +12,11 @@ class AccessProfileController extends Controller
         abort_unless($request->attributes->get('currentUser')->role==='admin',403);
         $state=$profiles->state(true);$selected=$request->query('profile');
         abort_unless($selected===null||is_string($selected)&&isset($state['profiles'][$selected]),404);
+        $preset = $request->query('preset');
+        abort_unless($preset === null || (is_string($preset) && isset(AccessProfiles::PRESETS[$preset])), 404);
+        if ($selected !== null) $preset = null;
         $users=User::orderBy('name')->get();
-        return view('access-profiles',['accessState'=>$state,'permissionGroups'=>Permissions::GROUPS,'dependencies'=>Permissions::DEPENDENCIES,'selectedId'=>$selected,'users'=>$users,'profileService'=>$profiles]);
+        return view('access-profiles',['accessState'=>$state,'permissionGroups'=>Permissions::GROUPS,'dependencies'=>Permissions::DEPENDENCIES,'selectedId'=>$selected,'users'=>$users,'profileService'=>$profiles,'presets'=>AccessProfiles::PRESETS,'presetId'=>$preset]);
     }
     public function save(Request $request,string $company,AccessProfiles $profiles)
     {

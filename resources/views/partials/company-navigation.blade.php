@@ -90,6 +90,9 @@
                     <a class="nav nav-primary {{ request()->routeIs($operationMode.'.*') ? 'selected' : '' }}" href="{{ route(\App\Services\OperationalModes::ROUTES[$operationMode], ['company'=>$tenant->slug]) }}" @if(request()->routeIs($operationMode.'.*')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>{{ $operationLabel }}</span></a>
                 @endif
             @endforeach
+            @if(app(\App\Services\OperationalModes::class)->enabled('restaurant') && $currentUser->allows('restaurant.kitchen'))
+                <a class="nav nav-primary {{ request()->routeIs('restaurant.production') ? 'selected' : '' }}" href="{{ route('restaurant.production',['company'=>$tenant->slug]) }}" @if(request()->routeIs('restaurant.production')) aria-current="page" @endif><x-navigation-icon name="desk"/><span>Cozinha</span></a>
+            @endif
             <span class="navigation-caption navigation-section-caption">GESTÃO</span>
             @foreach($groups as $group)
                 @if(count($group['links']))
