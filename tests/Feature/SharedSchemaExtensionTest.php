@@ -72,6 +72,13 @@ final class SharedSchemaExtensionTest extends TestCase
             $admin->exec("REVOKE SELECT ON `$source`.customers FROM '{$users[0]}'@'127.0.0.1'");
             $result = $builder->extend($source, $target, $previous, $next);
             $this->assertCount(4, $result['tables']);
+            $newUser = 'vxs_0000000000000003_'.$suffix;
+            $builder->registerRuntime($target, 3, $newUser, $password);
+            $newTenant = new PDO("mysql:host=127.0.0.1;dbname=$target", $newUser, $password, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            foreach ($additions as $table) {
+                $this->assertSame(0, (int)$newTenant->query('SELECT COUNT(*) FROM `'.$table.'`')->fetchColumn());
+            }
+            $this->assertSame(SharedSchemaBuilder::manifestHash($next), $newTenant->query('SELECT schema_hash FROM __vendra_identity')->fetchColumn());
             $this->assertSame('Cliente anterior', $a->query('SELECT name FROM customers')->fetchColumn());
             $this->assertSame(0, (int)$b->query('SELECT COUNT(*) FROM customers')->fetchColumn());
             $a->exec("INSERT INTO restaurant_tables(name) VALUES ('Mesa 1')");
@@ -98,7 +105,7 @@ final class SharedSchemaExtensionTest extends TestCase
         } finally {
             $this->app->useDatabasePath($originalPath);
             DB::purge('tenant');
-            foreach ($users as $user) {
+            foreach ([...$users, 'vxs_0000000000000003_'.$suffix] as $user) {
                 $admin->exec("DROP USER IF EXISTS '$user'@'127.0.0.1'");
             }
             $admin->exec("DROP USER IF EXISTS '$definer'@'localhost'");

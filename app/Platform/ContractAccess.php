@@ -61,7 +61,7 @@ final class ContractAccess
                 default => [],
             },
             default => match (strtok($permission, '.')) {
-                'desk', 'sales' => ['sales'],
+                'desk', 'sales', 'restaurant', 'supermarket' => ['sales'],
                 'documents' => ['documents'],
                 'products', 'customers', 'suppliers', 'groups', 'sellers' => ['catalog'],
                 'stock', 'prices' => ['stock'],

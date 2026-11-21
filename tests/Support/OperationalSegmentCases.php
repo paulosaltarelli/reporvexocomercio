@@ -282,4 +282,55 @@ trait OperationalSegmentCases
         $this->assertSame(0, \App\Models\StockMovement::count());
     }
 
+
+    public function test_segment_operations_honor_tenant_dba_grants_and_license_sales_restrictions(): void
+    {
+        app(CompanyOperations::class)->save($this->operationPayload([
+            'inventory' => false, 'operation_modes' => ['commerce', 'restaurant', 'supermarket'], 'default_operation' => 'restaurant',
+        ]), $this->user->id);
+        $dba = \App\Models\User::create(['name' => 'DBA da loja', 'email' => 'dba-segment@example.test', 'password' => 'test-password-123', 'role' => \App\Models\User::ROLE_INSTALLER]);
+        $admin = $this->licensingAdmin();
+        $grant = \App\Platform\InstallerInvitation::create(['tenant_id' => $this->a->id, 'issued_by' => $admin->id,
+            'user_id' => $dba->id, 'name' => $dba->name, 'email' => $dba->email,
+            'status' => 'accepted', 'delivery_status' => 'sent', 'access_profile' => 'tenant_dba', 'accepted_at' => now()]);
+        $seller = \App\Models\Seller::create(['name' => 'Vendedor creditado', 'user_id' => $this->user->id, 'active' => true]);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $dba->id, 'auth_version' => 0]);
+        $this->get('/app/a/supermarket')->assertOk();
+        app(TenantConnection::class)->connect($this->a);
+        $market = app(\App\Services\Supermarket::class);
+        $cart = $market->start((string) \Illuminate\Support\Str::uuid(), $dba->id);
+        $cart = $market->add($cart->id, $cart->version, $this->product->sku, '1', $dba->id);
+        $payment = ['payment_method' => 'invoice', 'paid' => false, 'installments' => 1,
+            'due_date' => now()->addDay()->toDateString(), 'salesperson_id' => $seller->id];
+        $this->post('/app/a/supermarket/carts/'.$cart->id.'/checkout', $payment + ['version' => $cart->version])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $restaurant = app(\App\Services\RestaurantOperations::class);
+        $table = $restaurant->createTable(['name' => 'Mesa DBA'], $dba->id);
+        $order = $restaurant->open(['table_id' => $table->id, 'request_key' => (string) \Illuminate\Support\Str::uuid()], $dba->id)->fresh();
+        $item = $restaurant->addItem($order->id, ['version' => $order->version, 'request_key' => (string) \Illuminate\Support\Str::uuid(),
+            'product_id' => $this->product->id, 'quantity' => '1', 'station' => 'bar'], $dba->id);
+        $restaurant->send($order->id, ['version' => $order->fresh()->version], $dba->id);
+        foreach (['preparing', 'ready', 'delivered'] as $status) {
+            $restaurant->transitionItem($order->id, $item->id, ['version' => $order->fresh()->version, 'status' => $status], $dba->id);
+        }
+        $this->post('/app/a/restaurante/comandas/'.$order->id.'/fechar', $payment + ['version' => $order->fresh()->version])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(2, \App\Models\Sale::where('salesperson_id', $seller->id)->count());
+        $this->assertSame(\App\Models\User::ROLE_INSTALLER, $dba->fresh()->getRawOriginal('role'));
+        $contract = \App\Platform\Contract::create(['tenant_id' => $this->a->id, 'start_date' => today()->subMonth(),
+            'end_date' => today()->addYear(), 'monthly_amount' => '100.00', 'due_day' => 1, 'restricted_modules' => ['sales']]);
+        $installment = $contract->installments()->create(['tenant_id' => $this->a->id, 'period' => today()->startOfMonth(),
+            'due_date' => today()->subDay(), 'amount' => '100.00']);
+        $this->get('/app/a/restaurante')->assertStatus(402);
+        $this->get('/app/a/supermarket')->assertStatus(402);
+        $this->post('/app/a/restaurante/mesas', ['name' => 'Bloqueada'])->assertStatus(402);
+        $this->post('/app/a/supermarket/carts', ['request_key' => (string) \Illuminate\Support\Str::uuid()])->assertStatus(402);
+        $installment->update(['paid_amount' => '100.00']);
+        $this->get('/app/a/supermarket')->assertOk();
+        $grant->update(['status' => 'revoked', 'revoked_at' => now()]);
+        $this->get('/app/a/supermarket')->assertRedirect('/app/a/login');
+    }
+
 }

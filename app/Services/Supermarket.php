@@ -19,6 +19,7 @@ final class Supermarket
         app(OperationalModes::class)->require('supermarket');
         $query = User::where('active', true);
         $user = (DB::connection('tenant')->transactionLevel() > 0 ? $query->lockForUpdate() : $query)->findOrFail($userId);
+        if ($user->getRawOriginal('role') === User::ROLE_INSTALLER) InstallerAccess::applyGrant($user);
         abort_unless($user->allows($permission), 403);
         return $user;
     }
@@ -156,8 +157,8 @@ final class Supermarket
     public function checkout(int $cartId, int $version, array $payment, int $userId): Sale
     {
         return DB::connection('tenant')->transaction(function () use ($cartId, $version, $payment, $userId) {
-            $this->actor($userId, 'supermarket.checkout');
-            abort_unless(User::findOrFail($userId)->allows('sales.create'), 403);
+            $actor = $this->actor($userId, 'supermarket.checkout');
+            abort_unless($actor->allows('sales.create'), 403);
             $cart = $this->owned($cartId, $userId, true);
             if ($cart->status !== 'completed') $this->editable($cart, $version);
             if (!$cart->items) throw ValidationException::withMessages(['items' => 'Adicione produtos antes de concluir a venda.']);
