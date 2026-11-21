@@ -33,7 +33,7 @@
     </tbody></table></div>
     <div class="total-bar"><span>Total da compra</span><strong>R$ {{ number_format($purchase->total,2,',','.') }}</strong></div>
     @if($purchase->notes)<p class="preserve-lines">{{ $purchase->notes }}</p>@endif
-    <div class="actions no-print"><a class="button" href="{{ route('finance',['company'=>$tenant->slug]) }}">Ver contas a pagar</a><a href="{{ route('purchases',['company'=>$tenant->slug]) }}">Voltar para compras</a></div>
+    <div class="actions no-print">@if($currentUser->allows('finance.view'))<a class="button" href="{{ route('finance',['company'=>$tenant->slug,'purchase'=>$purchase->id]) }}">Ver contas a pagar desta compra</a>@endif<a href="{{ route('purchases',['company'=>$tenant->slug]) }}">Voltar para compras</a></div>
     <p class="hint">Este é um comprovante interno. A compra não pode ser cancelada por esta tela; correções no estoque devem ser registradas como movimentações identificadas.</p>
 </section>
 @endsection

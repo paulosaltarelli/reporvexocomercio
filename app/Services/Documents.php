@@ -15,14 +15,15 @@ class Documents
 {
     public function create(array $data, int $userId): Document
     {
+        $data['items'] ??= [];
         try {
             return DB::connection('tenant')->transaction(function () use ($data, $userId) {
                 $configuration=app(CompanyOperations::class)->lock();
                 if ($existing = Document::where('request_key', $data['request_key'])->first()) {
+                    OperationReplay::verify($existing, $data, $userId);
                     return $existing;
                 }
                 app(CompanyOperations::class)->requireModule(($data['type']??'')==='work_order'?'work_orders':'quotes');
-                $data['items'] ??= [];
                 if (! in_array($data['type'], ['quote', 'work_order'], true) || ! is_array($data['items']) || count($data['items']) > 50 || ($data['type'] === 'quote' && $data['items'] === [])) {
                     throw ValidationException::withMessages(['items' => 'Orçamentos exigem de 1 a 50 itens. A recepção da OS pode ser aberta sem itens.']);
                 }
@@ -32,6 +33,7 @@ class Documents
                 [$items, $total, $subtotal, $discountTotal] = $this->terms($data['items']);
 
                 $document = Document::create(['salesperson_id' => $seller->id, 'seller_name' => $seller->name, 'commercial_version' => 1, 'subtotal' => $subtotal, 'discount_total' => $discountTotal, 'type' => $data['type'], 'request_key' => $data['request_key'], 'customer_id' => $data['customer_id'] ?? null, 'user_id' => $userId, 'items' => $items, 'total' => $total, 'valid_until' => $data['valid_until'] ?? null, 'asset' => $data['asset'] ?? null, 'technician' => $data['technician'] ?? null, 'notes' => $data['notes'] ?? null]);
+                OperationReplay::record($document, $data, $userId);
                 app(SellerAssignment::class)->recordInitial($document, $seller, $userId);
 
                 return $document;
@@ -39,6 +41,7 @@ class Documents
         } catch (UniqueConstraintViolationException $exception) {
             $existing = Document::where('request_key', $data['request_key'])->lockForUpdate()->first();
             if ($existing) {
+                OperationReplay::verify($existing, $data, $userId);
                 return $existing;
             }
 

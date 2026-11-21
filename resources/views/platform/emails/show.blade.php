@@ -1,6 +1,6 @@
 @extends('platform.layout')
 @section('title','Detalhes do envio')
-@section('actions')<a class="button secondary" href="{{ route('platform.settings.emails.index',request()->only(['recipient','status','page'])) }}">Voltar aos envios</a>@endsection
+@section('actions')<a class="button secondary" href="{{ route('platform.settings.emails.index',request()->only(['recipient','status','type','page'])) }}">Voltar aos envios</a>@endsection
 @section('content')
 @include('platform.settings-navigation')
 <section class="panel">

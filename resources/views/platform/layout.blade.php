@@ -10,6 +10,10 @@
     @if(request()->routeIs('platform.license.installments.show'))
         <link rel="stylesheet" href="/license-payment.css?v={{ filemtime(public_path('license-payment.css')) }}">
     @endif
+    @if(request()->routeIs('platform.login'))
+        <link rel="stylesheet" href="/password-visibility.css?v={{ filemtime(public_path('password-visibility.css')) }}">
+        <script src="/password-visibility.js?v={{ filemtime(public_path('password-visibility.js')) }}" defer></script>
+    @endif
     @isset($platformAdmin)<script src="/platform-shell.js?v={{ filemtime(public_path('platform-shell.js')) }}" defer></script>@endisset
 </head>
 <body class="{{ isset($platformAdmin) ? 'platform-shell' : 'platform-guest' }}">

@@ -29,7 +29,9 @@ final class SupermarketController extends Controller
         $cart = $cartId ? $service->owned($cartId, $actor->id)
             : SupermarketCart::where('user_id', $actor->id)->where('status', 'active')->first();
         $own = Seller::where('user_id', $actor->id)->first();
-        $search = trim($request->validate(['q' => 'nullable|string|max:100'])['q'] ?? '');
+        $searchInput = $request->validate(['q' => 'nullable|string|max:100', 'search_quantity' => 'nullable|string|max:24']);
+        $search = trim($searchInput['q'] ?? '');
+        $searchQuantity = \App\Services\Decimal::input($searchInput['search_quantity'] ?? '1', 3, 'search_quantity', '0.001', '999999999.999');
         $products = $search === '' ? collect() : Product::where('active', true)->where('type', 'product')
             ->where(function ($query) use ($search) {
                 $query->where('name', 'like', '%'.addcslashes($search, '\\%_').'%')
@@ -37,7 +39,7 @@ final class SupermarketController extends Controller
             })->orderBy('name')->limit(30)->get();
         return view('supermarket.index', [
             'cart' => $cart, 'carts' => SupermarketCart::where('user_id', $actor->id)->whereIn('status', ['active', 'suspended'])->latest()->get(),
-            'products' => $products, 'customers' => Customer::orderBy('name')->get(),
+            'products' => $products, 'searchQuantity' => $searchQuantity, 'customers' => Customer::orderBy('name')->get(),
             'sellers' => Seller::where('active', true)->orderBy('name')->get(), 'currentSalesperson' => $own,
             'selectedSalespersonId' => $own?->id, 'operationConfig' => app(CompanyOperations::class)->current(),
         ]);
@@ -65,7 +67,12 @@ final class SupermarketController extends Controller
     public function addItem(Request $request, string $company, int $cart, Supermarket $service)
     {
         $input = $request->validate(['version' => 'required|integer|min:0', 'code' => 'required|string|max:80', 'quantity' => 'required|string|max:24']);
-        $updated = $service->add($cart, $input['version'], $input['code'], $input['quantity'], $request->attributes->get('currentUser')->id);
+        $result = $service->enter($cart, $input['version'], $input['code'], $input['quantity'], $request->attributes->get('currentUser')->id);
+        if (isset($result['search'])) {
+            return redirect()->route('supermarket.show', ['company' => $company, 'cart' => $cart,
+                'q' => $result['search'], 'search_quantity' => $result['quantity']]);
+        }
+        $updated = $result['cart'];
         return $this->back($request, $cart)->with('last_supermarket_scan', [
             'cart_id' => $updated->id, 'line_key' => $updated->lastScannedLineKey,
         ]);

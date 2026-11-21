@@ -35,7 +35,7 @@
         <tbody>
         @forelse($installments as $row)
             <tr>
-                <td><a class="central-record" aria-label="Ver contratos e parcelas de {{ $row->company_name }}" href="{{ route('platform.license.index',['id'=>$row->tenant_id]) }}">{{ $row->company_name }}</a><small>Contrato #{{ $row->contract_id }}</small></td>
+                <td><a class="central-record" aria-label="Ver esta parcela de {{ $row->company_name }}" href="{{ route('platform.license.installments.show',['id'=>$row->tenant_id,'installment'=>$row->id]) }}">{{ $row->company_name }}</a><small><a href="{{ route('platform.license.index',['id'=>$row->tenant_id]) }}">Contrato #{{ $row->contract_id }}</a></small></td>
                 <td>{{ \Illuminate\Support\Carbon::parse($row->due_date)->format('d/m/Y') }}</td>
                 <td><span class="central-status" data-tone="{{ match($row->payment_status){'paid'=>'good','overdue'=>'bad','partial'=>'wait',default=>'neutral'} }}">{{ $labels[$row->payment_status] }}</span></td>
                 <td>R$ {{ number_format($row->amount, 2, ',', '.') }}</td>

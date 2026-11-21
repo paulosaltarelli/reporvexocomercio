@@ -25,10 +25,12 @@ final class MailHistoryController extends Controller
     {
         $filters = $request->validate([
             'status' => ['nullable', Rule::in(array_keys(self::STATUS))],
+            'type' => ['nullable', Rule::in(array_keys(self::TYPES))],
             'recipient' => ['nullable', 'string', 'max:254'],
         ]);
 
         $query = MailAttempt::query();
+        if (filled($filters['type'] ?? null)) $query->where('type', $filters['type']);
         if (filled($filters['status'] ?? null)) {
             $query->where('status', $filters['status']);
         }
@@ -40,6 +42,7 @@ final class MailHistoryController extends Controller
         return response()->view('platform.emails.index', [
             'filters' => $filters,
             'statuses' => self::STATUS,
+            'types' => self::TYPES,
             'attempts' => $query->orderByDesc('created_at')->orderByDesc('id')->paginate(30)->appends($filters),
         ])->header('Cache-Control', 'private, no-store');
     }

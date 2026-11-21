@@ -1,14 +1,14 @@
 @extends('operations.layout')
 @section('title','Caixa do supermercado')
 @section('navigation-section','Operação')
-@section('subtitle','Leia o código do produto, confira os itens e finalize o recebimento.')
+@section('subtitle','Leia um código ou busque pelo nome do produto para montar a venda.')
 @section('content')
 @php
     $productImages=app(\App\Services\ProductImages::class);
 @endphp
-@if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Ler código</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
+@if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Buscar produto</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
 <div class="operation-toolbar">
-    <p class="hint operation-shortcuts">Código de barras ou SKU · até 200 lançamentos <span><kbd>F2</kbd> Ler código <kbd>F9</kbd> Receber</span></p>
+    <p class="hint operation-shortcuts">Código, SKU ou nome · até 200 lançamentos <span><kbd>F2</kbd> Buscar produto <kbd>F9</kbd> Receber</span></p>
     <form method="post" action="{{ route('supermarket.start',['company'=>$tenant->slug]) }}">
 @csrf
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
@@ -43,16 +43,17 @@
 @csrf
         <input type="hidden" name="version" value="{{ $cart->version }}">
         <div class="field">
-<label for="supermarket-code">Código do produto <kbd>F2</kbd>
+<label for="supermarket-code">Código, SKU ou nome do produto <kbd>F2</kbd>
 </label>
-<input id="supermarket-code" name="code" required maxlength="80" value="{{ old('code') }}" data-operation-scanner autocomplete="off" autofocus>
+<input id="supermarket-code" name="code" required maxlength="80" value="{{ old('code',request('q')) }}" data-operation-scanner autocomplete="off" aria-describedby="supermarket-search-help" placeholder="Leia o código ou digite, por exemplo, Cerveja" @if(!request()->filled('q')) autofocus @endif>
 </div>
         <div class="field">
 <label for="supermarket-quantity">Quantidade</label>
-<input id="supermarket-quantity" name="quantity" type="number" min="0.001" step="0.001" required value="{{ old('quantity','1') }}" inputmode="decimal">
+<input id="supermarket-quantity" name="quantity" type="number" min="0.001" max="999999" step="0.001" required value="{{ old('quantity',request('search_quantity','1')) }}" inputmode="decimal">
 </div>
-        <button class="button">Adicionar item</button>
+        <button class="button">Buscar ou adicionar</button>
     </form>
+    <p class="hint" id="supermarket-search-help">Código exato adiciona direto. Pelo nome, escolha o produto nos resultados abaixo.</p>
     @php
         $lastScan=session('last_supermarket_scan');
         $scannedLine=is_array($lastScan) && (int)($lastScan['cart_id']??0)===(int)$cart->id
@@ -68,39 +69,40 @@
     @if($operationConfig['weighed_labels']['enabled'] ?? false)<p class="hint">Etiquetas pesáveis habilitadas. Use quantidade 1 para ler o peso ou o valor da etiqueta.</p>@endif
     @endif
 </section>
-@if($cart->status==='active')
-<details class="operation-panel" @if(request()->filled('q')) open @endif>
-<summary>Buscar produto pelo nome</summary>
-<form class="operation-catalog-search" method="get" action="{{ route('supermarket.show',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
-<div class="field">
-<label for="supermarket-search">Nome, código ou referência</label>
-<input id="supermarket-search" name="q" value="{{ request('q') }}" maxlength="100">
+@if($cart->status==='active' && request()->filled('q'))
+<section class="operation-panel operation-search-results" id="supermarket-search-results" aria-labelledby="supermarket-results-heading" data-operation-search-results>
+<div class="operation-heading">
+<h2 id="supermarket-results-heading" tabindex="-1">Resultados para “{{ request('q') }}”</h2>
+<a class="button secondary" href="{{ route('supermarket.show',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">Limpar busca</a>
 </div>
-<button class="button secondary">Buscar</button>
-</form>
-@if(request()->filled('q'))
-    @if($products->isEmpty())<p class="hint">Nenhum produto encontrado.</p>
-@endif
-    @foreach($products as $product)
-    <form class="operation-line operation-line-top" method="post" action="{{ route('supermarket.items.add',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
+@if($products->isEmpty())
+<div class="operation-empty" role="status">Nenhum produto encontrado. Confira o nome ou leia o código de barras.</div>
+@else
+<p class="hint" role="status">{{ $products->count() }} {{ $products->count()===1?'produto encontrado':'produtos encontrados' }}. Selecione o produto. A quantidade informada acima será mantida.</p>
+@foreach($products as $product)
+<form class="operation-line operation-line-top operation-search-result" method="post" action="{{ route('supermarket.items.add',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">
-<input type="hidden" name="quantity" value="1">
+<input type="hidden" name="quantity" value="{{ old('quantity',request('search_quantity','1')) }}" data-result-quantity>
 <input type="hidden" name="code" value="{{ $product->barcode ?: $product->sku }}">
-<div class="operation-product-image">@include('components.product-image')</div>
+@php($searchArtwork=$productImages->presentation($tenant->slug,$tenant->id,$product->id))
+@if($searchArtwork)
+<div class="operation-product-image">@include('components.product-image',['imageArtwork'=>$searchArtwork])</div>
+@endif
 <div class="operation-search-description">
 <strong>{{ $product->name }}</strong>
-<small>R$ {{ number_format($product->sale_price,2,',','.') }} · {{ $product->unit }}</small>
+<small>R$ {{ number_format($product->sale_price,2,',','.') }} / {{ $product->unit }}</small>
+<small>SKU {{ $product->sku }}@if($product->barcode) · {{ $product->barcode }}@endif</small>
 </div>
-<button class="button secondary" @disabled(!filled($product->barcode ?: $product->sku))>Adicionar</button>
+<button class="button secondary" aria-label="Adicionar {{ $product->name }} à venda" @disabled(!filled($product->barcode ?: $product->sku))>Adicionar</button>
 </form>
-    @endforeach
+@endforeach
 @endif
-</details>
+</section>
 @endif
 <section class="operation-panel">
     <h2>Itens da venda</h2>
-    @if(empty($cart->items))<div class="operation-empty">Leia um código ou informe o SKU para adicionar o primeiro item.</div>
+    @if(empty($cart->items))<div class="operation-empty">Leia um código ou busque pelo nome para adicionar o primeiro item.</div>
     @else
     @foreach($cart->items as $line)
     <article class="operation-line">

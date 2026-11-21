@@ -145,11 +145,14 @@ class OperationsController extends Controller
     {
         $this->admin($r);
         $data = $r->validate([
-            'sale' => 'nullable|integer|min:1|exists:tenant.sales,id', 'q' => 'nullable|string|max:100',
+            'sale' => 'nullable|integer|min:1|exists:tenant.sales,id',
+            'purchase' => 'nullable|integer|min:1|exists:tenant.purchases,id|prohibits:sale',
+            'q' => 'nullable|string|max:100',
             'direction' => 'nullable|in:in,out', 'status' => 'nullable|in:pending,paid,overdue,cancelled',
             'from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d'.($r->filled('from') ? '|after_or_equal:from' : ''),
         ]);
         $saleFilter = isset($data['sale']) ? (int) $data['sale'] : null;
+        $purchaseFilter = isset($data['purchase']) ? (int) $data['purchase'] : null;
         $search = trim($data['q'] ?? '');
         $directionFilter = $data['direction'] ?? null;
         $statusFilter = $data['status'] ?? null;
@@ -157,6 +160,7 @@ class OperationsController extends Controller
         $to = $data['to'] ?? null;
         $entries = FinancialEntry::with('supplier')
             ->when($saleFilter, fn ($q) => $q->where('sale_id', $saleFilter))
+            ->when($purchaseFilter, fn ($q) => $q->where('purchase_id', $purchaseFilter))
             ->when($directionFilter, fn ($q) => $q->where('direction', $directionFilter))
             ->when($statusFilter, function ($q) use ($statusFilter) {
                 if ($statusFilter === 'cancelled') { $q->whereNotNull('cancelled_at'); return; }
@@ -181,9 +185,10 @@ class OperationsController extends Controller
         // Summary cards retain their original global scope; filters affect only the title list.
         $balance = fn (string $direction) => FinancialEntry::where('direction', $direction)->whereNull('cancelled_at')->selectRaw('COALESCE(SUM(amount-paid_amount),0) as outstanding_total')->value('outstanding_total');
         $month = Payment::whereBetween('paid_on', [now()->startOfMonth()->toDateString(), now()->toDateString()]);
-        return view('finance', compact('entries', 'saleFilter', 'search', 'directionFilter', 'statusFilter', 'from', 'to') + [
+        $payments = Payment::latest('paid_on')->latest('id')->limit(50)->get();
+        $paymentLabels = app(\App\Services\PaymentMethods::class)->labels('payment_method_used', $payments->modelKeys());
+        return view('finance', compact('entries', 'saleFilter', 'purchaseFilter', 'search', 'directionFilter', 'statusFilter', 'from', 'to', 'payments', 'paymentLabels') + [
             'suppliers' => Supplier::orderBy('name')->get(), 'payable' => $balance('out'), 'receivable' => $balance('in'),
-            'payments' => Payment::latest('paid_on')->latest('id')->limit(50)->get(),
             'cashIn' => (clone $month)->where('direction', 'in')->sum('amount'), 'cashOut' => (clone $month)->where('direction', 'out')->sum('amount'),
         ]);
     }

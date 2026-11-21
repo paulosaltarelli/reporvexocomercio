@@ -12,8 +12,15 @@
     @endif
 </div>
 @endsection
+@push('styles')
+<link rel="stylesheet" href="/restaurant-menu.css?v={{ filemtime(public_path('restaurant-menu.css')) }}">
+@endpush
 @section('content')
-@php($productImages=app(\App\Services\ProductImages::class))
+@php
+    $productImages = app(\App\Services\ProductImages::class);
+    $menuGroups = $products->groupBy(fn ($product) => $product->group?->id ? 'group-'.$product->group->id : 'other')
+        ->sortBy(fn ($items, $key) => $key === 'other' ? "\u{FFFF}" : mb_strtolower((string)$items->first()->group?->name));
+@endphp
 <div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
 <div class="operation-grid restaurant-order-grid">
 <div>
@@ -22,37 +29,49 @@
     <h2>Adicionar ao pedido</h2>
     <div class="field">
 <label for="restaurant-product-search">Buscar no cardápio</label>
-<input id="restaurant-product-search" type="search" data-product-search="restaurant-catalog" aria-describedby="restaurant-search-result" placeholder="Nome, categoria ou código">
+<input id="restaurant-product-search" type="search" maxlength="180" data-product-search="restaurant-catalog" data-product-state-key="restaurant-{{ $tenant->id }}-{{ $order->id }}-{{ $currentUser->id }}" aria-describedby="restaurant-search-result" placeholder="Nome, categoria ou código">
 <small id="restaurant-search-result" class="hint" role="status">{{ $products->count() }} itens disponíveis</small>
 </div>
-    @if($products->pluck('group.name')->filter()->unique()->count() > 1)
-    <div class="field">
-<label for="restaurant-category">Categoria</label>
-<select id="restaurant-category" data-product-category="restaurant-catalog">
-<option value="">Todas as categorias</option>
-@foreach($products->pluck('group.name')->filter()->unique()->sort() as $category)<option value="{{ $category }}">{{ $category }}</option>
-@endforeach
-</select>
-<div class="operation-category-chips" data-category-chips="restaurant-category" aria-label="Filtrar por categoria" hidden>
-<button type="button" class="operation-category-chip" data-category-value="" aria-pressed="true">Todas</button>
-@foreach($products->pluck('group.name')->filter()->unique()->sort() as $category)<button type="button" class="operation-category-chip" data-category-value="{{ $category }}" aria-pressed="false">{{ $category }}</button>@endforeach
-</div>
-</div>
+    @if($menuGroups->isNotEmpty())
+    <div class="restaurant-menu-filter">
+        <div class="field restaurant-menu-select">
+            <label for="restaurant-category">Grupo do cardápio</label>
+            <select id="restaurant-category" data-product-category="restaurant-catalog">
+                <option value="">Todos os grupos</option>
+                @foreach($menuGroups as $groupKey => $groupProducts)
+                    <option value="{{ $groupKey }}">{{ $groupKey === 'other' ? 'Outros' : $groupProducts->first()->group->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="operation-category-chips restaurant-menu-chips" data-category-chips="restaurant-category" aria-label="Grupos do cardápio" hidden>
+            <button type="button" class="operation-category-chip" data-category-value="" aria-pressed="true">Todos <span>{{ $products->count() }}</span></button>
+            @foreach($menuGroups as $groupKey => $groupProducts)
+                <button type="button" class="operation-category-chip" data-category-value="{{ $groupKey }}" aria-pressed="false">{{ $groupKey === 'other' ? 'Outros' : $groupProducts->first()->group->name }} <span>{{ $groupProducts->count() }}</span></button>
+            @endforeach
+        </div>
+    </div>
     @endif
     @if($products->isEmpty())<div class="operation-empty">Nenhum produto ativo no cardápio. Cadastre os produtos para iniciar os pedidos.</div>
 @endif
-    <div class="operation-catalog" id="restaurant-catalog">
-    @foreach($products as $product)
-    <form class="operation-product" data-category="{{ $product->group?->name }}" data-product-name="{{ mb_strtolower($product->name.' '.$product->sku.' '.$product->group?->name) }}" method="post" action="{{ route('restaurant.orders.items.add',['company'=>$tenant->slug,'order'=>$order->id]) }}">
+    <div class="restaurant-menu-groups" id="restaurant-catalog">
+    @foreach($menuGroups as $groupKey => $groupProducts)
+    <section class="restaurant-menu-group" data-product-group aria-labelledby="restaurant-menu-heading-{{ $groupKey }}">
+        <div class="restaurant-menu-group-heading">
+            <h3 id="restaurant-menu-heading-{{ $groupKey }}">{{ $groupKey === 'other' ? 'Outros' : $groupProducts->first()->group->name }}</h3>
+            <span>Itens <span data-product-group-count>{{ $groupProducts->count() }}</span></span>
+        </div>
+        <div class="operation-catalog restaurant-menu-products">
+    @foreach($groupProducts as $product)
+    <form class="operation-product" data-category="{{ $groupKey }}" data-product-name="{{ mb_strtolower($product->name.' '.$product->sku.' '.$product->barcode.' '.($product->group?->name ?? 'Outros')) }}" method="post" action="{{ route('restaurant.orders.items.add',['company'=>$tenant->slug,'order'=>$order->id]) }}">
 @csrf
         <input type="hidden" name="version" value="{{ $order->version }}">
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
 <input type="hidden" name="product_id" value="{{ $product->id }}">
-        @include('components.product-image')
-        @if($product->group?->name)<small class="hint">{{ $product->group->name }}</small>
-@endif
-        <h3>{{ $product->name }}</h3>
-<span class="product-price">R$ {{ number_format($product->sale_price,2,',','.') }}</span>
+        <div class="restaurant-menu-product-top">
+            @include('components.product-image')
+            <div><h4>{{ $product->name }}</h4><span class="product-price">R$ {{ number_format($product->sale_price,2,',','.') }}</span></div>
+        </div>
+        <div class="restaurant-menu-product-fields">
         <div class="field">
 <label for="product-quantity-{{ $product->id }}">Quantidade</label>
 <input id="product-quantity-{{ $product->id }}" type="number" name="quantity" step="0.001" min="0.001" value="1" required inputmode="decimal">
@@ -64,6 +83,7 @@
 <option value="bar">Bar</option>
 </select>
 </div>
+        </div>
         <details>
 <summary>Observação de preparo</summary>
 <label class="sr-only" for="product-notes-{{ $product->id }}">Observação de {{ $product->name }}</label>
@@ -73,6 +93,15 @@
         <button class="button secondary">Adicionar</button>
     </form>
     @endforeach
+        </div>
+    </section>
+    @endforeach
+    @if($products->isNotEmpty())
+    <div class="operation-empty restaurant-menu-empty" data-product-empty hidden>
+        <p>Nenhum item encontrado neste grupo com a busca informada.</p>
+        <button class="button secondary" type="button" data-product-reset="restaurant-catalog" hidden>Limpar busca e grupo</button>
+    </div>
+    @endif
     </div>
 </section>
 @endif

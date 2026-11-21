@@ -52,7 +52,9 @@ class CompanyController extends Controller
     public function provisionRequest(Request $request, int $id)
     {
         $this->actor($request);
-        return view('platform.request', ['provisionRequest' => ProvisionRequest::findOrFail($id)]);
+        $job = ProvisionRequest::findOrFail($id);
+        $companyActive = $job->tenant_id && Tenant::whereKey($job->tenant_id)->where('active', true)->exists();
+        return view('platform.request', ['provisionRequest'=>$job, 'companyActive'=>$companyActive]);
     }
 
     public function resendActivation(Request $request, int $id)

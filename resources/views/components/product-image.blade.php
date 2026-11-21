@@ -1,6 +1,6 @@
 @php
     $productImages = $productImages ?? app(\App\Services\ProductImages::class);
-    $productArtwork = $productImages->presentation($tenant->slug, $tenant->id, $imageProductId ?? $product->id);
+    $productArtwork = $imageArtwork ?? $productImages->presentation($tenant->slug, $tenant->id, $imageProductId ?? $product->id);
 @endphp
 @once
     @push('styles')<link rel="stylesheet" href="/product-images.css?v={{ filemtime(public_path('product-images.css')) }}">@endpush

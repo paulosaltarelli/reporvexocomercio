@@ -17,6 +17,7 @@
                 @endforeach
             </select>
         </div>
+        <div class="field"><label for="mail-type">Tipo de envio</label><select id="mail-type" name="type"><option value="">Todos</option>@foreach($types as $value=>$label)<option value="{{ $value }}" @selected(($filters['type'] ?? '') === $value)>{{ $label }}</option>@endforeach</select></div>
         <button class="button secondary">Filtrar</button>
         @if(array_filter($filters))<a href="{{ route('platform.settings.emails.index') }}">Limpar filtros</a>@endif
     </form>
@@ -26,7 +27,7 @@
         @forelse($attempts as $attempt)
             <tr>
                 <td>{{ $attempt->created_at->format('d/m/Y H:i') }}</td>
-                <td><a href="{{ route('platform.settings.emails.show', ['id'=>$attempt->id] + request()->only(['recipient','status','page'])) }}">{{ $attempt->subject }}</a></td>
+                <td><a href="{{ route('platform.settings.emails.show', ['id'=>$attempt->id] + request()->only(['recipient','status','type','page'])) }}">{{ $attempt->subject }}</a></td>
                 <td>{{ $attempt->recipient }}</td><td>{{ $attempt->company_name }}</td>
                 <td><span class="central-status" data-tone="{{ match($attempt->status){'sent'=>'good','failed'=>'bad',default=>'wait'} }}">{{ $statuses[$attempt->status] ?? 'Desconhecido' }}</span></td>
             </tr>

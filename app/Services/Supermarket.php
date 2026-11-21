@@ -31,6 +31,11 @@ final class Supermarket
 
     public function scan(string $code): array
     {
+        return $this->resolveScan($code, false);
+    }
+
+    private function resolveScan(string $code, bool $allowNameSearch): array
+    {
         $code = trim($code);
         $products = Product::where('active', true)->where('type', 'product')
             ->where(fn ($query) => $query->where('barcode', $code)->orWhere('sku', $code))
@@ -39,6 +44,8 @@ final class Supermarket
             throw ValidationException::withMessages(['code' => 'Este código corresponde a mais de um produto. Revise o cadastro.']);
         }
         if ($products->isNotEmpty()) return ['product' => $products->first(), 'label' => null, 'quantity' => null];
+
+        if ($allowNameSearch && preg_match('/\p{L}/u', $code) === 1) return ['search' => $code];
 
         $labels = app(WeightedLabels::class);
         $label = $labels->decode($code);
@@ -91,42 +98,60 @@ final class Supermarket
         }
     }
 
+    /** A name starts a choice list. Exact codes and numeric scale labels still add immediately. */
+    public function enter(int $cartId, int $version, string $code, string $quantity, int $userId): array
+    {
+        return DB::connection('tenant')->transaction(function () use ($cartId, $version, $code, $quantity, $userId) {
+            $this->actor($userId);
+            $cart = $this->owned($cartId, $userId, true);
+            $this->editable($cart, $version);
+            $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
+            $scan = $this->resolveScan($code, true);
+            if (isset($scan['search'])) return ['search' => $scan['search'], 'quantity' => $quantity];
+            return ['cart' => $this->appendScan($cart, $scan, $quantity, $userId)];
+        }, 3);
+    }
+
     public function add(int $cartId, int $version, string $code, string $quantity, int $userId): SupermarketCart
     {
         return DB::connection('tenant')->transaction(function () use ($cartId, $version, $code, $quantity, $userId) {
             $this->actor($userId);
             $cart = $this->owned($cartId, $userId, true);
             $this->editable($cart, $version);
-            $scan = $this->scan($code);
-            $product = $scan['product'];
-            $items = $cart->items;
-            $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
-            if ($scan['label'] !== null && bccomp($quantity, '1', 3) !== 0) {
-                throw ValidationException::withMessages(['quantity' => 'Para etiqueta pesável, mantenha a quantidade em 1 e leia cada embalagem separadamente.']);
-            }
-            $quantity = $scan['quantity'] ?? $quantity;
-            $key = false;
-            if ($scan['label'] === null) {
-                foreach ($items as $index => $existing) {
-                    if ($existing['product_id'] === $product->id && empty($existing['weighted_label'])) {
-                        $key = $index;
-                        break;
-                    }
+            return $this->appendScan($cart, $this->scan($code), $quantity, $userId);
+        }, 3);
+    }
+
+    private function appendScan(SupermarketCart $cart, array $scan, string $quantity, int $userId): SupermarketCart
+    {
+        $product = $scan['product'];
+        $items = $cart->items;
+        $quantity = Decimal::input($quantity, 3, 'quantity', '0.001', '999999999.999');
+        if ($scan['label'] !== null && bccomp($quantity, '1', 3) !== 0) {
+            throw ValidationException::withMessages(['quantity' => 'Para etiqueta pesável, mantenha a quantidade em 1 e leia cada embalagem separadamente.']);
+        }
+        $quantity = $scan['quantity'] ?? $quantity;
+        $key = false;
+        if ($scan['label'] === null) {
+            foreach ($items as $index => $existing) {
+                if ($existing['product_id'] === $product->id && empty($existing['weighted_label'])) {
+                    $key = $index;
+                    break;
                 }
             }
-            if ($key !== false) {
-                $quantity = Decimal::input(bcadd($items[$key]['quantity'], $quantity, 3), 3, 'quantity', '0.001', '999999999.999');
-            } elseif (count($items) >= 200) {
-                throw ValidationException::withMessages(['code' => 'Esta venda atingiu o limite de 200 linhas de itens.']);
-            }
-            $line = $this->line($product, $quantity, $key === false ? (string) Str::uuid() : $items[$key]['line_key']);
-            if ($scan['label'] !== null) $line['weighted_label'] = $scan['label'];
-            if ($key === false) $items[] = $line;
-            else $items[$key] = $line;
-            $updated = $this->saveItems($cart, $items, $userId, 'supermarket_item_add');
-            $updated->lastScannedLineKey = $line['line_key'];
-            return $updated;
-        }, 3);
+        }
+        if ($key !== false) {
+            $quantity = Decimal::input(bcadd($items[$key]['quantity'], $quantity, 3), 3, 'quantity', '0.001', '999999999.999');
+        } elseif (count($items) >= 200) {
+            throw ValidationException::withMessages(['code' => 'Esta venda atingiu o limite de 200 linhas de itens.']);
+        }
+        $line = $this->line($product, $quantity, $key === false ? (string) Str::uuid() : $items[$key]['line_key']);
+        if ($scan['label'] !== null) $line['weighted_label'] = $scan['label'];
+        if ($key === false) $items[] = $line;
+        else $items[$key] = $line;
+        $updated = $this->saveItems($cart, $items, $userId, 'supermarket_item_add');
+        $updated->lastScannedLineKey = $line['line_key'];
+        return $updated;
     }
 
     private function line(Product $product, string $quantity, string $lineKey): array

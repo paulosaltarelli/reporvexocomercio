@@ -14,12 +14,24 @@ use Illuminate\Http\Request;
 
 final class LicenseController extends Controller
 {
-    public function index(int $id)
+    public function index(Request $request, int $id)
     {
+        $filters = $request->validate(['parcelas_status'=>'nullable|in:all,open,history']);
+        $installmentFilter = $filters['parcelas_status'] ?? 'all';
         $company = Tenant::select('id', 'name', 'slug')->findOrFail($id);
-        $contracts = Contract::where('tenant_id', $id)->orderByDesc('start_date')->paginate(10, ['*'], 'contratos')->appends(request()->only('parcelas'));
-        $installments = ContractInstallment::where('tenant_id', $id)->orderByDesc('due_date')->orderByDesc('id')->paginate(20, ['*'], 'parcelas')->appends(request()->only('contratos'));
-        return view('platform.license.index', compact('company', 'contracts', 'installments'));
+        $contracts = Contract::where('tenant_id', $id)->orderByDesc('start_date')->paginate(10, ['*'], 'contratos')
+            ->appends($request->only(['parcelas','parcelas_status']));
+        $installmentQuery = ContractInstallment::where('tenant_id', $id);
+        if ($installmentFilter === 'open') {
+            $installmentQuery->whereNull('cancelled_at')->whereColumn('paid_amount','<','amount');
+        } elseif ($installmentFilter === 'history') {
+            $installmentQuery->where(fn($query)=>$query->whereNotNull('cancelled_at')->orWhereColumn('paid_amount','>=','amount'));
+        }
+        $installments = $installmentQuery
+            ->orderByRaw('CASE WHEN cancelled_at IS NOT NULL OR paid_amount >= amount THEN 1 ELSE 0 END')
+            ->orderBy('due_date')->orderBy('id')->paginate(20, ['*'], 'parcelas')
+            ->appends($request->only(['contratos','parcelas_status']));
+        return view('platform.license.index', compact('company', 'contracts', 'installments', 'installmentFilter'));
     }
 
     public function installment(int $id, int $installment, CompanyPix $pix)

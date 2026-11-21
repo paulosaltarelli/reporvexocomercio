@@ -403,6 +403,57 @@ class PlatformTest extends TestCase
         }
     }
 
+    public function test_central_installment_navigation_and_filters_keep_pending_payments_ahead_of_history(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2028-02-15 12:00:00'));
+        $contract = app(\App\Platform\ContractBilling::class)->create($this->company->id,
+            ['start_date'=>'2028-01-01','end_date'=>'2029-12-31','monthly_amount'=>'100','due_day'=>5],
+            $this->admin->id,$this->admin->auth_version);
+        $rows = $contract->installments()->orderBy('due_date')->get();
+        $partial = $rows[0];
+        $partial->update(['paid_amount'=>'20']);
+        $rows[1]->update(['paid_amount'=>'100']);
+        $rows[2]->update(['cancelled_at'=>now()]);
+        $this->centralSession();
+        $url = route('platform.license.index',['id'=>$this->company->id]);
+        $all = $this->get($url)->assertOk()->viewData('installments');
+        $this->assertSame(24,$all->total());
+        $this->assertSame($partial->id,$all->first()->id);
+        $open = $this->get($url.'?parcelas_status=open&contratos=2')->assertOk()->viewData('installments');
+        $this->assertSame(22,$open->total());
+        $this->assertSame($partial->id,$open->first()->id);
+        $this->assertStringContainsString('parcelas_status=open',$open->nextPageUrl());
+        $this->assertStringContainsString('contratos=2',$open->nextPageUrl());
+        $history = $this->get($url.'?parcelas_status=history')->assertOk()->viewData('installments');
+        $this->assertEqualsCanonicalizing([$rows[1]->id,$rows[2]->id],$history->modelKeys());
+        $detail = route('platform.license.installments.show',['id'=>$this->company->id,'installment'=>$partial->id]);
+        $this->get('/vexo-admin/financeiro')->assertOk()->assertSee($detail,false);
+    }
+
+    public function test_central_activation_view_explains_expiry_retry_and_suspension_without_sending_mail(): void
+    {
+        config(['tenancy.company_domain'=>'vendra.test']);
+        $job = app(RequestCompanyProvision::class)->request(['name'=>'Empresa em ativação','slug'=>'activation-state',
+            'admin_name'=>'Responsável','admin_email'=>'activation@example.test','is_demonstration'=>false,
+            'request_key'=>(string)Str::uuid()],$this->admin->id,$this->admin->auth_version);
+        $this->company->update(['slug'=>$job->slug]);
+        $job->update(['status'=>'completed','active_slug'=>null,'tenant_id'=>$this->company->id,
+            'activation_status'=>'sent','activation_expires_at'=>now()->subMinute()]);
+        $this->centralSession();
+        Mail::fake();
+        $url = route('platform.requests.show',['id'=>$job->id]);
+        $resend = route('platform.requests.activation',['id'=>$job->id]);
+        $login = \App\Tenancy\CompanyHosts::url($job->slug);
+        $this->get($url)->assertOk()->assertSee('O convite de ativação expirou')->assertSee($resend,false)->assertSee($login,false);
+        $job->update(['activation_status'=>'queued','activation_retry_at'=>now()->addMinutes(10)]);
+        $history = route('platform.settings.emails.index',['recipient'=>$job->admin_email,'type'=>'company_activation']);
+        $this->get($url)->assertOk()->assertSee('Próxima tentativa a partir de')->assertSee($history);
+        $this->company->update(['active'=>false]);
+        $job->update(['activation_status'=>'sent']);
+        $this->get($url)->assertOk()->assertSee('O acesso da empresa está suspenso')->assertDontSee($login,false)->assertDontSee($resend,false);
+        Mail::assertNothingSent();
+    }
+
     public function test_sent_email_history_is_central_only_and_its_filtered_read_only_preview_has_no_activation_fields(): void
     {
         $uri = '/vexo-admin/settings/emails';
@@ -425,9 +476,10 @@ class PlatformTest extends TestCase
         $this->get($uri)->assertOk()->assertSee('Aceito pelo SMTP')->assertSee('Falha no envio')->assertSee('Resultado não confirmado');
         $this->get($uri.'?'.http_build_query(['status' => 'sent', 'recipient' => $recipient]))
             ->assertOk()->assertSee($sent->subject)->assertDontSee($failed->subject)->assertDontSee('Tentativa em andamento QA');
-        $filters = ['recipient' => $recipient, 'status' => 'sent', 'page' => 1];
+        $filters = ['recipient' => $recipient, 'status' => 'sent', 'type' => 'installer_invitation', 'page' => 1];
         $detail = route('platform.settings.emails.show', ['id' => $sent->id] + $filters);
         $list = route('platform.settings.emails.index', $filters);
+        $this->get($uri.'?type=company_activation')->assertOk()->assertSee($failed->subject)->assertDontSee($sent->subject);
         $this->get($list)->assertOk()->assertSee($detail);
         $this->get($detail)->assertOk()->assertSee($list)->assertSee('Voltar aos envios');
         foreach ([$sent, $failed] as $attempt) {

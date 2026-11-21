@@ -1,7 +1,7 @@
 
 @extends('layout')
 @section('title','Estoque')
-@section('subtitle',$currentUser->allows('costs.view')?'Entradas atualizam o custo médio. Saídas preservam a média e nunca permitem saldo negativo.':'Consulte o saldo e o histórico de movimentações dos produtos.')
+@section('subtitle',$currentUser->allows('costs.view') ? 'Entradas atualizam o custo médio. '.match($operationConfig['negative_stock']??'block') { 'warn'=>'Saídas com saldo negativo geram um alerta.', 'allow'=>'Saídas podem gerar saldo negativo, conforme a configuração da empresa.', default=>'Saídas são bloqueadas se o saldo ficar negativo.' } : 'Consulte o saldo e o histórico de movimentações dos produtos.')
 @section('actions')
 @if($currentUser->allows('prices.view'))<a class="button secondary" href="{{ route('prices',['company'=>$tenant->slug]) }}">Conferir preços e alertas</a>
 @endif
@@ -10,10 +10,10 @@
 @if($currentUser->allows('stock.manage'))<form class="panel" method="post">
 @csrf<input type="hidden" name="request_key" value="{{ old('request_key',\Illuminate\Support\Str::uuid()) }}"><h2>Registrar movimentação</h2><div class="form-grid"><div class="field"><label>Produto</label><select name="product_id" required><option value="">Selecione</option>
 @foreach($products as $p)<option value="{{ $p->id }}" data-price-policy="{{ $p->price_policy??$p->group->price_policy??'alert' }}"
-@selected(old('product_id')==$p->id)>{{ $p->sku }} · {{ $p->name }}</option>
+@selected(old('product_id')==$p->id)>{{ $p->sku }} · {{ $p->name }} · Saldo {{ number_format($p->quantity,3,',','.') }} {{ $p->unit }}</option>
 @endforeach</select><small class="hint"><span id="movement-price-policy" class="badge" role="status">Selecione um produto</span></small></div><div class="field"><label>Tipo</label><select name="type"><option value="in"
 @selected(old('type')==='in')>Entrada / compra / ajuste positivo</option><option value="out"
-@selected(old('type')==='out')>Saída / perda / ajuste negativo</option></select></div><div class="field"><label>Quantidade</label><input name="quantity" type="number" step="0.001" min="0.001" value="{{ old('quantity') }}" required></div><div class="field"><label>Custo unitário da entrada (R$)</label><input name="unit_cost" type="number" step="0.0001" min="0" value="{{ old('unit_cost',0) }}" required><small class="hint">Inclua frete e custos atribuídos à unidade. Na saída, o sistema usa o custo médio.</small></div><div class="field"><label>Motivo / documento</label><input name="reason" value="{{ old('reason') }}" required minlength="3" maxlength="500"></div></div><div class="actions"><button class="primary">Registrar movimentação</button></div><p class="hint">Conforme a regra de cada produto, as entradas podem atualizar o preço automaticamente ou gerar alerta. Para ajuste de inventário, registre a diferença entre o saldo contado e o saldo atual. Movimentações não são apagadas; correções devem gerar nova movimentação.</p></form>
+@selected(old('type')==='out')>Saída / perda / ajuste negativo</option></select></div><div class="field"><label>Quantidade na unidade de estoque</label><input name="quantity" type="number" step="0.001" min="0.001" value="{{ old('quantity') }}" required><small class="hint">Informe a quantidade na unidade mostrada para o produto.</small></div><div class="field"><label>Custo por unidade de estoque (R$)</label><input name="unit_cost" type="number" step="0.0001" min="0" value="{{ old('unit_cost',0) }}" required><small class="hint">Inclua frete e custos atribuídos à unidade. Na saída, o sistema usa o custo médio.</small></div><div class="field"><label>Motivo / documento</label><input name="reason" value="{{ old('reason') }}" required minlength="3" maxlength="500"></div></div><div class="actions"><button class="primary">Registrar movimentação</button></div><p class="hint">Conforme a regra de cada produto, as entradas podem atualizar o preço automaticamente ou gerar alerta. Para ajuste de inventário, registre a diferença entre o saldo contado e o saldo atual. Movimentações não são apagadas; correções devem gerar nova movimentação.</p></form>
 @endif
 <section class="panel"><h2>Histórico de movimentações</h2><div class="scroll"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th class="num">Quantidade</th>
 @if($currentUser->allows('costs.view'))<th class="num">Custo unitário</th>

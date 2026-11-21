@@ -22,6 +22,8 @@ use Tests\TestCase;
 
 class CommerceTest extends TestCase
 {
+    use \Tests\Support\StoreReviewCases;
+    use \Tests\Support\SupermarketSearchCases;
     use \Tests\Support\OperationalImageCases;
     use \Tests\Support\OperationalExpansionCases;
     use \Tests\Support\OperationalRoleCases;

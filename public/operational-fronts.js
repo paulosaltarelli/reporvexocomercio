@@ -33,17 +33,50 @@
         if (!catalog) return;
         const status = document.getElementById(input.getAttribute('aria-describedby'));
         const category = document.querySelector('[data-product-category="' + input.dataset.productSearch + '"]');
+        const normalizeSearch = value => value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const stateKey = input.dataset.productStateKey ? 'vendra:catalog:' + input.dataset.productStateKey : null;
+        if (stateKey) {
+            try {
+                const saved = JSON.parse(sessionStorage.getItem(stateKey) || 'null');
+                if (saved && typeof saved.term === 'string' && saved.term.length <= 180) input.value = saved.term;
+                if (category && saved && typeof saved.category === 'string' && [...category.options].some(option => option.value === saved.category)) category.value = saved.category;
+            } catch (_) { /* Filtering works when browser storage is unavailable. */ }
+        }
         const filter = () => {
-            const term = input.value.toLocaleLowerCase('pt-BR').trim();
+            if (stateKey) {
+                try { sessionStorage.setItem(stateKey, JSON.stringify({term:input.value.slice(0,180), category:category?.value || ''})); }
+                catch (_) { /* Storage never blocks the order. */ }
+            }
+            const term = normalizeSearch(input.value);
             let visible = 0;
             catalog.querySelectorAll('[data-product-name]').forEach(card => {
-                card.hidden = !card.dataset.productName.includes(term) || !!(category?.value && card.dataset.category !== category.value);
+                card.hidden = !normalizeSearch(card.dataset.productName).includes(term) || !!(category?.value && card.dataset.category !== category.value);
                 if (!card.hidden) visible++;
             });
+            catalog.querySelectorAll('[data-product-group]').forEach(group => {
+                const count = group.querySelectorAll('[data-product-name]:not([hidden])').length;
+                group.hidden = count === 0;
+                const counter = group.querySelector('[data-product-group-count]');
+                if (counter) counter.textContent = count;
+            });
+            const empty = catalog.querySelector('[data-product-empty]');
+            if (empty) empty.hidden = visible > 0;
             if (status) status.textContent = visible + (visible === 1 ? ' item encontrado' : ' itens encontrados');
         };
         input.addEventListener('input', filter);
         category?.addEventListener('change', filter);
+        document.querySelectorAll('[data-product-reset="' + input.dataset.productSearch + '"], [data-product-reset=""]').forEach(button => {
+            button.hidden = false;
+            button.addEventListener('click', () => {
+                input.value = '';
+                if (category) {
+                    category.value = '';
+                    category.dispatchEvent(new Event('change', {bubbles:true}));
+                } else filter();
+                input.focus();
+            });
+        });
+        filter();
     });
     document.querySelectorAll('[data-category-chips]').forEach(chips => {
         const select = document.getElementById(chips.dataset.categoryChips);
@@ -69,10 +102,27 @@
     updateElapsed();
     if (document.querySelector('[data-operation-elapsed]')) setInterval(updateElapsed, 60000);
     const scanner = document.querySelector('[data-operation-scanner]');
-    if (scanner && !document.getElementById('validation-errors')) {
-        scanner.focus();
-        scanner.select();
-        scanner.scrollIntoView({block: 'center'});
+    const searchResults = document.querySelector('[data-operation-search-results]');
+    const scanQuantity = document.getElementById('supermarket-quantity');
+    document.querySelectorAll('.operation-search-result').forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!scanQuantity) return;
+            if (!scanQuantity.checkValidity()) {
+                event.preventDefault();
+                scanQuantity.reportValidity();
+                return;
+            }
+            form.querySelector('[data-result-quantity]').value = scanQuantity.value;
+        });
+    });
+    if (!document.getElementById('validation-errors')) {
+        if (searchResults) {
+            searchResults.querySelector('h2')?.focus();
+        } else if (scanner) {
+            scanner.focus();
+            scanner.select();
+            scanner.scrollIntoView({block: 'center'});
+        }
     }
     document.addEventListener('keydown', event => {
         if (event.key === 'F2' && scanner) {

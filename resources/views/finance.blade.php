@@ -11,7 +11,7 @@
 </div>
 <p class="hint">Os indicadores mostram a posição geral da empresa. Os filtros abaixo refinam apenas a lista de contas e parcelas.</p>
 @if($currentUser->allows('finance.manage'))
-<details class="panel disclosure" @if(old('direction') || ($entries->isEmpty() && !request()->hasAny(['q','direction','status','from','to','sale']))) open @endif>
+<details class="panel disclosure" @if(old('direction') || ($entries->isEmpty() && !request()->hasAny(['q','direction','status','from','to','sale','purchase']))) open @endif>
     <summary><span>+ Nova conta manual</span><small>Despesas e outras receitas</small></summary>
     @if($currentUser->allows('finance.manage'))
 <form method="post" class="disclosure-content">
@@ -33,16 +33,18 @@
 </details>
 @endif
 <section class="panel">
-    <div class="section-heading"><h2>Contas e parcelas</h2>@if(request('sale'))<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtro da venda #{{ request('sale') }}</a>@endif</div>
+    <div class="section-heading"><h2>{{ ($purchaseFilter??null) ? 'Parcelas da compra #'.$purchaseFilter : 'Contas e parcelas' }}</h2>@if($saleFilter??null)<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtro da venda #{{ $saleFilter }}</a>@elseif($purchaseFilter??null)<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Ver todas as contas</a>@endif</div>
+    @if(($purchaseFilter??null) && $currentUser->allows('purchases.view'))<p><a href="{{ route('purchase.show',['company'=>$tenant->slug,'id'=>$purchaseFilter]) }}">Voltar à compra #{{ $purchaseFilter }}</a></p>@endif
     <form class="filter-bar no-print" method="get" aria-label="Filtrar contas e parcelas">
         @if($saleFilter??null)<input type="hidden" name="sale" value="{{ $saleFilter }}">@endif
+        @if($purchaseFilter??null)<input type="hidden" name="purchase" value="{{ $purchaseFilter }}">@endif
         <div><label for="finance-search">Buscar conta</label><input id="finance-search" name="q" maxlength="100" value="{{ $search??'' }}" placeholder="Descrição, categoria ou número"></div>
         <div><label for="finance-direction">Tipo</label><select id="finance-direction" name="direction"><option value="">A pagar e a receber</option><option value="out" @selected(($directionFilter??'')==='out')>A pagar</option><option value="in" @selected(($directionFilter??'')==='in')>A receber</option></select></div>
         <div><label for="finance-status">Situação</label><select id="finance-status" name="status"><option value="">Todas</option>@foreach(['pending'=>'Pendentes e parciais','overdue'=>'Vencidas','paid'=>'Liquidadas','cancelled'=>'Canceladas'] as $value=>$label)<option value="{{ $value }}" @selected(($statusFilter??'')===$value)>{{ $label }}</option>@endforeach</select></div>
         <div><label for="finance-from">Vencimento a partir de</label><input id="finance-from" name="from" type="date" value="{{ $from??'' }}"></div>
         <div><label for="finance-to">Vencimento até</label><input id="finance-to" name="to" type="date" value="{{ $to??'' }}"></div>
         <button type="submit" class="button secondary">Aplicar filtros</button>
-        @if(request()->hasAny(['q','direction','status','from','to','sale']))<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
+        @if(request()->hasAny(['q','direction','status','from','to','sale','purchase']))<a href="{{ route('finance',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
     </form>
     <p class="hint report-period">{{ $entries->total() }} contas e parcelas encontradas · página {{ $entries->currentPage() }} de {{ $entries->lastPage() }}. @if($from??null)Vencimento a partir de {{ \Carbon\Carbon::parse($from)->format('d/m/Y') }}.@endif @if($to??null)Até {{ \Carbon\Carbon::parse($to)->format('d/m/Y') }}.@endif A impressão inclui esta página da listagem.</p>
     <div class="scroll"><table>
@@ -94,18 +96,18 @@
                 </td></tr>
             @endif
         @empty
-            <tr><td colspan="8" class="empty">{{ request()->hasAny(['q','direction','status','from','to','sale']) ? 'Nenhuma conta corresponde aos filtros.' : 'Nenhuma conta registrada.' }}</td></tr>
+            <tr><td colspan="8" class="empty">{{ request()->hasAny(['q','direction','status','from','to','sale','purchase']) ? 'Nenhuma conta corresponde aos filtros.' : 'Nenhuma conta registrada.' }}</td></tr>
         @endforelse
         </tbody>
     </table></div>
     {{ $entries->links() }}
 </section>
 <details class="panel disclosure">
-    <summary><span>Últimas movimentações registradas</span><small>Baixas e estornos</small></summary>
+    <summary><span>Últimas movimentações registradas</span><small>Baixas e estornos da empresa</small></summary>
     <div class="disclosure-content">
         <div class="scroll"><table><thead><tr><th>Data informada</th><th>Movimento</th><th>Tipo</th><th>Forma</th><th class="num">Valor (R$)</th></tr></thead><tbody>
         @forelse($payments as $payment)
-            <tr><td>{{ $payment->paid_on?\Carbon\Carbon::parse($payment->paid_on)->format('d/m/Y'):'Não informada' }}</td><td>{{ $payment->direction==='in'?'Entrada':'Saída' }}</td><td>{{ $payment->kind==='refund'?'Estorno':'Baixa' }}</td><td>{{ app(\App\Services\PaymentMethods::class)->labels('payment_method_used',[$payment->id])[$payment->id]??\App\Services\PaymentMethods::TYPES[$payment->method]??$payment->method }}</td><td class="num">{{ number_format($payment->amount,2,',','.') }}</td></tr>
+            <tr><td>{{ $payment->paid_on?\Carbon\Carbon::parse($payment->paid_on)->format('d/m/Y'):'Não informada' }}</td><td>{{ $payment->direction==='in'?'Entrada':'Saída' }}</td><td>{{ $payment->kind==='refund'?'Estorno':'Baixa' }}</td><td>{{ $paymentLabels[$payment->id]??\App\Services\PaymentMethods::TYPES[$payment->method]??$payment->method }}</td><td class="num">{{ number_format($payment->amount,2,',','.') }}</td></tr>
         @empty
             <tr><td colspan="5" class="empty">Nenhuma baixa ou estorno registrado.</td></tr>
         @endforelse
