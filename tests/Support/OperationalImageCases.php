@@ -267,7 +267,7 @@ trait OperationalImageCases
         $this->assertStringContainsString('2,000 UN', $last->item(0)->textContent);
         $this->assertStringContainsString('200,00', $last->item(0)->textContent);
         $this->assertSame('225.00', $cart->fresh()->total);
-        $this->postJson($base.'/items', ['version' => $cart->fresh()->version, 'code' => 'UNKNOWN', 'quantity' => '1'])->assertUnprocessable();
+        $this->postJson($base.'/items', ['version' => $cart->fresh()->version, 'code' => '9999999999999', 'quantity' => '1'])->assertUnprocessable();
         $this->get($base)->assertOk()->assertDontSee('operation-last-scan', false);
         app(TenantConnection::class)->connect($this->a);
         $this->assertSame('225.00', $cart->fresh()->total);

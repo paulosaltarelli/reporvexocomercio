@@ -13,8 +13,8 @@
 .restaurant-menu-group[hidden], .restaurant-menu-products .operation-product[hidden], .restaurant-menu-empty[hidden], .restaurant-menu-chips[hidden], .restaurant-menu-empty button[hidden] { display: none !important; }
 @media(max-width:600px) {
     .restaurant-menu-select { max-width: none; }
-    .restaurant-menu-chips { gap: 7px; }
-    .restaurant-menu-chips .operation-category-chip { flex: 0 1 auto; padding: 9px 12px; }
+    .restaurant-menu-chips { gap: 7px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; padding-bottom: 8px; }
+    .restaurant-menu-chips .operation-category-chip { flex: 0 0 auto; max-width: 260px; padding: 9px 12px; }
     .restaurant-menu-group-heading h3 { font-size: 17px; }
     .restaurant-menu-group + .restaurant-menu-group { margin-top: 24px; }
 }

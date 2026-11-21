@@ -89,7 +89,13 @@
                 select.dispatchEvent(new Event('change', {bubbles:true}));
             });
         });
-        const update = () => chips.querySelectorAll('[data-category-value]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.categoryValue === select.value)));
+        const update = () => {
+            chips.querySelectorAll('[data-category-value]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.categoryValue === select.value)));
+            const selected = chips.querySelector('[aria-pressed="true"]');
+            if (selected && chips.scrollWidth > chips.clientWidth) {
+                chips.scrollLeft += selected.getBoundingClientRect().left - chips.getBoundingClientRect().left - (chips.clientWidth - selected.clientWidth) / 2;
+            }
+        };
         select.addEventListener('change', update);
         update();
     });
