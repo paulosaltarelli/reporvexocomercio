@@ -659,3 +659,36 @@
         padding:0;
     }
 }
+@media(max-width:1100px) {
+    .operational-shell .operational-bar .operational-identity {
+        flex:1 1 160px;
+        width:auto;
+        max-width:calc(100% - 60px);
+    }
+    .operational-shell .operational-bar .operational-account {
+        flex:0 0 auto;
+        width:auto;
+        margin-left:auto;
+    }
+}
+@media(max-width:600px) {
+    .operational-shell .operation-catalog {
+        grid-template-columns:minmax(0,1fr);
+    }
+    .operational-shell .operation-product {
+        width:100%;
+        padding:16px;
+    }
+    .operational-shell .operation-product textarea {
+        width:100%;
+    }
+    .operational-shell .operational-account {
+        max-width:48%;
+    }
+}
+@media(max-width:600px) {
+    .operational-shell .operational-bar {
+        padding:6px 14px;
+        gap:4px 12px;
+    }
+}
