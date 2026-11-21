@@ -5,7 +5,6 @@ namespace App\Fiscal;
 use App\Models\FiscalPreparation;
 use App\Models\Sale;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +21,7 @@ final class PrepareFiscalReview
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             throw ValidationException::withMessages(['fiscal' => 'Contexto da empresa inválido.']);
         }
-        abort_unless((bool) User::where('active', true)->whereKey($userId)->first()?->allows('fiscal.manage'), 403);
+        \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
 
         try {
             return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $userId, $requestKey) {

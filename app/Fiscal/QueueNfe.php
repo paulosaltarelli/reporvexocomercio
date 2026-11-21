@@ -8,7 +8,6 @@ use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
 use App\Models\Sale;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -21,7 +20,7 @@ final class QueueNfe
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
-        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
+        \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
 
         return DB::connection('tenant')->transaction(function () use ($tenant, $saleId, $operation) {
             app(\App\Services\CompanyOperations::class)->lock();
@@ -114,7 +113,7 @@ final class QueueNfe
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
-        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
+        \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
         DB::connection('tenant')->transaction(function () use ($documentId, $userId) {
             $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
             abort_unless((int) $doc->model === 55, 404);

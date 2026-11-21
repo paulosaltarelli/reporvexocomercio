@@ -11,8 +11,8 @@ final class QuickCreate
     public function create(string $kind,array $input,int $actor): array
     {
         abort_unless(in_array($kind,['customers','products','services'],true),404);
-        $user=\App\Models\User::whereKey($actor)->where('active',true)->firstOrFail();
-        abort_unless($user->allows($kind==='customers'?'customers.manage':'products.manage'),403);
+        $permission = $kind === 'customers' ? 'customers.manage' : 'products.manage';
+        InstallerAccess::authorizedActor($actor, $permission);
         foreach(['name','sku','barcode','document','email','phone'] as $field)if(is_string($input[$field]??null))$input[$field]=trim($input[$field]);
         $rules=['request_key'=>'required|uuid','name'=>'required|string|max:180'];
         if ($kind === 'customers') $input = CustomerFields::normalize($input);
@@ -23,10 +23,11 @@ final class QuickCreate
             'initial_cost'=>'nullable|numeric|min:0|max:999999999.9999|decimal:0,4'];
         $data=Validator::make($input,$rules)->validate();$key=$data['request_key'];unset($data['request_key']);ksort($data);
         $hash=hash('sha256',json_encode($data,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));
-        return DB::connection('tenant')->transaction(function()use($data,$key,$hash,$kind,$actor,$user){
+        return DB::connection('tenant')->transaction(function()use($data,$key,$hash,$kind,$actor,$permission){
             // A per-tenant current lock serializes retries without introducing another schema.
             CompanyOperation::insertOrIgnore(['id'=>1,'configuration'=>json_encode(CompanyOperations::DEFAULTS),'version'=>0]);
             CompanyOperation::whereKey(1)->lockForUpdate()->firstOrFail();
+            $user = InstallerAccess::authorizedActor($actor, $permission);
             $record=OperationRecord::where('action','quick_created')->where('after->request_key',$key)->sharedLock()->first();
             $model=$kind==='customers'?Customer::class:Product::class;
             if($record){

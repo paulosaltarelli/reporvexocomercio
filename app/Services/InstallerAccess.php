@@ -54,6 +54,18 @@ final class InstallerAccess
         return in_array($grant->access_profile, ['installer', 'tenant_dba'], true);
     }
 
+    /** Resolve the current tenant grant again when a domain service reloads its actor. */
+    public static function authorizedActor(int $actor, string $permission): User
+    {
+        $user = User::whereKey($actor)->where('active', true)->sharedLock()->first();
+        abort_unless($user, 403);
+        if ($user->getRawOriginal('role') === User::ROLE_INSTALLER) {
+            abort_unless(self::applyGrant($user), 403);
+        }
+        abort_unless($user->allows($permission), 403);
+        return $user;
+    }
+
     public static function adminActor(int $actor): bool
     {
         $user = User::whereKey($actor)->where('active', true)->first(['id', 'role', 'active', 'email']);

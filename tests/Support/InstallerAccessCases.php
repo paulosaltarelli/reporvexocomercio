@@ -14,6 +14,78 @@ use Illuminate\Support\Facades\Mail;
 
 trait InstallerAccessCases
 {
+    public function test_tenant_dba_can_quick_create_and_domain_rechecks_follow_the_live_scoped_grant(): void
+    {
+        $connect = app(TenantConnection::class);
+        $connect->connect($this->a);
+        $actor = User::create(['name'=>'DBA da loja', 'email'=>'dba-rapido@example.test',
+            'role'=>User::ROLE_INSTALLER, 'password'=>'Senha escolhida em QA 123', 'active'=>true]);
+        $actorId = $actor->id;
+        $admin = $this->licensingAdmin();
+        $grant = InstallerInvitation::create(['tenant_id'=>$this->a->id, 'user_id'=>$actorId,
+            'issued_by'=>$admin->id, 'name'=>$actor->name, 'email'=>$actor->email,
+            'status'=>'accepted', 'delivery_status'=>'sent', 'access_profile'=>'tenant_dba', 'accepted_at'=>now()]);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$actorId,'auth_version'=>0]);
+        $this->get('/app/a/documents/new?type=work_order')->assertOk()->assertSee('quick-create-dialog');
+        $customerInput = ['request_key'=>(string)\Illuminate\Support\Str::uuid(), 'name'=>'Cliente cadastrado na OS', 'phone'=>'35912345678'];
+        $response = $this->postJson('/app/a/quick-create/customers', $customerInput)->assertOk()->assertJsonPath('item.name',$customerInput['name']);
+        $customerId = $response->json('item.id');
+        $this->postJson('/app/a/quick-create/customers', $customerInput)->assertOk()->assertJsonPath('item.id',$customerId);
+        $productInput = $this->quickItem(['name'=>'Peça cadastrada na OS', 'controls_stock'=>1,'initial_quantity'=>'2','initial_cost'=>'10']);
+        $product = $this->postJson('/app/a/quick-create/products', $productInput)->assertOk()->assertJsonPath('item.quantity','2.000');
+        $this->postJson('/app/a/quick-create/services', $this->quickItem(['name'=>'Análise na OS','sale_price'=>'0']))
+            ->assertOk()->assertJsonPath('item.type','service');
+        $connect->connect($this->a);
+        $this->assertSame(1,\App\Models\Customer::whereKey($customerId)->count());
+        $this->assertSame('10.0000',\App\Models\Product::findOrFail($product->json('item.id'))->average_cost);
+        $this->assertSame(User::ROLE_INSTALLER,$actor->fresh()->role);
+        app(\App\Services\CommissionSettlements::class)->authorize($actorId,'commissions.close');
+        \App\Fiscal\Nfse\Access::admin($this->a,$actorId);
+        $seller = app(\App\Services\CommercialRules::class)->seller($actorId);
+        $document = app(\App\Services\Documents::class)->create(['type'=>'work_order',
+            'request_key'=>(string)\Illuminate\Support\Str::uuid(),'customer_id'=>$customerId,'items'=>[]],$actorId);
+        $assigned = Seller::create(['name'=>'Outro vendedor','active'=>true]);
+        app(\App\Services\SellerAssignment::class)->assign($document->id,$actorId,$assigned->id,'Reatribuição registrada pelo DBA');
+        $this->assertSame($assigned->id,$document->fresh()->salesperson_id);
+        $this->get('/app/a/sellers?edit='.$seller->id)->assertOk()->assertSee($actor->email);
+        $this->post('/app/a/sellers',['id'=>$seller->id,'name'=>$seller->name,'user_id'=>$actorId,'active'=>1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $connect->connect($this->a);
+        $this->assertSame($actorId,$seller->fresh()->user_id);
+        $grant->update(['access_profile'=>'installer']);
+        $unauthorized = ['request_key'=>(string)\Illuminate\Support\Str::uuid(),'name'=>'Cadastro negado'];
+        foreach ([
+            fn()=>app(\App\Services\QuickCreate::class)->create('customers',$unauthorized,$actorId),
+            fn()=>app(\App\Services\CommissionSettlements::class)->authorize($actorId,'commissions.close'),
+            fn()=>\App\Fiscal\Nfse\Access::admin($this->a,$actorId),
+        ] as $attempt) {
+            try { $attempt(); $this->fail('O acesso de implantação não pode executar operações de DBA.'); }
+            catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403,$error->getStatusCode()); }
+        }
+        $grant->update(['access_profile'=>'tenant_dba','status'=>'revoked']);
+        try { app(\App\Services\QuickCreate::class)->create('customers',$unauthorized,$actorId); $this->fail('Uma concessão revogada não pode cadastrar.'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403,$error->getStatusCode()); }
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id,'auth_version'=>0]);
+        $this->post('/app/a/sellers',['id'=>$seller->id,'name'=>$seller->name,'user_id'=>$actorId,'active'=>1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $connect->connect($this->a);
+        $this->assertSame($actorId,$seller->fresh()->user_id);
+        $limited = User::create(['name'=>'Implantador sem DBA','email'=>'sem-dba@example.test',
+            'role'=>User::ROLE_INSTALLER,'password'=>'Senha limitada em QA 123','active'=>true]);
+        $this->post('/app/a/sellers',['name'=>'Novo vínculo vedado','user_id'=>$limited->id,'active'=>1])->assertForbidden();
+        $connect->connect($this->a);
+        $this->assertFalse(Seller::where('user_id',$limited->id)->exists());
+        $grant->update(['status'=>'accepted']);
+        $connect->connect($this->b);
+        User::forceCreate(['id'=>$actorId,'name'=>$actor->name,'email'=>$actor->email,'role'=>User::ROLE_INSTALLER,'password'=>'Outra senha da loja B','active'=>true]);
+        try { app(\App\Services\QuickCreate::class)->create('customers',$unauthorized,$actorId); $this->fail('A concessão da loja A não autoriza a loja B.'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403,$error->getStatusCode()); }
+        $this->assertFalse(\App\Models\Customer::where('name',$customerInput['name'])->exists());
+        $connect->connect($this->a);
+        $this->assertFalse(\App\Models\Customer::where('name',$unauthorized['name'])->exists());
+        $this->assertSame(User::ROLE_INSTALLER,$actor->fresh()->role);
+    }
+
     private function inviteInstaller(string $email): array
     {
         Mail::fake();

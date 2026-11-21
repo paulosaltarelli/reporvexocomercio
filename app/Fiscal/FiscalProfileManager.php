@@ -8,7 +8,6 @@ use App\Models\FiscalTaxProfileAudit;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -19,7 +18,7 @@ final class FiscalProfileManager
     public function authorize(Tenant $tenant, int $userId): void
     {
         abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403);
-        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
+        \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
     }
 
     public function save(Tenant $tenant, int $userId, array $data, ?int $id = null, ?int $expectedRevision = null): FiscalTaxProfile

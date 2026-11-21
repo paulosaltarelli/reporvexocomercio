@@ -16,8 +16,13 @@ class SellerController extends Controller
     {
         app(\App\Access\AccessProfiles::class)->authorize($request);
         $data=$request->validate(['edit'=>'nullable|integer|exists:tenant.sellers,id']);
+        $editing=isset($data['edit'])?Seller::findOrFail($data['edit']):null;
+        $users=User::orderBy('name')->get()->filter(function(User $user)use($editing){
+            if($user->getRawOriginal('role')!==User::ROLE_INSTALLER || (int)$editing?->user_id===$user->id)return true;
+            return \App\Services\InstallerAccess::applyGrant($user) && $user->role==='admin';
+        });
         return view('sellers',['rows'=>Seller::with('user')->orderBy('name')->paginate(20)->withQueryString(),
-            'editing'=>isset($data['edit'])?Seller::findOrFail($data['edit']):null,'users'=>User::where('role','<>',User::ROLE_INSTALLER)->orderBy('name')->get()]);
+            'editing'=>$editing,'users'=>$users]);
     }
 
     public function save(Request $request, string $company)
@@ -32,7 +37,13 @@ class SellerController extends Controller
         try {
             DB::connection('tenant')->transaction(function()use($id,$data){
                 $seller=$id?Seller::lockForUpdate()->findOrFail($id):new Seller;
-                if(!empty($data['user_id']))User::whereKey($data['user_id'])->where('role','<>',User::ROLE_INSTALLER)->sharedLock()->firstOrFail();
+                if(!empty($data['user_id'])){
+                    $linked=User::whereKey($data['user_id'])->sharedLock()->firstOrFail();
+                    $existingLink=$seller->exists && (int)$seller->user_id===$linked->id;
+                    if($linked->getRawOriginal('role')===User::ROLE_INSTALLER && !$existingLink){
+                        abort_unless(\App\Services\InstallerAccess::applyGrant($linked) && $linked->role==='admin',403);
+                    }
+                }
                 $seller->fill($data)->save();
             },3);
         } catch(UniqueConstraintViolationException $exception) {

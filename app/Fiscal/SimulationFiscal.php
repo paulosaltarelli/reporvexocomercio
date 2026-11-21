@@ -6,7 +6,6 @@ use App\Models\FiscalSimulation;
 use App\Models\FiscalSimulationEvent;
 use App\Models\Sale;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -174,7 +173,7 @@ final class SimulationFiscal
     private function context(Tenant $tenant, int $userId, ?string $key = null): void
     {
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) { abort(403); }
-        abort_unless((bool) User::whereKey($userId)->where('active', true)->first()?->allows('fiscal.manage'), 403);
+        \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
         if ($key !== null && ! Str::isUuid($key)) { $this->invalid('request_key', 'Chave da operação inválida.'); }
     }
 

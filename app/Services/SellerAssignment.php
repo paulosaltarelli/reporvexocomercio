@@ -99,6 +99,7 @@ class SellerAssignment
     {
         $actor = User::where('active', true)->sharedLock()->find($id);
         if (! $actor) throw ValidationException::withMessages(['salesperson_id' => 'O usuário responsável precisa estar ativo.']);
+        if ($actor->getRawOriginal('role') === User::ROLE_INSTALLER) abort_unless(InstallerAccess::applyGrant($actor),403);
 
         return $actor;
     }

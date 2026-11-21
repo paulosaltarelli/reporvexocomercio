@@ -27,7 +27,7 @@
     <h2>Equipe de vendas</h2>
     <div class="scroll"><table><thead><tr><th>Vendedor</th><th>Contato</th><th>Login vinculado</th><th>Situação</th><th></th></tr></thead><tbody>
     @forelse($rows as $seller)
-        @php($linkedUser=$seller->user_id?$users->firstWhere('id',$seller->user_id):null)
+        @php($linkedUser=$seller->user)
         <tr><td class="product-name"><strong>{{ $seller->name }}</strong></td><td class="product-name">{{ $seller->email??'—' }}@if($seller->phone)<small class="hint">{{ $seller->phone }}</small>@endif</td><td class="product-name">@if($linkedUser){{ $linkedUser->name }}<small class="hint">{{ $linkedUser->email }}{{ $linkedUser->active?'':' · login inativo' }}</small>@else<span class="muted">Sem login</span>@endif</td><td><span class="badge {{ $seller->active?'':'bad' }}">{{ $seller->active?'Ativo':'Inativo' }}</span></td><td><a href="{{ route('sellers',['company'=>$tenant->slug,'edit'=>$seller->id,'page'=>$rows->currentPage()]) }}">Editar</a></td></tr>
     @empty
         <tr><td colspan="5" class="empty">Nenhum vendedor cadastrado. Um perfil de vendedor pode existir sem criar usuário de acesso.</td></tr>

@@ -98,7 +98,7 @@ final class CommissionSettlements
     }
     public function authorize(int $actor,string $permission): void
     {
-        abort_unless(User::where('active',true)->find($actor)?->allows($permission),403);
+        InstallerAccess::authorizedActor($actor, $permission);
     }
     public function own(User $user): Seller
     {
