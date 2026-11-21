@@ -123,7 +123,9 @@ final class Supermarket
             if ($scan['label'] !== null) $line['weighted_label'] = $scan['label'];
             if ($key === false) $items[] = $line;
             else $items[$key] = $line;
-            return $this->saveItems($cart, $items, $userId, 'supermarket_item_add');
+            $updated = $this->saveItems($cart, $items, $userId, 'supermarket_item_add');
+            $updated->lastScannedLineKey = $line['line_key'];
+            return $updated;
         }, 3);
     }
 

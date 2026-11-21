@@ -65,8 +65,10 @@ final class SupermarketController extends Controller
     public function addItem(Request $request, string $company, int $cart, Supermarket $service)
     {
         $input = $request->validate(['version' => 'required|integer|min:0', 'code' => 'required|string|max:80', 'quantity' => 'required|string|max:24']);
-        $service->add($cart, $input['version'], $input['code'], $input['quantity'], $request->attributes->get('currentUser')->id);
-        return $this->back($request, $cart);
+        $updated = $service->add($cart, $input['version'], $input['code'], $input['quantity'], $request->attributes->get('currentUser')->id);
+        return $this->back($request, $cart)->with('last_supermarket_scan', [
+            'cart_id' => $updated->id, 'line_key' => $updated->lastScannedLineKey,
+        ]);
     }
 
     public function updateItem(Request $request, string $company, int $cart, string $line, Supermarket $service)

@@ -2,6 +2,7 @@
 @extends('layout')
 @section('title',$product->exists?'Editar produto ou serviço':'Novo produto ou serviço')
 @section('subtitle','Um único cadastro para produtos e serviços, com estoque apenas quando fizer sentido para a operação.')
+@push('styles')<link rel="stylesheet" href="/product-images.css?v={{ filemtime(public_path('product-images.css')) }}">@endpush
 @section('content')<form class="panel" method="post" action="{{ route('product.save',['company'=>$tenant->slug,'id'=>$product->id]) }}">
 @csrf
 @php($hasStockBalance=bccomp((string)($product->quantity??'0'),'0',3)>0)
@@ -72,6 +73,28 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
 <div class="field"><label for="unit-purpose">Usar em</label><select id="unit-purpose" name="purpose"><option value="both">Compras e vendas</option><option value="purchase">Compras</option><option value="sale">Vendas</option><option value="remove">Remover vínculo</option></select></div></div>
 <button class="primary">Salvar equivalência</button>
 <ul>@foreach(($operationConfig['unit_links'][$product->id]['units']??[]) as $code=>$link)<li>1 {{ $code }} = {{ rtrim(rtrim($link['factor'],'0'),'.') }} {{ $product->unit }} · {{ $link['sale'] && $link['purchase']?'Compras e vendas':($link['sale']?'Vendas':'Compras') }}</li>@endforeach</ul></form>
+@endif
+@if($product->exists)
+<section class="panel product-image-upload">
+<h2>Imagem do produto</h2>
+@php($productImages=app(\App\Services\ProductImages::class))
+<div class="product-image-settings">
+<div>
+@if($productImages->presentation($tenant->slug,$tenant->id,$product->id))
+@include('components.product-image')
+@else
+<div class="product-image-empty">Nenhuma imagem cadastrada</div>
+@endif
+</div>
+<form method="post" enctype="multipart/form-data" action="{{ route('product.image.save',['company'=>$tenant->slug,'id'=>$product->id]) }}">
+@csrf
+<div class="field"><label for="product-image">Escolher imagem</label><input id="product-image" type="file" name="product_image" accept="image/png,image/jpeg,image/webp" aria-describedby="product-image-help"><small class="hint" id="product-image-help">PNG, JPEG ou WebP, até 2 MB. Dimensões de 48 a 2048 pixels. Exibida no cardápio e na busca do caixa.</small></div>
+<label class="checkbox-line"><input type="checkbox" name="remove_product_image" value="1"> Remover a imagem atual</label>
+<p class="hint">Salve a imagem separadamente das alterações do cadastro.</p>
+<div class="actions"><button class="button secondary">Salvar imagem</button></div>
+</form>
+</div>
+</section>
 @endif
 @endsection
 @push('scripts')

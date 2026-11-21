@@ -3,9 +3,12 @@
 @section('navigation-section','Operação')
 @section('subtitle','Leia o código do produto, confira os itens e finalize o recebimento.')
 @section('content')
+@php
+    $productImages=app(\App\Services\ProductImages::class);
+@endphp
 @if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Ler código</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
 <div class="operation-toolbar">
-    <p class="hint">Código de barras ou SKU · até 200 lançamentos por venda</p>
+    <p class="hint operation-shortcuts">Código de barras ou SKU · até 200 lançamentos <span><kbd>F2</kbd> Ler código <kbd>F9</kbd> Receber</span></p>
     <form method="post" action="{{ route('supermarket.start',['company'=>$tenant->slug]) }}">
 @csrf
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
@@ -42,7 +45,7 @@
         <div class="field">
 <label for="supermarket-code">Código do produto <kbd>F2</kbd>
 </label>
-<input id="supermarket-code" name="code" required maxlength="100" value="{{ old('code') }}" data-operation-scanner autocomplete="off" autofocus>
+<input id="supermarket-code" name="code" required maxlength="80" value="{{ old('code') }}" data-operation-scanner autocomplete="off" autofocus>
 </div>
         <div class="field">
 <label for="supermarket-quantity">Quantidade</label>
@@ -50,6 +53,18 @@
 </div>
         <button class="button">Adicionar item</button>
     </form>
+    @php
+        $lastScan=session('last_supermarket_scan');
+        $scannedLine=is_array($lastScan) && (int)($lastScan['cart_id']??0)===(int)$cart->id
+            ? collect($cart->items??[])->firstWhere('line_key',$lastScan['line_key']??null) : null;
+    @endphp
+    @if($scannedLine)
+    <div class="operation-last-scan" role="status">
+        <small>Último item confirmado · quantidade acumulada na venda</small>
+        <div class="operation-line-top"><strong>{{ $scannedLine['description'] }}</strong><strong>R$ {{ number_format($scannedLine['total'],2,',','.') }}</strong></div>
+        <p>{{ number_format($scannedLine['quantity'],3,',','.') }} {{ $scannedLine['unit']??'' }} × R$ {{ number_format($scannedLine['unit_price'],2,',','.') }}</p>
+    </div>
+    @endif
     @if($operationConfig['weighed_labels']['enabled'] ?? false)<p class="hint">Etiquetas pesáveis habilitadas. Use quantidade 1 para ler o peso ou o valor da etiqueta.</p>@endif
     @endif
 </section>
@@ -72,7 +87,8 @@
 <input type="hidden" name="version" value="{{ $cart->version }}">
 <input type="hidden" name="quantity" value="1">
 <input type="hidden" name="code" value="{{ $product->barcode ?: $product->sku }}">
-<div>
+<div class="operation-product-image">@include('components.product-image')</div>
+<div class="operation-search-description">
 <strong>{{ $product->name }}</strong>
 <small>R$ {{ number_format($product->sale_price,2,',','.') }} · {{ $product->unit }}</small>
 </div>

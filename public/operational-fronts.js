@@ -45,6 +45,29 @@
         input.addEventListener('input', filter);
         category?.addEventListener('change', filter);
     });
+    document.querySelectorAll('[data-category-chips]').forEach(chips => {
+        const select = document.getElementById(chips.dataset.categoryChips);
+        if (!select) return;
+        chips.hidden = false;
+        // Keep the original select visible: it remains usable with keyboard and assistive technology.
+        chips.querySelectorAll('[data-category-value]').forEach(button => {
+            button.addEventListener('click', () => {
+                select.value = button.dataset.categoryValue;
+                select.dispatchEvent(new Event('change', {bubbles:true}));
+            });
+        });
+        const update = () => chips.querySelectorAll('[data-category-value]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.categoryValue === select.value)));
+        select.addEventListener('change', update);
+        update();
+    });
+    const updateElapsed = () => document.querySelectorAll('[data-operation-elapsed]').forEach(time => {
+        const timestamp = Date.parse(time.dataset.operationElapsed);
+        if (!Number.isFinite(timestamp)) return;
+        const minutes = Math.max(0, Math.floor((Date.now() - timestamp)/60000));
+        time.textContent = [time.dataset.elapsedPrefix || 'Há', minutes + ' min', time.dataset.elapsedSuffix || ''].filter(Boolean).join(' ');
+    });
+    updateElapsed();
+    if (document.querySelector('[data-operation-elapsed]')) setInterval(updateElapsed, 60000);
     const scanner = document.querySelector('[data-operation-scanner]');
     if (scanner && !document.getElementById('validation-errors')) {
         scanner.focus();

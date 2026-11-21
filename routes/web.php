@@ -146,6 +146,9 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('commissions', [CommissionController::class, 'index'])->name('commissions');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export/{kind}', [ReportController::class, 'csv'])->name('report.csv');
+        Route::get('catalog/product-images/sheets/{digest}', [\App\Http\Controllers\ProductImageController::class, 'sheet'])->where('digest', '[a-f0-9]{64}')->name('product.image.sheet');
+        Route::get('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'show'])->whereNumber('id')->name('product.image');
+        Route::post('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'save'])->whereNumber('id')->name('product.image.save');
         Route::get('products', [CommerceController::class, 'products'])->name('products');
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
         Route::get('measure-units', [\App\Http\Controllers\MeasureUnitController::class,'index'])->name('units');

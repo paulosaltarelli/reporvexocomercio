@@ -13,6 +13,7 @@
 </div>
 @endsection
 @section('content')
+@php($productImages=app(\App\Services\ProductImages::class))
 <div class="operation-compact-summary"><span>Comanda #{{ $order->id }} <strong>R$ {{ number_format($total,2,',','.') }}</strong></span><a class="button secondary" href="#order-summary">Ver comanda</a><a class="button secondary" href="#restaurant-catalog">Cardápio</a></div>
 <div class="operation-grid restaurant-order-grid">
 <div>
@@ -32,6 +33,10 @@
 @foreach($products->pluck('group.name')->filter()->unique()->sort() as $category)<option value="{{ $category }}">{{ $category }}</option>
 @endforeach
 </select>
+<div class="operation-category-chips" data-category-chips="restaurant-category" aria-label="Filtrar por categoria" hidden>
+<button type="button" class="operation-category-chip" data-category-value="" aria-pressed="true">Todas</button>
+@foreach($products->pluck('group.name')->filter()->unique()->sort() as $category)<button type="button" class="operation-category-chip" data-category-value="{{ $category }}" aria-pressed="false">{{ $category }}</button>@endforeach
+</div>
 </div>
     @endif
     @if($products->isEmpty())<div class="operation-empty">Nenhum produto ativo no cardápio. Cadastre os produtos para iniciar os pedidos.</div>
@@ -43,6 +48,7 @@
         <input type="hidden" name="version" value="{{ $order->version }}">
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
 <input type="hidden" name="product_id" value="{{ $product->id }}">
+        @include('components.product-image')
         @if($product->group?->name)<small class="hint">{{ $product->group->name }}</small>
 @endif
         <h3>{{ $product->name }}</h3>

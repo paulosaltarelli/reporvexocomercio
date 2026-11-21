@@ -68,6 +68,7 @@ final class Permissions
             'SupermarketController'=>match($action) {
                 'checkout','receipt'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
             },
+            'ProductImageController'=>match($action) { 'show','sheet'=>'account.self', 'save'=>'products.manage', default=>'denied' },
             'MeasureUnitController'=>'products.manage',
             'QuickCreateController'=>match($kind){'customers'=>'customers.manage','products','services'=>'products.manage',default=>'denied'},
             'CommerceController'=>match($action) {

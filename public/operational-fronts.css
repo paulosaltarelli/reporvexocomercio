@@ -752,3 +752,7 @@
 .operational-shell .operation-checkout .split-payments:not([data-operation-split-ready]) {
     display:none;
 }
+
+/* Category navigation follows the same filter as the accessible select. */
+.operation-category-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.operation-category-chips[hidden]{display:none}.operation-category-chip{border:1px solid #c8d7e7;background:#fff;border-radius:22px;padding:10px 16px;min-height:44px;color:#23405f;font:inherit;cursor:pointer}.operation-category-chip[aria-pressed="true"]{background:#173b65;border-color:#173b65;color:#fff}.operation-category-chip:focus-visible{outline:3px solid #76bded;outline-offset:2px}.operation-search-description{flex:1;min-width:0}.operation-ticket-time{font-weight:600;color:#254a6c;font-size:.9rem}.operation-shortcuts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.operation-shortcuts span{display:inline-flex;gap:7px;align-items:center;white-space:nowrap}.operation-last-scan{background:#f0f8f4;border:1px solid #c2dfce;border-radius:12px;padding:14px 16px;margin-top:16px}.operation-last-scan>small{display:block;color:#37654c;margin-bottom:5px}.operation-last-scan .operation-line-top{margin-bottom:5px}.operation-last-scan p{margin:0;color:#315843}
+@media(max-width:600px){.operation-category-chips{flex-wrap:nowrap;overflow-x:auto;padding:2px 2px 10px;margin-right:-4px}.operation-category-chip{white-space:nowrap;flex-shrink:0}.operation-shortcuts{font-size:.8rem;gap:7px}.operation-product-image+.operation-search-description{font-size:.88rem}}

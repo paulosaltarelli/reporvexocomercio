@@ -17,8 +17,10 @@
 @php($tableOrders=$orders->where('restaurant_table_id',$table->id))
 <article class="operation-card">
 <strong>{{ $table->name }}</strong>
-<span class="operation-badge {{ $tableOrders->isEmpty()?'ready':'' }}">{{ $tableOrders->isEmpty()?'Livre':$tableOrders->count().' comanda(s)' }}</span>
-@foreach($tableOrders as $tableOrder)<a href="{{ route('restaurant.orders.show',['company'=>$tenant->slug,'order'=>$tableOrder->id]) }}">Comanda #{{ $tableOrder->id }} · R$ {{ number_format($tableOrder->items->where('status','<>','cancelled')->reduce(fn($sum,$item)=>bcadd($sum,\App\Services\Decimal::round(bcmul($item->quantity,$item->unit_price,6),2),2),'0.00'),2,',','.') }}</a>
+<span class="operation-badge {{ $tableOrders->isEmpty()?'ready':'' }}">{{ $tableOrders->isEmpty()?'Livre':'Ocupada' }}</span>
+@foreach($tableOrders as $tableOrder)
+@if($tableOrder->created_at)<small class="hint"><time data-operation-elapsed="{{ $tableOrder->created_at->toIso8601String() }}" data-elapsed-prefix="Em atendimento há">Em atendimento há {{ max(0,(int)$tableOrder->created_at->diffInMinutes(now())) }} min</time></small>@endif
+<a href="{{ route('restaurant.orders.show',['company'=>$tenant->slug,'order'=>$tableOrder->id]) }}">Comanda #{{ $tableOrder->id }} · R$ {{ number_format($tableOrder->items->where('status','<>','cancelled')->reduce(fn($sum,$item)=>bcadd($sum,\App\Services\Decimal::round(bcmul($item->quantity,$item->unit_price,6),2),2),'0.00'),2,',','.') }}</a>
 @endforeach
 @if($tableOrders->isEmpty())<form method="post" action="{{ route('restaurant.orders.open',['company'=>$tenant->slug]) }}">
 @csrf

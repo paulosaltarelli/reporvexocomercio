@@ -36,6 +36,7 @@
     @if(filled($item->notes))<p class="operation-notes">{{ $item->notes }}</p>
 @endif
     <p class="hint">Comanda #{{ $item->order->id }} · Enviado {{ $item->sent_at?->format('d/m H:i') }}</p>
+    @if($item->sent_at)<p class="operation-ticket-time"><time data-operation-elapsed="{{ $item->sent_at->toIso8601String() }}" data-elapsed-prefix="Há" data-elapsed-suffix="desde o envio">Há {{ max(0,(int)$item->sent_at->diffInMinutes(now())) }} min desde o envio</time></p>@endif
     @if($status!=='ready')
     @php($nextStatus=['queued'=>'preparing','preparing'=>'ready','ready'=>'delivered'][$status])
     <form method="post" action="{{ route('restaurant.items.status',['company'=>$tenant->slug,'order'=>$item->order->id,'item'=>$item->id]) }}">
