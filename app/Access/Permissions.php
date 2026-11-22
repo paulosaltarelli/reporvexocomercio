@@ -74,6 +74,7 @@ final class Permissions
             },
             'ProductImageController'=>match($action) { 'show','sheet'=>'account.self', 'save'=>'products.manage', default=>'denied' },
             'ProductLabelController'=>'products.view',
+            'ProductImportController'=>'products.manage',
             'RestaurantActivityController'=>'account.self', // The endpoint checks kitchen or salon scope explicitly.
             'RestaurantCatalogController'=>'restaurant.catalog.manage',
             'RestaurantPaymentController'=>match($action){'refund'=>'restaurant.refund',default=>'restaurant.receive'},

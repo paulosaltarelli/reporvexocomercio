@@ -52,9 +52,9 @@ final class QuickCreate
                     if(!$stock||$type!=='product')throw ValidationException::withMessages(['initial_quantity'=>'Saldo inicial exige um produto com controle de estoque.']);
                     if(!isset($data['initial_cost']))throw ValidationException::withMessages(['initial_cost'=>'Informe o custo unitário do saldo inicial.']);
                 }
-                $sku=$data['sku']??null;$sku=$sku?:'CAD-'.strtoupper(substr(str_replace('-','',$key),0,20));
+                $sku=$data['sku']??null;$sku=filled($sku)?$sku:'CAD-'.strtoupper(substr(str_replace('-','',$key),0,20));
                 Validator::make(['sku'=>$sku,'barcode'=>$data['barcode']??null],['sku'=>[Rule::unique('tenant.products','sku')],'barcode'=>['nullable',Rule::unique('tenant.products','barcode')]])->validate();
-                $row=Product::create(['name'=>$data['name'],'sku'=>$sku,'barcode'=>($data['barcode']??null)?:null,'product_group_id'=>$data['product_group_id'],'unit'=>$data['unit'],'sale_price'=>$data['sale_price'],'type'=>$type,'controls_stock'=>$stock,'reference_cost'=>'0.0000','minimum_stock'=>'0.000','active'=>true]);
+                $row=Product::create(['name'=>$data['name'],'sku'=>$sku,'barcode'=>filled($data['barcode']??null)?$data['barcode']:null,'product_group_id'=>$data['product_group_id'],'unit'=>$data['unit'],'sale_price'=>$data['sale_price'],'type'=>$type,'controls_stock'=>$stock,'reference_cost'=>'0.0000','minimum_stock'=>'0.000','active'=>true]);
                 app(PricingService::class)->syncProduct($row->id,$actor,'product:quick-create',null);
                 if(bccomp($qty,'0',3)>0)app(Inventory::class)->move($row->id,'in',$qty,(string)$data['initial_cost'],'Saldo inicial cadastrado no atendimento',$actor,Uuid::uuid5(Uuid::NAMESPACE_URL,'vendra:quick-stock:'.$key)->toString());
                 $row->refresh();

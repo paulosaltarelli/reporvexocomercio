@@ -167,6 +167,12 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'show'])->whereNumber('id')->name('product.image');
         Route::post('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'save'])->whereNumber('id')->name('product.image.save');
         Route::get('products', [CommerceController::class, 'products'])->name('products');
+        Route::prefix('products/import')->name('product.')->controller(\App\Http\Controllers\ProductImportController::class)->group(function () {
+            Route::get('/', 'index')->name('import');
+            Route::get('template', 'template')->name('import.template');
+            Route::post('preview', 'preview')->name('import.preview');
+            Route::post('confirm', 'confirm')->name('import.confirm');
+        });
         Route::get('products/labels', [\App\Http\Controllers\ProductLabelController::class, 'index'])->name('product.labels');
         Route::get('products/labels/print', [\App\Http\Controllers\ProductLabelController::class, 'preview'])->name('product.labels.print');
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');

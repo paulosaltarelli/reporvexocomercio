@@ -1,0 +1,47 @@
+.product-import-panel { max-width: 56rem; }
+.product-import-panel input[type=file] { max-width: 100%; }
+.product-import-preview .actions form { margin: 0; }
+.product-import-counts {
+    display: flex;
+    gap: 1.25rem 3rem;
+    flex-wrap: wrap;
+    margin: 1.25rem 0;
+}
+.product-import-counts dt { color: var(--muted); font-size: .85rem; }
+.product-import-counts dd { margin: .2rem 0 0; font-size: 1.5rem; font-weight: 700; }
+.product-import-rows td { overflow-wrap: anywhere; }
+.product-import-rows td small { display: block; margin-top: .25rem; }
+.product-import-rows tr:target { outline: 2px solid var(--blue); outline-offset: -2px; }
+@media (max-width: 640px) {
+    .product-import-panel .section-heading { align-items: flex-start; flex-direction: column; gap: .75rem; }
+    .product-import-rows .scroll { overflow: visible; }
+    .product-import-rows table, .product-import-rows tbody { display: block; min-width: 0; }
+    .product-import-rows thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+    .product-import-rows tr {
+        display: block;
+        padding: .75rem 0;
+        border-top: 1px solid var(--line);
+    }
+    .product-import-rows td {
+        display: block;
+        padding: .3rem 0 .3rem 7rem;
+        position: relative;
+        text-align: start;
+        white-space: normal;
+        border: 0;
+    }
+    .product-import-rows td::before {
+        position: absolute;
+        inset-inline-start: 0;
+        width: 6.75rem;
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: .75rem;
+    }
+}

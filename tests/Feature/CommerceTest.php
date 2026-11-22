@@ -32,6 +32,7 @@ class CommerceTest extends TestCase
     use \Tests\Support\PublicCatalogCases;
     use \Tests\Support\StoreReviewCases;
     use \Tests\Support\ProductLabelCases;
+    use \Tests\Support\ProductCsvImportCases;
     use \Tests\Support\SupermarketSearchCases;
     use \Tests\Support\OperationalImageCases;
     use \Tests\Support\OperationalExpansionCases;

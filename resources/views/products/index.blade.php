@@ -3,6 +3,7 @@
 @section('subtitle','Um catálogo para os itens vendidos e os serviços prestados, com controle de estoque quando necessário.')
 @section('actions')
 <div class="actions" style="margin:0">
+@if($currentUser->allows('products.manage') && $operationConfig['catalog_mode'] !== 'services')<a class="button secondary" href="{{ route('product.import', ['company' => $tenant->slug]) }}">Importar produtos</a>@endif
 <a class="button secondary" href="{{ route('product.labels',['company'=>$tenant->slug]) }}">Etiquetas de gôndola</a>
 @if($currentUser->allows('prices.view'))<a class="button secondary" href="{{ route('prices',['company'=>$tenant->slug]) }}">Preços e alertas</a>@endif @if($currentUser->allows('products.manage'))<a class="button secondary" href="{{ route('units',['company'=>$tenant->slug]) }}">Unidades de medida</a><a class="button" href="{{ route('product.new',['company'=>$tenant->slug,'type'=>request('type')]) }}">+ Novo cadastro</a>@endif</div>
 @endsection
