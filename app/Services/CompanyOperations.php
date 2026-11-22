@@ -138,10 +138,15 @@ class CompanyOperations
             }
             unset($data['version']);
             $data=array_replace($defaults,$data);
-            if ($before===$data) return $row;
-            $configuration=array_replace($row->configuration,$data);
-            $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
-            $this->audit($row,$actor,'configuration',$before,$data);
+            if ($before !== $data || !isset($row->configuration['segment'])) {
+                $configuration = array_replace($row->configuration, $data);
+                $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
+                $this->audit($row, $actor, 'configuration', $before, $data);
+            }
+            $tenantId = (int) config('tenancy.resolved_tenant_id');
+            DB::connection('tenant')->afterCommit(function () use ($tenantId, $row) {
+                app(\App\Platform\CompanySegment::class)->sync($tenantId, $row);
+            });
             return $row;
         },3);
     }

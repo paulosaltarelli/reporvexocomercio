@@ -70,3 +70,7 @@ a.central-record{display:inline-block;white-space:normal;font-weight:650}
     outline: 2px solid var(--blue);
     outline-offset: 2px;
 }
+
+.central-directory .company-segment-heading th{padding:.6rem 1.4rem;background:#eef3f9;color:#233b56;text-align:left;font-weight:650;text-transform:none;letter-spacing:normal}
+.company-segment-heading .central-count{margin-left:.45rem;font-size:.75rem}
+@media(max-width:650px){.central-directory .company-segment-heading{display:block;padding:0}.central-directory .company-segment-heading th{display:block;padding:.65rem 1rem}}

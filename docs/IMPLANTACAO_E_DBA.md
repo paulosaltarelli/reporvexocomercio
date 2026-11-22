@@ -35,3 +35,10 @@ A Central usa e-mail e senha por padrão. A variável de implantação `PLATFORM
 Para exigir o segundo fator em toda a Central, cadastre primeiro o autenticador dos administradores que precisam acessar o painel. Em terminal administrativo privado, execute `php artisan platform:mfa email-do-administrador` para cada titular. Entregue os códigos individuais de recuperação por um canal privado. Com os cadastros confirmados, defina `PLATFORM_MFA_REQUIRED=true` e atualize o cache de configuração da aplicação. A ativação exige novo login das sessões que entraram somente com senha.
 
 Com MFA habilitado, o login exige TOTP de seis dígitos ou um código de recuperação de uso único. Suporte DBA e gestão de convites pedem nova confirmação cinco minutos após a última verificação. Para substituir um autenticador perdido, confirme a identidade do titular e use `php artisan platform:mfa email-do-administrador --replace`. A substituição invalida as sessões e os códigos antigos. Desativar a exigência global preserva os fatores e códigos cadastrados.
+
+
+## Segmento das lojas na Central
+
+Em **Empresas**, a lista agrupa lojas pelo segmento de operação e permite combinar segmento, situação e busca por nome. Cada contagem considera também as outras páginas do filtro. Solicitações já vinculadas a uma loja exibem seu segmento atual. As demais aparecem em **Segmento a definir**.
+
+O wizard atualiza o índice central ao salvar a operação. Para a primeira publicação, aplique a migração central `2026_11_22_000001_index_company_operation_segments` e execute `php artisan platform:sync-company-segments` para carregar os cadastros de lojas ativas que já existem. O comando pode ser repetido para uma loja com `--company=slug`. A listagem da Central consulta o índice no banco central.

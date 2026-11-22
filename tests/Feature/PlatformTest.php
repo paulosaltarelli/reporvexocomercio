@@ -168,6 +168,49 @@ class PlatformTest extends TestCase
         $this->get('/vexo-admin/companies/'.$this->company->id.'/support')->assertStatus(405);
     }
 
+    public function test_central_directory_groups_and_paginates_companies_using_only_central_data(): void
+    {
+        $unassigned = $this->company;
+        $fixtures = [];
+        for ($i = 1; $i <= 24; $i++) {
+            $fixtures[$i] = Tenant::create([
+                'name' => sprintf('Mercado %02d', $i), 'slug' => 'mercado-'.$i, 'active' => $i !== 22,
+                'db_name' => 'vendra_t_segment_fixture_'.$i, 'db_username' => 'unavailable', 'db_password' => 'QA',
+                'operation_segment' => $i === 23 ? 'restaurant' : 'supermarket',
+            ]);
+        }
+        $fixtures[24]->update(['name' => 'Outro nome', 'slug' => 'outro-24']);
+        foreach ([$fixtures[1], $fixtures[23], null] as $i => $linkedCompany) {
+            \App\Platform\ProvisionRequest::create([
+                'request_key' => (string) Str::uuid(), 'requested_by' => $this->admin->id, 'status' => $linkedCompany ? 'completed' : 'pending',
+                'name' => 'Pedido #'.$i, 'slug' => 'pedido-'.$i, 'admin_name' => 'Equipe', 'admin_email' => 'equipe@example.test',
+                'payload_sha256' => str_repeat('a', 64), 'tenant_id' => $linkedCompany?->id,
+            ]);
+        }
+
+        $this->centralSession();
+        $connections = [];
+        DB::listen(function (\Illuminate\Database\Events\QueryExecuted $query) use (&$connections): void {
+            $connections[$query->connectionName] = true;
+        });
+        $page = $this->get('/vexo-admin?segment=supermarket&status=active&q=Mercado')->assertOk()
+            ->assertSee('Mercado 01')->assertDontSee('Mercado 21')->assertDontSee('Mercado 22')
+            ->assertDontSee('Mercado 23')->assertDontSee('Outro nome')
+            ->assertSee('Pedido #0')->assertDontSee('Pedido #1')->assertDontSee('Pedido #2');
+        $companies = $page->viewData('companies');
+        $this->assertSame(21, $companies->total());
+        $this->assertEquals(21, $page->viewData('segmentCounts')['supermarket']);
+        $this->assertArrayNotHasKey('db_password', $companies->first()->getAttributes());
+        $second = $this->get($companies->nextPageUrl())->assertOk()->assertSee('Mercado 21')->assertDontSee('Mercado 01');
+        $this->assertSame($fixtures[21]->id, $second->viewData('companies')->sole()->id);
+
+        $this->get('/vexo-admin?segment=unassigned')->assertOk()->assertSee($unassigned->name)
+            ->assertSee('Pedido #2')->assertDontSee('Pedido #1')->assertDontSee('Mercado 01');
+        $this->getJson('/vexo-admin?segment=inventado')->assertUnprocessable()->assertJsonValidationErrors('segment');
+        $this->assertArrayHasKey('central', $connections);
+        $this->assertArrayNotHasKey('tenant', $connections);
+    }
+
     public function test_company_hosts_isolate_slug_and_central_routes_and_keep_legacy_hosts(): void
     {
         config(['tenancy.company_domain' => 'vendra.test', 'tenancy.legacy_hosts' => 'painel.vendra.test,127.0.0.1']);
