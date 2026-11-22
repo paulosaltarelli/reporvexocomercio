@@ -28,6 +28,32 @@ class TaxProfileTest extends TestCase
         app(TaxProfile::class)->fields($rule, '100.00', '3');
     }
 
+    public function test_2027_preview_profile_records_its_period_and_never_builds_legacy_tax_fields(): void
+    {
+        $rule = array_replace(FiscalFixtures::rule(), [
+            'tax_model' => TaxProfile::REGULAR_RESALE_2027,
+            'valid_from' => '2027-02-01', 'icms_code' => '00', 'icms_rate' => '18',
+            'ibs_uf_rate' => '0.05', 'ibs_municipal_rate' => '0.05', 'cbs_rate' => '8',
+        ]);
+        $tax = app(TaxProfile::class);
+        $parameters = $tax->validate($rule);
+        $this->assertSame('2027-12-31', $parameters['valid_until']);
+        $this->assertArrayNotHasKey('pis_code', $parameters);
+        $this->assertArrayNotHasKey('cofins_code', $parameters);
+
+        foreach (['valid_from' => '2026-12-31', 'valid_until' => '2027-01-31', 'ibs_uf_rate' => '0.1', 'cbs_rate' => ''] as $field => $invalid) {
+            try {
+                $tax->validate(array_replace($rule, [$field => $invalid]));
+                $this->fail('Parâmetro de revenda inválido aceito: '.$field);
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey($field, $e->errors());
+            }
+        }
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('prévia de cálculo');
+        $tax->fields($parameters, '100.00', '3');
+    }
+
     public function test_regime_mismatch_is_rejected(): void
     {
         $this->expectException(ValidationException::class);

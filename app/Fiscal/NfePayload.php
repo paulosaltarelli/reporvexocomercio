@@ -59,6 +59,7 @@ final class NfePayload
         $items = [];
         $rules = [];
         $commercialLines = [];
+        $issuedAt = now($c['timezone']);
         $goods = '0.00';
         $goodsGross = '0.00';
         $goodsDiscount = '0.00';
@@ -76,7 +77,7 @@ final class NfePayload
                 $fail('Venda antiga sem classificação fiscal congelada. Faça revisão assistida antes de emitir.');
             }
             $product = Product::findOrFail($line->product_id);
-            $rule = app(FiscalRuleResolver::class)->resolve($product);
+            $rule = app(FiscalRuleResolver::class)->resolve($product, referenceDate: $issuedAt);
             if (! $rule || ! ($rule['available'] ?? false) || empty($rule['accountant_reference'])) {
                 $fail('Produto '.$product->name.': '.app(FiscalRuleResolver::class)->explain($rule));
             }
@@ -112,7 +113,7 @@ final class NfePayload
         }
         $payment = app(NfcePayload::class)->paymentEvidence($sale, $operation);
         $payload = [
-            'cnpj_emitente' => $issuer->document, 'data_emissao' => now()->setTimezone($c['timezone'])->toIso8601String(),
+            'cnpj_emitente' => $issuer->document, 'data_emissao' => $issuedAt->toIso8601String(),
             'presenca_comprador' => '1', 'modalidade_frete' => '9', 'local_destino' => '1',
             'natureza_operacao' => $c['natureza_operacao'], 'indicador_inscricao_estadual_destinatario' => '9', 'items' => $items,
             'formas_pagamento' => WorkOrderFiscalSplit::goodsPayments($payment, $split, $operation['goods_payments'] ?? []),

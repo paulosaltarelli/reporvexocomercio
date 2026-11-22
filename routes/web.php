@@ -93,6 +93,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
             Route::post('fiscal/nfe/documents/{id}/cancel', [NfeEmissionController::class, 'cancel'])->whereNumber('id')->name('nfe.cancel');
             Route::get('fiscal/nfe/documents/{id}/files/{kind}', [NfeEmissionController::class, 'download'])->whereNumber('id')->name('nfe.download');
 
+            Route::match(['get', 'post'], 'fiscal/products/{id}/previa-2027', [FiscalProfileController::class, 'reformPreview'])->whereNumber('id')->name('fiscal.profiles.reform-preview');
             Route::get('fiscal/profiles', [FiscalProfileController::class, 'index'])->name('fiscal.profiles.index');
             Route::get('fiscal/profiles/create', [FiscalProfileController::class, 'create'])->name('fiscal.profiles.create');
             Route::post('fiscal/profiles', [FiscalProfileController::class, 'store'])->name('fiscal.profiles.store');

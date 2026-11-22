@@ -10,6 +10,9 @@
         <p>Emitida em {{ \Carbon\Carbon::parse($invoice['issued_on'])->format('d/m/Y') }} por {{ $invoice['supplier_name'] }} {{ $invoice['supplier_document'] }}.</p>
         @if($invoice['access_key'])<p style="overflow-wrap:anywhere">Chave NF-e {{ $invoice['access_key'] }}</p>@endif
         <p>Mercadorias R$ {{ number_format($invoice['gross'],2,',','.') }} · Valor de aquisição R$ {{ number_format($invoice['totals']['acquisition'],2,',','.') }} · Créditos R$ {{ number_format($invoice['totals']['credit'],2,',','.') }} · Despesas do período R$ {{ number_format($invoice['totals']['expense'],2,',','.') }}</p>
+        @if(!empty($invoice['reform_totals']))
+            <p>Tributos destacados na nota · @foreach($invoice['reform_totals'] as $code=>$amount){{ \App\Services\PurchaseInvoice::REFORM_TAXES[$code] }} R$ {{ number_format($amount,2,',','.') }}{{ $loop->last ? '' : ' · ' }}@endforeach</p>
+        @endif
         @php($fiscalLines=collect($invoice['lines'])->keyBy('item_id'))
     @endif
     <div class="scroll"><table><thead><tr><th>Produto</th><th class="num">Quantidade</th><th class="num">Valor unitário (R$)</th><th class="num">Total (R$)</th></tr></thead><tbody>
@@ -24,8 +27,11 @@
                         <div>{{ $name }} R$ {{ number_format($line[$key],2,',','.') }} (rateado R$ {{ number_format($line['allocated'][$key],2,',','.') }})</div>
                     @endif
                 @endforeach
+                @foreach(['cst'=>'CST IBS/CBS','classification'=>'Classificação IBS/CBS','is_cst'=>'CST IS','is_classification'=>'Classificação IS'] as $field=>$label)
+                    @if(isset($line['rtc_codes'][$field]))<span>{{ $label }} {{ $line['rtc_codes'][$field] }} </span>@endif
+                @endforeach
                 @foreach($line['taxes'] as $code=>$tax)
-                    <div>{{ \App\Services\PurchaseInvoice::TAXES[$code] }} R$ {{ number_format($tax['amount'],2,',','.') }} · {{ $tax['composition']==='added'?'Acrescido':'Incluído' }} · {{ \App\Services\PurchaseInvoice::TREATMENTS[$tax['treatment']] }}</div>
+                    <div>{{ \App\Services\PurchaseInvoice::TAXES[$code] }} R$ {{ number_format($tax['amount'],2,',','.') }} · @if($tax['composition']==='reported')Destaque informativo @else{{ $tax['composition']==='added'?'Acrescido':'Incluído' }} · {{ \App\Services\PurchaseInvoice::TREATMENTS[$tax['treatment']] }}@endif</div>
                 @endforeach
             </td></tr>
         @endif

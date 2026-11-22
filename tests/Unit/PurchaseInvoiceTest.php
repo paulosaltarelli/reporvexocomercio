@@ -36,6 +36,81 @@ final class PurchaseInvoiceTest extends TestCase
             <total><ICMSTot><vNF>129.00</vNF></ICMSTot></total></infNFe></NFe>';
     }
 
+    private function xmlWithReform(string $total): string
+    {
+        $group = '<IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib><gIBSCBS><gIBSUF><vIBSUF>0.06</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.06</vIBSMun></gIBSMun><vIBS>0.12</vIBS><gCBS><vCBS>4.00</vCBS></gCBS></gIBSCBS></IBSCBS>';
+        $totals = '<IBSCBSTot><gIBS><gIBSUF><vIBSUF>0.06</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.06</vIBSMun></gIBSMun><vIBS>0.12</vIBS></gIBS><gCBS><vCBS>4.00</vCBS></gCBS></IBSCBSTot>';
+        return str_replace(['</imposto></det>', '</total>'], [
+            '<IS><vIS>2.00</vIS></IS>'.$group.'</imposto><vItem>'.$total.'</vItem></det>',
+            '<ISTot><vIS>2.00</vIS></ISTot>'.$totals.'<vNFTot>'.$total.'</vNFTot></total>',
+        ], $this->invoiceXml());
+    }
+
+    public function test_reform_tax_disclosure_with_no_change_to_the_supplier_total_is_informational(): void
+    {
+        $preview = PurchaseInvoiceXml::preview($this->xmlWithReform('129.00'), '11444777000161');
+        $items = $preview['items'];
+        $items[0]['taxes']['ipi']['treatment'] = 'cost';
+        $items[0]['taxes']['icms']['treatment'] = 'cost';
+        $invoice = PurchaseInvoice::calculate($items, $preview['invoice']);
+        $this->assertSame('000001', $invoice['lines'][0]['rtc_codes']['classification']);
+        $this->assertSame('reported', $invoice['lines'][0]['taxes']['cbs']['composition']);
+        $this->assertSame(['ibs_state'=>'0.06','ibs_city'=>'0.06','cbs'=>'4.00','is'=>'2.00'], $invoice['reform_totals']);
+        $this->assertSame(['payable'=>'129.00','acquisition'=>'129.00','credit'=>'0.00','expense'=>'0.00'], $invoice['totals']);
+        $this->expectException(ValidationException::class);
+        $items[0]['taxes']['cbs']['treatment'] = 'credit';
+        PurchaseInvoice::calculate($items, $preview['invoice']);
+    }
+
+    public function test_reform_tax_added_to_the_document_total_is_recorded_once_with_explicit_treatment(): void
+    {
+        $xml = str_replace(['35261111222333000181550010000000181123456781','2026-11-01'],
+            ['35270111222333000181550010000000181123456780','2027-01-01'], $this->xmlWithReform('135.12'));
+        $preview = PurchaseInvoiceXml::preview($xml, '11444777000161');
+        $this->assertSame('135.12', $preview['invoice']['declared_total']);
+        $this->assertSame(['amount'=>'4.00', 'composition'=>'added'], $preview['items'][0]['taxes']['cbs']);
+        foreach ($preview['items'][0]['taxes'] as $code=>&$tax) {
+            $tax['treatment'] = $code === 'cbs' ? 'credit' : 'cost';
+        }
+        unset($tax);
+        $invoice = PurchaseInvoice::calculate($preview['items'], $preview['invoice']);
+        $this->assertSame(['payable'=>'135.12','acquisition'=>'131.12','credit'=>'4.00','expense'=>'0.00'], $invoice['totals']);
+    }
+
+    public function test_positive_reform_taxes_without_a_distinct_supplier_total_in_2027_require_manual_review(): void
+    {
+        $xml = str_replace(['35261111222333000181550010000000181123456781','2026-11-01'],
+            ['35270111222333000181550010000000181123456780','2027-01-01'], $this->xmlWithReform('129.00'));
+        foreach ([$xml, str_replace('<vNFTot>129.00</vNFTot>', '', $xml)] as $case) {
+            try {
+                PurchaseInvoiceXml::preview($case, '11444777000161');
+                $this->fail('A entrada de 2027 precisa identificar a cobrança dos tributos.');
+            } catch (ValidationException $exception) {
+                $this->assertStringContainsString('Confira a composição da entrada manualmente', $exception->errors()['invoice_xml'][0]);
+            }
+        }
+    }
+
+    public function test_reform_mismatch_in_item_aggregate_or_note_total_requires_manual_review(): void
+    {
+        $xml = $this->xmlWithReform('135.12');
+        $cases = [
+            str_replace('<vIBS>0.12', '<vIBS>0.13', $xml),
+            str_replace('<gCBS><vCBS>4.00</vCBS></gCBS></IBSCBSTot>', '<gCBS><vCBS>4.02</vCBS></gCBS></IBSCBSTot>', $xml),
+            str_replace('<vNFTot>135.12', '<vNFTot>137.00', $xml),
+            str_replace('<vItem>135.12', '<vItem>131.00', $xml),
+            str_replace('</IBSCBS>', '<gIBSCBSMono/></IBSCBS>', $xml),
+        ];
+        foreach ($cases as $case) {
+            try {
+                PurchaseInvoiceXml::preview($case, '11444777000161');
+                $this->fail('Divergência fiscal aceita.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('invoice_xml', $exception->errors());
+            }
+        }
+    }
+
     public function test_xml_preview_matches_supplier_item_components_and_destination(): void
     {
         $xml = $this->invoiceXml();

@@ -9,21 +9,31 @@ use Illuminate\Validation\ValidationException;
 
 final class PurchaseInvoice
 {
-    public const TAXES = ['icms' => 'ICMS destacado', 'icms_st' => 'ICMS-ST', 'ipi' => 'IPI', 'pis' => 'PIS', 'cofins' => 'COFINS'];
+    public const REFORM_TAXES = [
+        'ibs_state' => 'IBS estadual', 'ibs_city' => 'IBS municipal',
+        'cbs' => 'CBS', 'is' => 'Imposto Seletivo',
+    ];
+
+    public const TAXES = [...self::REFORM_TAXES, 'icms' => 'ICMS destacado', 'icms_st' => 'ICMS-ST', 'ipi' => 'IPI', 'pis' => 'PIS', 'cofins' => 'COFINS'];
 
     public const CHARGES = ['freight' => 'Frete', 'insurance' => 'Seguro', 'expenses' => 'Outras despesas', 'discount' => 'Desconto'];
 
     public const TREATMENTS = ['cost' => 'Custo de aquisição', 'credit' => 'Crédito recuperável', 'expense' => 'Despesa do período'];
 
+    public static function enabled(): bool
+    {
+        return (config('fiscal.purchase_invoices_enabled') ?? config('fiscal.product_invoices_enabled', false)) === true;
+    }
+
     public static function guardProductInvoiceInputs(array $input): void
     {
-        if (config('fiscal.product_invoices_enabled', false)) return;
+        if (self::enabled()) return;
         $fields = ['invoice', 'invoice_xml', 'source_issuer'];
         if (array_intersect($fields, array_keys($input))) {
             throw ValidationException::withMessages(['invoice' => 'Registre a compra com os campos comerciais disponíveis.']);
         }
         foreach ((array)($input['items'] ?? []) as $item) {
-            if (is_array($item) && array_intersect(['fiscal_detail','taxes','adjustments','source_name','source_code','source_unit'],array_keys($item))) {
+            if (is_array($item) && array_intersect(['fiscal_detail','taxes','adjustments','source_name','source_code','source_unit','rtc_codes'],array_keys($item))) {
                 throw ValidationException::withMessages(['items' => 'Use os campos de produto, quantidade e custo da compra.']);
             }
         }
@@ -46,7 +56,12 @@ final class PurchaseInvoice
             'items.*.taxes' => 'nullable|array:'.implode(',', array_keys(self::TAXES)),
             'items.*.taxes.*' => 'array:amount,composition,treatment',
             'items.*.taxes.*.amount' => $money,
-            'items.*.taxes.*.composition' => 'nullable|in:included,added',
+            'items.*.rtc_codes' => 'nullable|array:cst,classification,is_cst,is_classification',
+            'items.*.rtc_codes.cst' => 'sometimes|required|digits:3',
+            'items.*.rtc_codes.classification' => 'sometimes|required|digits:6',
+            'items.*.rtc_codes.is_cst' => 'sometimes|required|digits:3',
+            'items.*.rtc_codes.is_classification' => 'sometimes|required|digits:6',
+            'items.*.taxes.*.composition' => 'nullable|in:included,added,reported',
             'items.*.taxes.*.treatment' => 'nullable|in:cost,credit,expense',
         ];
     }
@@ -144,6 +159,7 @@ final class PurchaseInvoice
         $cumulative = '0.00';
         $allocated = array_fill_keys(array_keys($charges), '0.00');
         $totals = array_fill_keys(['payable', 'acquisition', 'credit', 'expense'], '0.00');
+        $reformTotals = [];
         foreach ($lines as $index => &$line) {
             $cumulative = bcadd($cumulative, $line['gross'], 2);
             $payable = $line['gross'];
@@ -163,15 +179,24 @@ final class PurchaseInvoice
                 throw ValidationException::withMessages(['items.'.$index.'.adjustments.discount' => 'O desconto total do item excede seu valor bruto.']);
             }
             $line['taxes'] = [];
+            if (!empty($items[$index]['rtc_codes'])) $line['rtc_codes'] = $items[$index]['rtc_codes'];
             $line['credit'] = $line['expense'] = '0.00';
             foreach (self::TAXES as $code => $label) {
                 $tax = $items[$index]['taxes'][$code] ?? [];
                 $amount = Decimal::input((string) ($tax['amount'] ?? '0'), 2, 'items.'.$index.'.taxes.'.$code);
-                if (bccomp($amount, '0', 2) === 0) {
-                    continue;
-                }
+                $reform = isset(self::REFORM_TAXES[$code]);
+                $zero = bccomp($amount, '0', 2) === 0;
+                if ($zero && (!$reform || !filled($tax['amount'] ?? null))) continue;
+                if ($reform) $reformTotals[$code] = bcadd($reformTotals[$code] ?? '0', $amount, 2);
                 $composition = $tax['composition'] ?? null;
                 $treatment = $tax['treatment'] ?? null;
+                if ($reform && ($composition === 'reported' || $zero)) {
+                    if ($composition === 'reported' && $treatment !== null) {
+                        throw ValidationException::withMessages(['items.'.$index.'.taxes.'.$code => 'O destaque informativo de '.$label.' não admite apropriação como crédito, custo ou despesa.']);
+                    }
+                    $line['taxes'][$code] = ['amount' => $amount, 'composition' => 'reported', 'treatment' => null];
+                    continue;
+                }
                 if (! in_array($composition, ['included', 'added'], true) || ! isset(self::TREATMENTS[$treatment])) {
                     throw ValidationException::withMessages(['items.'.$index.'.taxes.'.$code => 'Informe composição e tratamento de '.$label.'.']);
                 }
@@ -195,6 +220,6 @@ final class PurchaseInvoice
             throw ValidationException::withMessages(['invoice.declared_total' => 'O valor a pagar calculado (R$ '.$totals['payable'].') difere do total informado da nota.']);
         }
 
-        return ['gross' => $gross, 'charges' => $charges, 'declared_total' => $declared, 'totals' => $totals, 'lines' => $lines];
+        return ['gross' => $gross, 'charges' => $charges, 'declared_total' => $declared, 'totals' => $totals, 'lines' => $lines, 'reform_totals' => $reformTotals];
     }
 }

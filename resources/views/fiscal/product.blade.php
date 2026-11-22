@@ -2,6 +2,7 @@
 @section('title','Regra fiscal · '.e($product->name))
 @section('subtitle','Escolha um perfil compartilhado ou mantenha uma exceção individual para este produto.')
 @section('content')
+<div class="actions"><a class="button secondary" href="{{ route('fiscal.profiles.reform-preview', ['company' => $tenant->slug, 'id' => $product->id]) }}">Simular revenda em 2027</a></div>
 @if(mb_strlen($product->unit) > 6)
 <section class="panel"><h2>Sigla da unidade fiscal</h2>
 <form method="post" action="{{ route('fiscal.product.unit',['company'=>$tenant->slug,'id'=>$product->id]) }}">@csrf
@@ -12,7 +13,7 @@
 <button class="primary">Salvar sigla fiscal</button></form></section>
 @endif
 <section class="panel"><h2>Regra em uso</h2><p><strong>{{ ['individual'=>'Exceção individual','product_profile'=>'Perfil do produto','group_profile'=>'Perfil do grupo'][$effectiveRule['source']??'']??'Sem regra definida' }}</strong></p>
-@if(!($effectiveRule['available']??false))<div class="notice">A regra não está disponível para emissão. Confira o vínculo, a atividade do perfil e a identidade fiscal deste produto.</div>@endif
+@if(!($effectiveRule['available']??false))<div class="notice">{{ app(\App\Fiscal\FiscalRuleResolver::class)->explain($effectiveRule) }}</div>@endif
 @if(!empty($effectiveRule['profile_id']))<p>Perfil: {{ $fiscalProfiles->firstWhere('id',$effectiveRule['profile_id'])?->name??'Perfil vinculado' }} · revisão {{ $effectiveRule['profile_revision']??'—' }}</p>@endif
 <p>A prioridade é exceção individual, perfil do produto e perfil do grupo. Mudanças valem para futuras conferências e emissões; dados históricos não são reescritos.</p></section>
 <section class="panel"><h2>Perfil e identidade fiscal do produto</h2><form method="post" action="{{ route('fiscal.products.profile',['company'=>$tenant->slug,'id'=>$product->id]) }}">@csrf<input type="hidden" name="expected_hash" value="{{ $bindingHash }}"><input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}">

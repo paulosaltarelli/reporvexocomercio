@@ -3,7 +3,7 @@
 @section('subtitle','Confira os produtos recebidos. A confirmação registra a entrada e recalcula o custo médio.')
 @section('content')
 @php
-    $productInvoices = config('fiscal.product_invoices_enabled', false);
+    $productInvoices = \App\Services\PurchaseInvoice::enabled();
     $previousItems = collect(old('items', []))
         ->filter(fn ($item) => is_array($item))
         ->map(fn ($item) => $productInvoices ? $item : \Illuminate\Support\Arr::only(
@@ -100,7 +100,7 @@
             @foreach(\App\Services\PurchaseInvoice::TAXES as $key => $label)
                 <fieldset data-tax="{{ $key }}"><legend>{{ $label }}</legend><div class="form-grid">
                     <div class="field"><label>Valor (R$)</label><input type="number" min="0" step=".01" data-part="amount"></div>
-                    <div class="field"><label>Composição da nota</label><select data-part="composition"><option value="">Selecione</option><option value="included">Já incluído no preço</option><option value="added">Somar ao total</option></select></div>
+                    <div class="field"><label>Composição da nota</label><select data-part="composition"><option value="">Selecione</option><option value="included">Já incluído no preço</option>@if(isset(\App\Services\PurchaseInvoice::REFORM_TAXES[$key]))<option value="reported">Apenas destacado, sem efeito no custo ou no financeiro</option>@endif<option value="added">Somar ao total</option></select></div>
                     <div class="field"><label>Tratamento</label><select data-part="treatment"><option value="">Selecione</option>@foreach(\App\Services\PurchaseInvoice::TREATMENTS as $value => $name)<option value="{{ $value }}">{{ $name }}</option>@endforeach</select></div>
                 </div></fieldset>
             @endforeach
@@ -150,6 +150,20 @@
                 hidden.type='hidden';hidden.name=`items[${current}][${key}]`;hidden.value=data[key] ?? '';row.append(hidden);
             });
         }
+        if (data?.rtc_codes) {
+            const labels = {cst:'CST IBS/CBS', classification:'Classificação IBS/CBS', is_cst:'CST IS', is_classification:'Classificação IS'};
+            const codes = document.createElement('p');
+            codes.className='hint';
+            row.querySelector('details').insertBefore(codes,row.querySelector('details .form-grid'));
+            const descriptions=[];
+            for (const [key,label] of Object.entries(labels)) {
+                if (!data.rtc_codes[key]) continue;
+                descriptions.push(label+' '+data.rtc_codes[key]);
+                const input = document.createElement('input');
+                input.type='hidden';input.name=`items[${current}][rtc_codes][${key}]`;input.value=data.rtc_codes[key];row.append(input);
+            }
+            codes.textContent=descriptions.join(' · ');
+        }
         row.addEventListener('input',updateTotal);
         row.querySelectorAll('[data-adjustment]').forEach(input=>{
             const key=input.dataset.adjustment;
@@ -163,6 +177,14 @@
                 input.name=`items[${current}][taxes][${code}][${part}]`;
                 input.value=data?.taxes?.[code]?.[part] ?? '';
             });
+            const composition=tax.querySelector('[data-part="composition"]');
+            const treatment=tax.querySelector('[data-part="treatment"]');
+            const updateTreatment=()=>{
+                treatment.disabled=composition.value==='reported';
+                if(treatment.disabled) treatment.value='';
+            };
+            composition.addEventListener('change',updateTreatment);
+            updateTreatment();
         });
         if (data && (Object.values(data.adjustments || {}).some(Number) || Object.values(data.taxes || {}).some(t=>Number(t.amount)))) row.querySelector('details').open=true;
         @endif

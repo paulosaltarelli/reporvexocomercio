@@ -1130,6 +1130,36 @@ class FiscalTest extends TestCase
         Http::assertNothingSent();
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('productDocumentModels')]
+    public function test_rule_validity_blocks_new_document_before_number_reservation(int $model): void
+    {
+        if ($model === 55) {
+            $this->configuredNfe55();
+            $queue = app(\App\Fiscal\QueueNfe::class);
+        } else {
+            $this->configuredFiscal();
+            $queue = app(QueueNfce::class);
+        }
+        $rule = FiscalItemRule::where('product_id', $this->product->id)->firstOrFail();
+        $rule->update(['parameters' => $rule->parameters + ['valid_until' => now()->subDay()->toDateString()]]);
+        $sequence = DB::connection('tenant')->table('fiscal_sequences')->where('model', $model);
+        $next = $sequence->value('next_number');
+        try {
+            $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+            $this->fail('A nova emissão utilizou uma regra expirada.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('vigência', $e->errors()['fiscal'][0]);
+        }
+        $this->assertSame($next, $sequence->value('next_number'));
+        $this->assertSame(0, FiscalDocument::count());
+        $this->assertSame(0, DB::connection('tenant')->table('fiscal_outbox')->count());
+    }
+
+    public static function productDocumentModels(): array
+    {
+        return ['NF-e' => [55], 'NFC-e' => [65]];
+    }
+
     public function test_tax_profiles_precedence_inheritance_and_inactive_bindings_fail_closed(): void
     {
         $this->forbidSimulationTransport();
@@ -1613,4 +1643,77 @@ class FiscalTest extends TestCase
         $this->assertStringContainsString('commercial_sale_cancelled', $doc->fresh()->operator_message);
         Http::assertNothingSent();
     }
+
+    public function test_regular_resale_preview_uses_2027_product_rule_on_reference_date_and_preserves_operational_data(): void
+    {
+        $this->forbidSimulationTransport();
+        $this->login();
+        BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'Loja de teste', 'tax_regime' => 'presumido']);
+        $product = $this->fiscalProfileProduct('RTC-2027');
+        $rule = FiscalItemRule::create([
+            'product_id' => $product->id,
+            'parameters' => [
+                'tax_model' => \App\Fiscal\TaxProfile::REGULAR_RESALE_2027, 'valid_from' => '2027-01-01', 'valid_until' => '2027-06-30',
+                'cfop' => '5102', 'icms_code' => '00', 'icms_rate' => '18.00', 'gtin' => 'SEM GTIN',
+                'rtc_mode' => 'standard', 'rtc_cst' => '000', 'rtc_class' => '000001',
+                'ibs_uf_rate' => '0.05', 'ibs_municipal_rate' => '0.05', 'cbs_rate' => '8.35',
+            ],
+            'accountant_reference' => 'Alíquotas sintéticas para o teste',
+            'validated_by' => $this->user->id,
+        ]);
+        $before = $this->simulationProtectedFacts();
+        $url = '/app/a/fiscal/products/'.$product->id.'/previa-2027';
+        $input = ['reference_date' => '2027-06-30', 'item_amount' => '1000.00', 'icms_base' => '1000.00', 'confirm_scope' => '1'];
+        $this->get($url)->assertOk()->assertSee('Simular um item');
+        $response = $this->post($url, $input + ['cbs_rate' => '99', 'pis_valor' => '10'])->assertOk();
+        $preview = $response->viewData('result');
+        $this->assertSame('820.00', $preview['base']);
+        $this->assertSame('0.41', $preview['tax']['ibs_uf_rate']['value']);
+        $this->assertSame('0.41', $preview['tax']['ibs_municipal_rate']['value']);
+        $this->assertSame('68.47', $preview['tax']['cbs_rate']['value']);
+        $this->assertSame('1069.29', $preview['total']);
+        $response->assertSee('1.069,29');
+        $withTaxes = $this->post($url, array_replace($input, ['icms_base' => '1068.24']))->assertOk()->viewData('result');
+        $this->assertSame('1068.24', $withTaxes['icms_base']);
+        $this->assertSame('192.28', $withTaxes['icms_amount']);
+        $this->assertSame('807.72', $withTaxes['base']);
+        $this->assertSame('1068.24', $withTaxes['total']);
+        $rounded = $this->post($url, array_replace($input, ['item_amount' => '12.20', 'icms_base' => '12.20']))->assertOk()->viewData('result');
+        $this->assertSame('0.01', $rounded['tax']['ibs_uf_rate']['value']);
+        $this->assertSame('0.01', $rounded['tax']['ibs_municipal_rate']['value']);
+        $this->assertSame('0.84', $rounded['tax']['cbs_rate']['value']);
+        $this->assertSame('13.06', $rounded['total']);
+        $this->from($url)->post($url, array_replace($input, ['icms_base' => '999.99']))->assertSessionHasErrors('icms_base');
+        $this->from($url)->post($url, array_replace($input, ['icms_base' => '0.00']))->assertSessionHasErrors('icms_base');
+        $this->from($url)->post($url, array_replace($input, ['icms_base' => '2000.00']))->assertSessionHasErrors('icms_base');
+        $this->from($url)->post($url, $input + ['profile_id' => 99999999])->assertSessionHasErrors('profile_id');
+        $this->from($url)->post($url, array_replace($input, ['icms_base' => '10000.00']))->assertSessionHasErrors('icms_base');
+        $this->from($url)->post($url, array_replace($input, ['reference_date' => '2027-07-01']))->assertSessionHasErrors('profile');
+        $this->from($url)->post($url, array_replace($input, ['reference_date' => '2026-12-31']))->assertSessionHasErrors('reference_date');
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertSame($before, $this->simulationProtectedFacts());
+        BusinessProfile::whereKey(1)->update(['tax_regime' => 'simples']);
+        $this->from($url)->post($url, $input)->assertSessionHasErrors('profile');
+        app(TenantConnection::class)->connect($this->tenant);
+        BusinessProfile::whereKey(1)->update(['tax_regime' => 'real']);
+        $rule->update(['parameters' => FiscalFixtures::rule()]);
+        $this->from($url)->post($url, $input)->assertSessionHasErrors('profile');
+        app(TenantConnection::class)->connect($this->tenant);
+        $candidate = $this->sharedFiscalProfileData('Perfil de planejamento');
+        $candidate['parameters'] = [
+            'tax_model' => \App\Fiscal\TaxProfile::REGULAR_RESALE_2027, 'valid_from' => '2027-01-01', 'valid_until' => '2027-12-31',
+            'cfop' => '5102', 'icms_code' => '00', 'icms_rate' => '18.00',
+            'rtc_mode' => 'standard', 'rtc_cst' => '000', 'rtc_class' => '000001',
+            'ibs_uf_rate' => '0.05', 'ibs_municipal_rate' => '0.05', 'cbs_rate' => '8.35',
+        ];
+        $planned = app(\App\Fiscal\FiscalProfileManager::class)->save($this->tenant, $this->user->id, $candidate);
+        $this->post($url, $input + ['profile_id' => $planned->id])->assertOk()->assertSee('Perfil de planejamento');
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertNull($product->fresh()->fiscal_tax_profile_id);
+        $this->assertSame('0.9', $rule->fresh()->parameters['cbs_rate']);
+        $this->user->update(['role' => 'operator']);
+        $this->post($url, $input)->assertForbidden();
+        Http::assertNothingSent();
+    }
+
 }
