@@ -115,6 +115,7 @@ trait OperationalSegmentCases
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
         $this->getJson('/app/a/supermarket/lookup?code=7891234567890')->assertOk()->assertJsonPath('id', $this->product->id);
         $request = ['request_key' => (string) \Illuminate\Support\Str::uuid()];
+        $this->openTestSupermarketShift($this->user->id);
         $this->post('/app/a/supermarket/carts', $request)->assertRedirect()->assertSessionHasNoErrors();
         $this->post('/app/a/supermarket/carts', $request)->assertRedirect()->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
@@ -187,6 +188,7 @@ trait OperationalSegmentCases
         ]), $this->user->id);
         $this->move('in', '10', '50');
         $service = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $service->start((string) \Illuminate\Support\Str::uuid(), $this->user->id);
         $cart = $service->add($cart->id, $cart->version, $this->product->sku, '1', $this->user->id);
         try {
@@ -260,6 +262,7 @@ trait OperationalSegmentCases
             'inventory' => false, 'operation_modes' => ['commerce', 'supermarket'], 'default_operation' => 'supermarket',
         ]), $this->user->id);
         $service = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $service->start((string) \Illuminate\Support\Str::uuid(), $this->user->id);
         for ($index = 1; $index <= 201; $index++) {
             $product = \App\Models\Product::create(['name' => 'Produto '.$index, 'sku' => 'SEG-'.$index,
@@ -299,6 +302,7 @@ trait OperationalSegmentCases
         $this->get('/app/a/supermarket')->assertOk();
         app(TenantConnection::class)->connect($this->a);
         $market = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($dba->id);
         $cart = $market->start((string) \Illuminate\Support\Str::uuid(), $dba->id);
         $cart = $market->add($cart->id, $cart->version, $this->product->sku, '1', $dba->id);
         $payment = ['payment_method' => 'invoice', 'paid' => false, 'installments' => 1,

@@ -75,7 +75,7 @@ final class Permissions
             'RestaurantCatalogController'=>'restaurant.catalog.manage',
             'RestaurantPaymentController'=>match($action){'refund'=>'restaurant.refund',default=>'restaurant.receive'},
             'SupermarketApprovalController'=>match($action){'index','decide'=>'supermarket.supervise',default=>'supermarket.use'},
-            'SupermarketDraftController'=>'supermarket.use',
+            'SupermarketDraftController','SupermarketShiftController'=>'supermarket.use',
             'SupermarketHardwareController'=>'supermarket.supervise',
             'DeliveryController'=>in_array($action,['index','show'],true)?'delivery.view':'delivery.manage',
             'DeviceController'=>'administration',

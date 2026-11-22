@@ -24,6 +24,7 @@ trait SupermarketControlCases
         $cashier = $this->operationalUserForPreset('supermarket_cashier');
         $market = app(Supermarket::class);
         $approvals = app(SupermarketApprovals::class);
+        $this->openTestSupermarketShift($cashier->id);
         $cart = $market->start((string) Str::uuid(), $cashier->id);
         $cart = $market->add($cart->id, $cart->version, $this->product->sku, '2', $cashier->id);
         $line = $cart->items[0]['line_key'];
@@ -91,6 +92,7 @@ trait SupermarketControlCases
         $cashier = $this->operationalUserForPreset('supermarket_cashier');
         $market = app(Supermarket::class);
         $approvals = app(SupermarketApprovals::class);
+        $this->openTestSupermarketShift($cashier->id);
         $cart = $market->start((string) Str::uuid(), $cashier->id);
         $cart = $market->add($cart->id, $cart->version, $this->product->sku, '3', $cashier->id);
         foreach (['reduce', 'remove', 'cancel'] as $action) {
@@ -146,6 +148,7 @@ trait SupermarketControlCases
         $cashier = $this->operationalUserForPreset('supermarket_cashier');
         $market = app(Supermarket::class);
         $drafts = app(SupermarketDrafts::class);
+        $this->openTestSupermarketShift($cashier->id);
         $cart = $market->start((string) Str::uuid(), $cashier->id);
         $line = ['request_key' => (string) Str::uuid(), 'code' => $this->product->sku, 'quantity' => '2'];
         $input = ['request_key' => (string) Str::uuid(), 'version' => $cart->version, 'items' => [$line]];

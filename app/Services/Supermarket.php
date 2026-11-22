@@ -6,6 +6,7 @@ use App\Models\OperationRecord;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SupermarketCart;
+use App\Models\SupermarketShift;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -76,10 +77,13 @@ final class Supermarket
                 abort_unless($existing->user_id === $userId, 404);
                 return $existing;
             }
+            $shifts = app(SupermarketShifts::class);
+            $shift = $shifts->requireOpen($userId);
             if (SupermarketCart::where('user_id', $userId)->where('status', 'active')->exists()) {
                 throw ValidationException::withMessages(['cart' => 'Conclua ou suspenda a venda aberta antes de iniciar outra.']);
             }
             $cart = SupermarketCart::create(['request_key' => $requestKey, 'user_id' => $userId, 'items' => []]);
+            $shifts->bind($cart, $shift);
             $this->record('supermarket_cart_open', $cart, $userId);
             return $cart;
         }, 3);
@@ -91,11 +95,13 @@ final class Supermarket
         return ($lock ? $query->lockForUpdate() : $query)->firstOrFail();
     }
 
-    private function editable(SupermarketCart $cart, int $version): void
+    private function editable(SupermarketCart $cart, int $version): SupermarketShift
     {
+        $shift = app(SupermarketShifts::class)->forCart($cart);
         if ($cart->version !== $version || $cart->status !== 'active') {
             throw ValidationException::withMessages(['version' => 'A venda mudou ou está suspensa. Atualize a tela para continuar.']);
         }
+        return $shift;
     }
 
     /** A name starts a choice list. Exact codes and numeric scale labels still add immediately. */
@@ -207,6 +213,8 @@ final class Supermarket
             $this->actor($userId, $status === 'cancelled' ? 'supermarket.cancel' : 'supermarket.use');
             if ($status === 'cancelled') $this->reason($reason);
             $cart = $this->owned($cartId, $userId, true);
+            $shifts = app(SupermarketShifts::class);
+            $shift = $shifts->forCart($cart);
             $allowed = ($status === 'active' && $cart->status === 'suspended')
                 || ($status === 'suspended' && $cart->status === 'active')
                 || ($status === 'cancelled' && in_array($cart->status, ['active', 'suspended'], true));
@@ -215,6 +223,9 @@ final class Supermarket
             }
             if ($status === 'active' && SupermarketCart::where('user_id', $userId)->where('status', 'active')->whereKeyNot($cart->id)->exists()) {
                 throw ValidationException::withMessages(['cart' => 'Suspenda a venda atual antes de retomar outra.']);
+            }
+            if ($status === 'active') {
+                $shifts->bind($cart, $shift);
             }
             $cart->update(['status' => $status, 'version' => $cart->version + 1, 'cancellation_reason' => $status === 'cancelled' ? $reason : null]);
             $this->record('supermarket_cart_'.$status, $cart, $userId, $reason);
@@ -227,7 +238,7 @@ final class Supermarket
         return DB::connection('tenant')->transaction(function () use ($cartId, $version, $payment, $userId) {
             $this->actor($userId, 'supermarket.checkout');
             $cart = $this->owned($cartId, $userId, true);
-            if ($cart->status !== 'completed') $this->editable($cart, $version);
+            $shift = $cart->status === 'completed' ? null : $this->editable($cart, $version);
             if (!$cart->items) throw ValidationException::withMessages(['items' => 'Adicione produtos antes de concluir a venda.']);
             $products = $cart->status === 'completed' ? collect() : Product::whereIn('id', array_column($cart->items, 'product_id'))
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -250,7 +261,8 @@ final class Supermarket
             $data['items'] = $lines;
             $data['notes'] = 'Caixa supermercado #'.$cart->id;
             $sale = app(Checkout::class)->complete($data, $userId);
-            if (!$cart->sale_id) {
+            if ($shift) {
+                app(SupermarketShifts::class)->recordSale($shift, $sale);
                 $cart->update(['sale_id' => $sale->id, 'customer_id' => $sale->customer_id, 'status' => 'completed', 'version' => $cart->version + 1]);
                 $this->record('supermarket_cart_complete', $cart, $userId);
             }

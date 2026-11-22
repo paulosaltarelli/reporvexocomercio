@@ -110,6 +110,10 @@ class CompanyOperations
                 throw ValidationException::withMessages(['operation_modes'=>'Feche ou cancele as comandas abertas antes de desabilitar o restaurante.']);
             }
             if (in_array('supermarket', $disabledModes, true)
+                && DB::connection('tenant')->table('supermarket_shifts')->where('open_slot', true)->lockForUpdate()->first(['id'])) {
+                throw ValidationException::withMessages(['operation_modes'=>'Encerre os turnos de caixa antes de desabilitar o supermercado.']);
+            }
+            if (in_array('supermarket', $disabledModes, true)
                 && DB::connection('tenant')->table('supermarket_carts')->whereIn('status',['active','suspended'])->lockForUpdate()->first(['id'])) {
                 throw ValidationException::withMessages(['operation_modes'=>'Conclua ou cancele os carrinhos ativos e suspensos antes de desabilitar o supermercado.']);
             }

@@ -6,7 +6,7 @@
  function renderTotal(form){
   const base=BigInt(form.dataset.cartNet||form.dataset.paymentTotal||'0');let passed=0n,active=false;
   for(const box of form.querySelectorAll('.card-fee-fields'))if(!box.hidden&&box.dataset.passed){passed+=BigInt(box.dataset.passed);active=true;}
-  const grand=form.querySelector('#pos-net-total');
+  const grand=form.querySelector('[data-payment-grand-total], #pos-net-total');
   if(grand)grand.textContent=Vendra.centsText(base+passed);
   const display=form.querySelector('.card-sale-total');if(display){display.hidden=!active;display.textContent='Total a cobrar: '+Vendra.centsText(base+passed)+' · acréscimo repassado: '+Vendra.centsText(passed);}
  }

@@ -1,0 +1,26 @@
+.supermarket-suggestions {
+    max-height: min(18rem, 40vh);
+    overflow-y: auto;
+    list-style: none;
+    padding: 0;
+    margin: .5rem 0 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+.supermarket-suggestions [role="option"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .2rem 1rem;
+    padding: .6rem .9rem;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    color: var(--navy);
+}
+.supermarket-suggestions [role="option"] + [role="option"] { border-top: 1px solid var(--line); }
+.supermarket-suggestions [role="option"]:hover { background: #f2f6fc; }
+.supermarket-suggestions [aria-selected="true"] {
+    background: #e8f1ff;
+    box-shadow: inset 4px 0 #165de8;
+}
+.supermarket-suggestions small { grid-column: 1 / -1; }
+.supermarket-suggestions .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }

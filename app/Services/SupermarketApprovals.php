@@ -33,6 +33,7 @@ final class SupermarketApprovals
                 if (!hash_equals($existing->payload_hash, $hash)) $this->invalid('A identificação já pertence a outra solicitação.');
                 return $existing;
             }
+            app(SupermarketShifts::class)->forCart($cart);
             $this->cartState($cart, (int) $data['version'], $data['action']);
             $this->changedItems($cart, $data['action'], $payload);
             if ($data['action'] !== 'cancel') {
@@ -129,6 +130,7 @@ final class SupermarketApprovals
             $cart = $this->market->owned($cartId, $userId, true);
             $approval = SupermarketApproval::whereKey($approvalId)->where('cart_id', $cartId)->where('requested_by', $userId)->lockForUpdate()->firstOrFail();
             if ($approval->status === 'used') return $cart;
+            app(SupermarketShifts::class)->forCart($cart);
             if ($approval->status !== 'approved' || $approval->expires_at->isPast()) $this->invalid('A autorização não está aprovada ou expirou.');
             $supervisor = User::whereKey($approval->decided_by)->where('active', true)->first();
             if ($supervisor && $supervisor->getRawOriginal('role') === User::ROLE_INSTALLER) InstallerAccess::applyGrant($supervisor);

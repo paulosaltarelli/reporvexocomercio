@@ -311,6 +311,7 @@ trait RestaurantCatalogCases
         app(Checkout::class)->cancel($sale->id, $this->user->id);
         $this->assertSame('5.000', $ingredient->fresh()->quantity);
         $market = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $market->start((string) Str::uuid(), $this->user->id);
         $cart = $market->add($cart->id, $cart->version, $this->product->sku, '2', $this->user->id);
         $payment = ['payment_method' => 'invoice', 'paid' => false, 'due_date' => today()->addDay()->toDateString()];

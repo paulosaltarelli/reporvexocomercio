@@ -6,8 +6,11 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Seller;
 use App\Models\SupermarketCart;
+use App\Models\SupermarketShift;
 use App\Services\CompanyOperations;
 use App\Services\Supermarket;
+use App\Services\SupermarketShifts;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 final class SupermarketController extends Controller
@@ -26,24 +29,55 @@ final class SupermarketController extends Controller
     {
         $actor = $request->attributes->get('currentUser');
         $service->actor($actor->id);
+        $shifts = app(SupermarketShifts::class);
+        $shift = $shifts->current($actor->id);
+        if (!$shift) {
+            $cart = $cartId ? $service->owned($cartId, $actor->id) : null;
+            $lastShift = SupermarketShift::where('user_id', $actor->id)->whereNotNull('closed_at')
+                ->orderByDesc('closed_at')->orderByDesc('id')->first();
+
+            return view('supermarket.index', compact('shift', 'cart', 'lastShift'));
+        }
         $cart = $cartId ? $service->owned($cartId, $actor->id)
             : SupermarketCart::where('user_id', $actor->id)->where('status', 'active')->first();
         $own = Seller::where('user_id', $actor->id)->first();
         $searchInput = $request->validate(['q' => 'nullable|string|max:100', 'search_quantity' => 'nullable|string|max:24']);
         $search = trim($searchInput['q'] ?? '');
         $searchQuantity = \App\Services\Decimal::input($searchInput['search_quantity'] ?? '1', 3, 'search_quantity', '0.001', '999999999.999');
-        $products = $search === '' ? collect() : Product::where('active', true)->where('type', 'product')
-            ->where(function ($query) use ($search) {
-                $query->where('name', 'like', '%'.addcslashes($search, '\\%_').'%')
-                    ->orWhere('sku', $search)->orWhere('barcode', $search);
-            })->orderBy('name')->limit(30)->get();
+        $products = $search === '' ? collect() : $this->matchingProducts($search)->limit(30)->get();
         return view('supermarket.index', [
+            'shift' => $shift, 'expectedBalance' => $shifts->expected($shift),
             'cart' => $cart, 'carts' => SupermarketCart::where('user_id', $actor->id)->whereIn('status', ['active', 'suspended'])->latest()->get(),
             'products' => $products, 'searchQuantity' => $searchQuantity, 'customers' => Customer::orderBy('name')->get(),
             'approvals'=>$cart ? \App\Models\SupermarketApproval::where('cart_id',$cart->id)->where('requested_by',$actor->id)->latest()->limit(20)->get() : collect(),
             'sellers' => Seller::where('active', true)->orderBy('name')->get(), 'currentSalesperson' => $own,
             'selectedSalespersonId' => $own?->id, 'operationConfig' => app(CompanyOperations::class)->current(),
         ]);
+    }
+
+    private function matchingProducts(string $term): Builder
+    {
+        $literal = addcslashes($term, '\\%_');
+        return Product::where('active', true)->where('type', 'product')
+            ->where(function ($query) use ($term, $literal) {
+                $query->where('name', 'like', '%'.$literal.'%')->orWhere('sku', $term)->orWhere('barcode', $term);
+            })
+            ->orderByRaw('CASE WHEN sku = ? OR barcode = ? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END', [$term, $term, $literal.'%'])
+            ->orderBy('name')->orderBy('id');
+    }
+
+    public function products(Request $request, string $company, int $cart, Supermarket $service)
+    {
+        $userId = $request->attributes->get('currentUser')->id;
+        $service->actor($userId);
+        abort_unless($service->owned($cart, $userId)->status === 'active', 409);
+        $input = $request->validate(['q' => 'required|string|min:2|max:80']);
+        $products = $this->matchingProducts($input['q'])->select(['name', 'sku', 'barcode', 'unit', 'sale_price'])
+            ->selectRaw('CASE WHEN sku = ? OR barcode = ? THEN 1 ELSE 0 END AS exact_code', [$input['q'], $input['q']])
+            ->limit(13)->get();
+
+        return response()->json(['products' => $products->take(12)->values(), 'more' => $products->count() > 12])
+            ->header('Cache-Control', 'private, no-store');
     }
 
     public function lookup(Request $request, Supermarket $service)

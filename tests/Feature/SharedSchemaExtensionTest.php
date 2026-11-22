@@ -123,6 +123,33 @@ final class SharedSchemaExtensionTest extends TestCase
                 $this->assertSame('42000', $error->getCode());
             }
             $b->exec("INSERT INTO restaurant_modifier_groups(product_id,name) VALUES ({$products[1]},'Acompanhamentos')");
+            $shiftIds = [];
+            $cartIds = [];
+            foreach ([$a, $b] as $runtime) {
+                $runtime->exec("INSERT INTO users(name,email,password) VALUES ('Operador','turno@example.invalid','test')");
+                $operator = (int)$runtime->lastInsertId();
+                $runtime->exec("INSERT INTO supermarket_shifts(user_id,terminal_number,open_slot,open_request_key,opened_at,opening_balance,received_by_method)
+                    VALUES ($operator,1,1,'00000000-0000-4000-8000-000000000001',NOW(),0,JSON_OBJECT())");
+                $shiftIds[] = (int)$runtime->lastInsertId();
+                $runtime->exec("INSERT INTO supermarket_carts(user_id,request_key,items)
+                    VALUES ($operator,'00000000-0000-4000-8000-000000000002',JSON_ARRAY())");
+                $cartIds[] = (int)$runtime->lastInsertId();
+                $this->assertSame(1, (int)$runtime->query('SELECT COUNT(*) FROM supermarket_shifts')->fetchColumn());
+            }
+            try {
+                $a->exec("INSERT INTO supermarket_shift_carts(cart_id,shift_id) VALUES ({$cartIds[0]},{$shiftIds[1]})");
+                $this->fail('Um turno de outra loja não pode receber a venda.');
+            } catch (\PDOException $error) {
+                $this->assertSame('23000', $error->getCode());
+            }
+            $a->exec("INSERT INTO supermarket_shift_carts(cart_id,shift_id) VALUES ({$cartIds[0]},{$shiftIds[0]})");
+            $this->assertSame(0, (int)$b->query('SELECT COUNT(*) FROM supermarket_shift_carts')->fetchColumn());
+            try {
+                $a->query('SELECT COUNT(*) FROM _p_supermarket_shifts');
+                $this->fail('O operador SQL não deve ler a tabela física de turnos.');
+            } catch (\PDOException $error) {
+                $this->assertSame('42000', $error->getCode());
+            }
             foreach ([1, 2, 3] as $tenantId) $builder->assertTenantIntegrity($target, $tenantId, $next);
             foreach ([$a, $b] as $runtime) {
                 $this->assertSame(SharedSchemaBuilder::manifestHash($next), $runtime->query('SELECT schema_hash FROM __vendra_identity')->fetchColumn());
@@ -135,6 +162,8 @@ final class SharedSchemaExtensionTest extends TestCase
             }
             $builder->assertExistingSchema($target, $next);
             foreach ([$a, $b] as $runtime) {
+                $runtime->exec('DELETE FROM supermarket_shift_carts');
+                $runtime->exec('DELETE FROM supermarket_shifts');
                 $runtime->exec('DELETE FROM restaurant_modifier_groups');
                 $runtime->exec('DELETE FROM delivery_integrations');
             }

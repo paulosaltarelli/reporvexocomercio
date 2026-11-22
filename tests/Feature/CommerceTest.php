@@ -26,6 +26,7 @@ class CommerceTest extends TestCase
     use \Tests\Support\RestaurantPaymentCases;
     use \Tests\Support\RestaurantCatalogCases;
     use \Tests\Support\SupermarketControlCases;
+    use \Tests\Support\SupermarketShiftCases;
     use \Tests\Support\DeliveryIntegrationCases;
     use \Tests\Support\StoreReviewCases;
     use \Tests\Support\SupermarketSearchCases;

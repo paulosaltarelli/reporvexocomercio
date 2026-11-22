@@ -77,6 +77,7 @@ trait OperationalRoleCases
         ]), $this->user->id);
         $cashier = $this->operationalUserForPreset('supermarket_cashier');
         $this->post('/app/a/login', ['email' => $cashier->email, 'password' => 'test-password-123'])->assertRedirect('/app/a/supermarket');
+        $this->openTestSupermarketShift($cashier->id);
         $this->post('/app/a/supermarket/carts', ['request_key' => (string) \Illuminate\Support\Str::uuid()])->assertRedirect()->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $cart = \App\Models\SupermarketCart::firstOrFail();

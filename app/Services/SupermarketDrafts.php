@@ -84,6 +84,7 @@ final class SupermarketDrafts
 
     private function editable(SupermarketCart $cart, int $version): void
     {
+        app(SupermarketShifts::class)->forCart($cart);
         if ($cart->status !== 'active' || $cart->version !== $version) {
             throw ValidationException::withMessages(['version' => 'O atendimento mudou. Confira a venda online antes de importar o rascunho.']);
         }

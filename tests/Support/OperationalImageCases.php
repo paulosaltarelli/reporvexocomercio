@@ -243,6 +243,7 @@ trait OperationalImageCases
 
         app(TenantConnection::class)->connect($this->a);
         $market = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($cashier->id);
         $cart = $market->start((string) \Illuminate\Support\Str::uuid(), $cashier->id);
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $cashier->id, 'auth_version' => 0]);
         $base = '/app/a/supermarket/carts/'.$cart->id;

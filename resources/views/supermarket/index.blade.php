@@ -1,18 +1,21 @@
 @extends('operations.layout')
 @section('title','Caixa do supermercado')
 @section('navigation-section','Operação')
-@section('subtitle','Leia um código ou busque pelo nome do produto para montar a venda.')
+@section('subtitle', $shift ? 'Leia um código ou busque pelo nome do produto para montar a venda.' : 'Informe o caixa e o fundo de troco para começar seu turno.')
 @section('content')
+@include('supermarket.shift')
+@if($shift)
 @php
     $productImages=app(\App\Services\ProductImages::class);
+    $canCheckout=$cart && $cart->status==='active' && !empty($cart->items) && $currentUser->allows('supermarket.checkout');
 @endphp
-@if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Buscar produto</a><a class="button secondary" href="#market-payment">Receber</a></div>@endif
+@if($cart && $cart->status==='active')<div class="operation-compact-summary"><span>Venda #{{ $cart->id }} <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong></span><a class="button secondary" href="#supermarket-code">Buscar produto</a>@if($canCheckout)<a class="button secondary" href="#market-payment" data-market-checkout-open>Receber</a>@endif</div>@endif
 <div class="operation-toolbar">
-    <p class="hint operation-shortcuts">Código, SKU ou nome · até 200 lançamentos <span><kbd>F2</kbd> Buscar produto <kbd>F9</kbd> Receber</span></p>
+    <p class="hint operation-shortcuts">Código, SKU ou nome · até 200 lançamentos <span><kbd>F2</kbd> Produto <kbd>F3</kbd> Quantidade <kbd>F8</kbd> Suspender ou retomar <kbd>F9</kbd> Receber</span></p>
     <form method="post" action="{{ route('supermarket.start',['company'=>$tenant->slug]) }}">
 @csrf
 <input type="hidden" name="request_key" value="{{ \Illuminate\Support\Str::uuid() }}">
-<button class="button secondary" @disabled($carts->contains('status','active'))>Nova venda</button>
+<button class="button secondary" id="supermarket-new-sale" aria-keyshortcuts="F4" @disabled($carts->contains('status','active'))>Nova venda <kbd>F4</kbd></button>
 </form>
 </div>
 @if($carts->where('status','suspended')->isNotEmpty())
@@ -36,10 +39,10 @@
         <form method="post" action="{{ route('supermarket.resume',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">
-<button class="button">Retomar venda</button>
+<button class="button" id="supermarket-cart-transition" aria-keyshortcuts="F8">Retomar venda</button>
 </form>
     @elseif($cart->status==='active')
-    <form class="operation-scanner" method="post" action="{{ route('supermarket.items.add',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
+    <form class="operation-scanner" method="post" action="{{ route('supermarket.items.add',['company'=>$tenant->slug,'cart'=>$cart->id]) }}" data-suggestions-url="{{ route('supermarket.products',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
 @csrf
         <input type="hidden" name="version" value="{{ $cart->version }}">
         <div class="field">
@@ -49,11 +52,15 @@
 </div>
         <div class="field">
 <label for="supermarket-quantity">Quantidade</label>
-<input id="supermarket-quantity" name="quantity" type="number" min="0.001" max="999999" step="0.001" required value="{{ old('quantity',request('search_quantity','1')) }}" inputmode="decimal">
+<input id="supermarket-quantity" aria-keyshortcuts="F3" name="quantity" type="number" min="0.001" max="999999" step="0.001" required value="{{ old('quantity',request('search_quantity','1')) }}" inputmode="decimal">
 </div>
         <button class="button">Buscar ou adicionar</button>
     </form>
     <p class="hint" id="supermarket-search-help">Código exato adiciona direto. Pelo nome, escolha o produto nos resultados abaixo.</p>
+    <div id="supermarket-suggestion-status" class="hint" role="status" aria-live="polite"></div>
+    <ul id="supermarket-suggestions" class="supermarket-suggestions" aria-label="Produtos encontrados" role="listbox" hidden></ul>
+    @push('styles')<link rel="stylesheet" href="/supermarket-search.css?v={{ filemtime(public_path('supermarket-search.css')) }}">@endpush
+    @push('scripts')<script src="/supermarket-search.js?v={{ filemtime(public_path('supermarket-search.js')) }}" defer></script>@endpush
     @php
         $lastScan=session('last_supermarket_scan');
         $scannedLine=is_array($lastScan) && (int)($lastScan['cart_id']??0)===(int)$cart->id
@@ -147,32 +154,15 @@
     @endif
 </section>
 </div>
-<div class="operation-summary" id="market-payment">
+<div class="operation-summary">
     <div class="operation-total">
 <span>Total da venda</span>
 <strong>R$ {{ number_format($cart->total,2,',','.') }}</strong>
 <small>{{ count($cart->items ?? []) }} {{ count($cart->items ?? [])===1?'item':'itens' }}</small>
+@if($canCheckout)
+<a class="button market-checkout-launch" href="#market-payment" data-market-checkout-open>Receber e finalizar <kbd>F9</kbd></a>
+@endif
 </div>
-    @if($currentUser->allows('supermarket.checkout') && $cart->status==='active' && !empty($cart->items))
-    <details class="operation-panel operation-checkout" data-operation-checkout @if(old('payments') || $errors->has('payments.*') || $errors->hasAny(['payments','payment_option','paid','due_date','salesperson_id','card_brand'])) open @endif>
-<summary>Receber e finalizar <kbd>F9</kbd>
-</summary>
-        <form method="post" action="{{ route('supermarket.checkout',['company'=>$tenant->slug,'cart'=>$cart->id]) }}" data-payment-total="{{ bcmul((string)$cart->total,'100',0) }}">
-@csrf
-<input type="hidden" name="version" value="{{ $cart->version }}">
-            <div class="field">
-<label for="supermarket-customer">Cliente</label>
-<select id="supermarket-customer" name="customer_id">
-<option value="">Consumidor final</option>
-@foreach($customers as $customer)<option value="{{ $customer->id }}" @selected((string)old('customer_id',$cart->customer_id)===(string)$customer->id)>{{ $customer->name }}</option>
-@endforeach
-</select>
-</div>
-            @include('operations.payment-fields')
-            <button class="button" type="submit">Confirmar venda e recebimento</button>
-        </form>
-    </details>
-    @endif
     @if($cart->status==='completed' && $cart->sale_id)<section class="operation-panel">
 <h2>Venda concluída</h2>
 <a class="button" href="{{ route('supermarket.receipt',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">Imprimir comprovante</a>
@@ -188,7 +178,7 @@
         @if($cart->status==='active')<form method="post" action="{{ route('supermarket.suspend',['company'=>$tenant->slug,'cart'=>$cart->id]) }}">
 @csrf
 <input type="hidden" name="version" value="{{ $cart->version }}">
-<button class="button secondary">Suspender venda</button>
+<button class="button secondary" id="supermarket-cart-transition" aria-keyshortcuts="F8">Suspender venda</button>
 </form>
 @endif
         @if($currentUser->allows('supermarket.cancel'))<details class="operation-line-actions">
@@ -209,9 +199,18 @@
     @endif
 </div>
 </div>
+@if($canCheckout)
+    @include('supermarket.checkout')
+@endif
 @else
 <section class="operation-panel">
 <div class="operation-empty">Abra uma nova venda para iniciar o atendimento.</div>
+</section>
+@endif
+@elseif($cart?->status === 'completed' && $cart->sale_id && $currentUser->allows('supermarket.checkout'))
+<section class="operation-panel">
+    <h2>Venda #{{ $cart->id }} concluída</h2>
+    <a class="button secondary" href="{{ route('supermarket.receipt', ['company' => $tenant->slug, 'cart' => $cart->id]) }}">Imprimir comprovante</a>
 </section>
 @endif
 @endsection

@@ -71,6 +71,7 @@ trait OperationalExpansionCases
             ['version' => $order->fresh()->version, 'status' => $status], $this->user->id);
         $restaurant->deliverItem($order->id, $item->id, ['version' => $order->fresh()->version], $this->user->id);
         $market = app(\App\Services\Supermarket::class);
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $market->start((string) \Illuminate\Support\Str::uuid(), $this->user->id);
         $cart = $market->add($cart->id, $cart->version, $this->product->sku, '1', $this->user->id);
         $this->assertSame(0, \App\Models\FinancialEntry::count());
@@ -124,6 +125,7 @@ trait OperationalExpansionCases
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
         $this->getJson('/app/a/supermarket/lookup?code='.$code)->assertOk()->assertJsonPath('scanned_quantity', '0.500');
         app(TenantConnection::class)->connect($this->a);
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $service->start((string) \Illuminate\Support\Str::uuid(), $this->user->id);
         $this->post('/app/a/supermarket/carts/'.$cart->id.'/items', ['version' => $cart->version, 'code' => $code, 'quantity' => '1'])
             ->assertRedirect()->assertSessionHasNoErrors();
@@ -161,6 +163,7 @@ trait OperationalExpansionCases
         $this->product->update(['sku' => '12', 'unit' => 'KG', 'sale_price' => '20.00']);
         $service = app(\App\Services\Supermarket::class);
         $label = $this->weightedLabel('12', '1000');
+        $this->openTestSupermarketShift($this->user->id);
         $cart = $service->start((string) \Illuminate\Support\Str::uuid(), $this->user->id);
         $cart = $service->add($cart->id, $cart->version, $label, '1', $this->user->id);
         $this->assertSame('0.500', $cart->items[0]['quantity']);

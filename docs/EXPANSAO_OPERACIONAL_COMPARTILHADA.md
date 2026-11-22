@@ -1,6 +1,6 @@
 # Expansão operacional compartilhada
 
-A revisão de restaurante, supermercado e delivery acrescenta quatro migrações tenant e treze tabelas. O escopo exato está em `ops/operational-schema-release.json`. O histórico, os usuários, as senhas, as configurações das lojas e o DDL das tabelas anteriores permanecem preservados. A política de isolamento não muda.
+A revisão de turnos de supermercado sucede a expansão de restaurante, supermercado e delivery. O arquivo `ops/operational-schema-release.json` identifica a migração tenant e as duas tabelas que esta revisão acrescenta ao schema já instalado.
 
 | Domínio | Migração | Tabelas novas |
 |---|---|---|
@@ -8,8 +8,9 @@ A revisão de restaurante, supermercado e delivery acrescenta quatro migrações
 | Catálogo do restaurante | `2026_11_21_000301` | Configurações versionadas, grupos de adicionais e adicionais |
 | Supervisão do supermercado | `2026_11_21_000401` | Aprovações e importações de rascunhos |
 | Delivery | `2026_11_21_000501` | Integrações, mapeamentos, pedidos, itens e eventos inbox/outbox |
+| Turnos do supermercado | `2026_11_22_000001` | `supermarket_shifts` e `supermarket_shift_carts` |
 
-Não se executa `migrate` nas views de uma loja. O modo `--apply-operational-expansion` do operador monta um template administrativo descartável com todas as migrações e certifica a diferença contra o manifesto instalado. A expansão aceita somente os quatro arquivos e as treze tabelas revisados, rejeita alterações das migrações antigas e verifica que o DDL anterior continua idêntico.
+Não se executa `migrate` nas views de uma loja. O modo `--apply-operational-expansion` do operador monta um template administrativo descartável com todas as migrações e certifica a diferença contra o manifesto instalado. A expansão confere a lista de migrações e tabelas com o perfil da versão e verifica os hashes das migrações anteriores. Para publicar esta revisão, o pacote inclui a migração dos turnos, o manifesto e os adaptadores `ops/extend-operational-schema.php` e `app/Tenancy/OperationalSchemaRelease.php`.
 
 O construtor cria as novas tabelas físicas com escopo, as FKs compostas, as views filtradas e os triggers de proteção. Os logins existentes recebem privilégios apenas nas views correspondentes, incluindo os principals de importação registrados. O usuário definer continua bloqueado, sem rotação de credenciais. A identidade de cada runtime passa a apresentar o novo certificado. Novas implantações usam esse mesmo manifesto e recebem as novas views automaticamente.
 

@@ -768,3 +768,59 @@
 .operation-approval p,.operation-approval small,.operation-payment-item .checkbox-line span{overflow-wrap:anywhere;min-width:0}.operation-shares strong{min-width:0;overflow-wrap:anywhere}.operation-shares>div>span{flex-shrink:0}.operation-local-draft>[data-draft-online-only]{margin:0 0 12px;white-space:normal;max-width:100%}
 /* Long receipt forms must not scroll beneath the overview card. */
 .operation-summary.operation-with-payments>.operation-total{position:static}
+
+.operation-total .market-checkout-launch {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 18px;
+}
+.market-checkout-dialog {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(38rem, calc(100% - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0;
+    color: var(--text, #152e4b);
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 18px 70px #0e244d40;
+}
+.market-checkout-dialog::backdrop { background: #0b1937a8; }
+.market-checkout-dialog .market-checkout {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+}
+.market-checkout-heading,
+.market-checkout-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 18px;
+}
+.market-checkout-heading h2 { margin: 0; }
+.market-checkout-heading button { flex-shrink: 0; }
+.market-checkout-total {
+    padding: 16px;
+    border-radius: 8px;
+    background: #eef4fb;
+    font-weight: 600;
+}
+.market-checkout-total strong {
+    font-size: 1.6rem;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+.market-checkout-dialog :focus-visible { outline: 3px solid #1465dc; outline-offset: 2px; }
+.market-checkout-dialog .button kbd, .market-checkout-launch kbd { margin-left: 6px; }
+@media (max-width: 480px) {
+    .market-checkout-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 16px); }
+    .market-checkout-heading { flex-wrap: wrap; }
+    .market-checkout-total { flex-wrap: wrap; }
+}

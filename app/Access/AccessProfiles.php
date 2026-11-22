@@ -98,7 +98,7 @@ final class AccessProfiles
         $mode = match (class_basename($request->route()?->getControllerClass() ?? '')) {
             'DeskController' => 'commerce',
             'RestaurantController' => 'restaurant',
-            'SupermarketController', 'SupermarketApprovalController', 'SupermarketDraftController', 'SupermarketHardwareController' => 'supermarket',
+            'SupermarketController', 'SupermarketApprovalController', 'SupermarketDraftController', 'SupermarketHardwareController', 'SupermarketShiftController' => 'supermarket',
             'RestaurantActivityController', 'RestaurantCatalogController', 'RestaurantPaymentController', 'DeliveryController' => 'restaurant',
             default => null,
         };

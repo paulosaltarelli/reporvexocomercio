@@ -22,10 +22,15 @@ trait SupermarketSearchCases
         $this->product->update(['name' => 'Cerveja Clara', 'sku' => 'BEER-01', 'barcode' => '7891234567890']);
         $dark = $this->product->replicate();
         $dark->fill(['name' => 'Cerveja Escura', 'sku' => 'BEER-02', 'barcode' => null])->save();
+        $this->openTestSupermarketShift($this->user->id);
         $cart = app(Supermarket::class)->start((string) Str::uuid(), $this->user->id);
         $path = '/app/a/supermarket/carts/'.$cart->id;
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
 
+        $this->getJson($path.'/products?q=Cer')->assertOk()->assertJsonCount(2, 'products')
+            ->assertJsonPath('products.0.sku', 'BEER-01')->assertJsonPath('products.1.sku', 'BEER-02')->assertJsonPath('more', false);
+        $this->getJson($path.'/products?q=C')->assertUnprocessable()->assertJsonValidationErrors('q');
+        $this->getJson($path.'/products?q=%25%25')->assertOk()->assertJsonCount(0, 'products');
         $response = $this->post($path.'/items', ['version' => 0, 'code' => 'Cerveja', 'quantity' => '3']);
         $response->assertRedirect(route('supermarket.show', ['company' => 'a', 'cart' => $cart->id, 'q' => 'Cerveja', 'search_quantity' => '3.000']))
             ->assertSessionHasNoErrors();
@@ -56,6 +61,8 @@ trait SupermarketSearchCases
         app(TenantConnection::class)->connect($this->a);
         $exact = $this->product->replicate();
         $exact->fill(['name' => 'Água mineral', 'sku' => 'Cerveja', 'barcode' => null])->save();
+        $this->getJson($path.'/products?q=Cerveja')->assertOk()->assertJsonCount(3, 'products')
+            ->assertJsonPath('products.0.name', 'Água mineral')->assertJsonPath('products.0.exact_code', 1);
         $this->post($path.'/items', ['version' => 1, 'code' => 'Cerveja', 'quantity' => '2'])
             ->assertRedirect($path)->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
@@ -76,6 +83,7 @@ trait SupermarketSearchCases
         app(TenantConnection::class)->connect($this->a);
         $other = User::create(['name' => 'Outro caixa', 'email' => 'search-other@example.test', 'password' => 'test-password-123', 'role' => 'admin']);
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $other->id, 'auth_version' => 0]);
+        $this->getJson($path.'/products?q=Cerveja')->assertNotFound();
         $this->postJson($path.'/items', ['version' => 2, 'code' => 'Outra cerveja', 'quantity' => '3'])->assertNotFound();
         app(TenantConnection::class)->connect($this->a);
         $this->assertSame(2, $cart->fresh()->version);

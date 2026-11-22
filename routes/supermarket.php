@@ -1,13 +1,17 @@
 <?php
 
 use App\Http\Controllers\SupermarketController;
+use App\Http\Controllers\SupermarketShiftController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('supermarket')->name('supermarket.')->controller(SupermarketController::class)->group(function () {
     Route::get('/', 'index')->name('index');
+    Route::post('shifts', [SupermarketShiftController::class, 'open'])->name('shifts.open');
+    Route::post('shifts/{shift}/close', [SupermarketShiftController::class, 'close'])->whereNumber('shift')->name('shifts.close');
     Route::get('lookup', 'lookup')->name('lookup');
     Route::post('carts', 'start')->name('start');
     Route::get('carts/{cart}', 'show')->whereNumber('cart')->name('show');
+    Route::get('carts/{cart}/products', 'products')->whereNumber('cart')->name('products');
     Route::post('carts/{cart}/items', 'addItem')->whereNumber('cart')->name('items.add');
     Route::post('carts/{cart}/items/{line}/quantity', 'updateItem')->whereNumber('cart')->whereUuid('line')->name('items.update');
     Route::post('carts/{cart}/items/{line}/remove', 'removeItem')->whereNumber('cart')->whereUuid('line')->name('items.remove');

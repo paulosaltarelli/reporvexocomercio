@@ -1,25 +1,11 @@
 {
   "version": 1,
-  "name": "restaurant-supermarket-delivery-v2",
+  "name": "supermarket-register-shifts",
   "migrations": [
-    "database/tenant-migrations/2026_11_21_000201_create_restaurant_payments.php",
-    "database/tenant-migrations/2026_11_21_000301_create_restaurant_catalog.php",
-    "database/tenant-migrations/2026_11_21_000401_create_supermarket_controls.php",
-    "database/tenant-migrations/2026_11_21_000501_create_delivery_integrations.php"
+    "database/tenant-migrations/2026_11_22_000001_create_supermarket_shifts.php"
   ],
   "tables": [
-    "delivery_catalog_mappings",
-    "delivery_events",
-    "delivery_integrations",
-    "delivery_order_items",
-    "delivery_orders",
-    "restaurant_modifier_groups",
-    "restaurant_modifiers",
-    "restaurant_order_payments",
-    "restaurant_order_shares",
-    "restaurant_payment_items",
-    "restaurant_product_configs",
-    "supermarket_approvals",
-    "supermarket_draft_imports"
+    "supermarket_shift_carts",
+    "supermarket_shifts"
   ]
 }

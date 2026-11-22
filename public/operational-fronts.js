@@ -162,6 +162,7 @@
         }
     }
     document.addEventListener('keydown', event => {
+        if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || document.querySelector('dialog[open]')) return;
         if (event.key === 'F2' && scanner) {
             event.preventDefault();
             scanner.focus();
@@ -169,6 +170,12 @@
             scanner.scrollIntoView({block: 'center'});
         }
         if (event.key === 'F9') {
+            const marketCheckout = document.querySelector('[data-market-checkout-open]');
+            if (marketCheckout) {
+                event.preventDefault();
+                if (!event.repeat) marketCheckout.click();
+                return;
+            }
             const checkout = document.querySelector('[data-operation-checkout]');
             if (checkout && !checkout.hidden) {
                 event.preventDefault();
