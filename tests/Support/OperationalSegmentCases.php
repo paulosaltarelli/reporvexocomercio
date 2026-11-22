@@ -29,6 +29,11 @@ trait OperationalSegmentCases
         $this->post('/app/a/setup', $payload)->assertRedirect()->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->a);
         $saved = CompanyOperation::findOrFail(1);
+        $this->assertSame('restaurant', $this->a->fresh()->operation_segment);
+        $configurationVersion = \Illuminate\Support\Facades\DB::connection('tenant')->table('company_operation_audits')
+            ->where('action', 'configuration')->max('version');
+        $this->assertEquals($configurationVersion, $this->a->fresh()->operation_segment_version);
+        $this->assertNull($this->b->fresh()->operation_segment);
         $this->assertSame('restaurant', $operations->current()['segment']);
         $this->assertEqualsCanonicalizing(['restaurant', 'commerce'], $operations->current()['operation_modes']);
         $this->assertSame('restaurant', $operations->current()['default_operation']);
@@ -47,6 +52,34 @@ trait OperationalSegmentCases
             }
             $this->assertSame($version, $saved->fresh()->version);
         }
+    }
+
+    public function test_backfill_projects_each_tenants_saved_segment_and_preserves_unassigned_and_newer_data(): void
+    {
+        $connection = app(TenantConnection::class);
+        $legacy = CompanyOperation::updateOrCreate(['id' => 1], ['configuration' => ['segment' => 'supermarket'], 'version' => 5]);
+        $connection->connect($this->b);
+        CompanyOperation::updateOrCreate(['id' => 1], ['configuration' => ['segment' => 'legado-desconhecido'], 'version' => 11]);
+
+        $this->artisan('platform:sync-company-segments', ['--company' => $this->a->slug])->assertSuccessful();
+        $this->assertSame('supermarket', $this->a->fresh()->operation_segment);
+        $this->assertNull($this->b->fresh()->operation_segment_version);
+
+        $this->artisan('platform:sync-company-segments')->assertSuccessful();
+        $this->assertNull($this->b->fresh()->operation_segment);
+        $this->assertEquals(11, $this->b->fresh()->operation_segment_version);
+        $this->assertNull(config('tenancy.resolved_tenant_id'));
+        $captured = $this->a->fresh()->getRawOriginal();
+        $this->artisan('platform:sync-company-segments')->assertSuccessful();
+        $this->assertSame($captured, $this->a->fresh()->getRawOriginal());
+
+        // A delayed event for revision 4 cannot replace the projection of revision 5.
+        $legacy->version = 4;
+        $legacy->configuration = ['segment' => 'restaurant'];
+        $connection->connect($this->a);
+        app(\App\Platform\CompanySegment::class)->sync($this->a->id, $legacy);
+        $this->assertSame($captured, $this->a->fresh()->getRawOriginal());
+        $this->artisan('platform:sync-company-segments', ['--company' => 'inexistente'])->assertFailed();
     }
 
     public function test_restaurant_http_flow_closes_once_and_keeps_inventory_unchanged_until_checkout(): void

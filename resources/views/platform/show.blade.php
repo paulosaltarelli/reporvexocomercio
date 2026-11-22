@@ -9,6 +9,7 @@
     <dl class="detail-grid">
         <div><dt>Identificação de acesso</dt><dd>{{ $company->slug }}</dd></div>
         <div><dt>Classificação comercial</dt><dd>{{ ($company->is_demonstration??false)?'Loja de demonstração':'Empresa cliente' }}</dd></div>
+        <div><dt>Segmento</dt><dd>{{ \App\Services\OperationalModes::SEGMENTS[$company->operation_segment] ?? 'Segmento a definir' }}</dd></div>
         <div><dt>Cadastro</dt><dd>{{ $company->created_at?->format('d/m/Y H:i')??'Não informado' }}</dd></div>
         <div><dt>Última alteração</dt><dd>{{ $company->updated_at?->format('d/m/Y H:i')??'Não informada' }}</dd></div>
     </dl>

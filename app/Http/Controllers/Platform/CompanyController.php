@@ -9,12 +9,14 @@ use App\Platform\CompanyAdministration;
 use App\Platform\PlatformAudit;
 use App\Platform\ProvisionRequest;
 use App\Platform\RequestCompanyProvision;
+use App\Services\OperationalModes;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class CompanyController extends Controller
 {
-    private const PUBLIC_COLUMNS = ['id', 'name', 'slug', 'active', 'is_demonstration', 'storage_mode', 'provisioned_at', 'platform_version', 'created_at', 'updated_at'];
+    private const PUBLIC_COLUMNS = ['id', 'name', 'slug', 'active', 'is_demonstration', 'storage_mode', 'provisioned_at', 'platform_version', 'operation_segment', 'created_at', 'updated_at'];
 
     private function actor(Request $request)
     {
@@ -24,8 +26,12 @@ class CompanyController extends Controller
     public function index(Request $request)
     {
         $this->actor($request);
-        $data = $request->validate(['q' => 'nullable|string|max:100', 'status' => 'nullable|in:active,inactive']);
-        $companies = Tenant::select(self::PUBLIC_COLUMNS)->orderBy('name')->orderBy('id');
+        $segments = OperationalModes::SEGMENTS + ['unassigned' => 'Segmento a definir'];
+        $data = $request->validate([
+            'q' => 'nullable|string|max:100', 'status' => 'nullable|in:active,inactive',
+            'segment' => ['nullable', Rule::in(array_keys($segments))],
+        ]);
+        $companies = Tenant::select(self::PUBLIC_COLUMNS);
         if (filled($data['q'] ?? null)) {
             $search = '%'.strtr(trim($data['q']), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
             $companies->where(fn ($q) => $q->whereRaw("name LIKE ? ESCAPE '!'", [$search])->orWhereRaw("slug LIKE ? ESCAPE '!'", [$search]));
@@ -33,7 +39,28 @@ class CompanyController extends Controller
         if (filled($data['status'] ?? null)) {
             $companies->where('active', $data['status'] === 'active');
         }
-        return view('platform.index', ['companies' => $companies->paginate(20)->appends($data + $request->only('requests_page')), 'filters' => $data, 'provisionAvailable' => false, 'requestAvailable' => true, 'requests' => ProvisionRequest::latest('id')->paginate(10, ['id', 'name', 'slug', 'is_demonstration', 'status', 'admin_name', 'created_at'], 'requests_page')]);
+        $requests = ProvisionRequest::leftJoin('tenants', 'tenants.id', '=', 'platform_provision_requests.tenant_id')
+            ->select('platform_provision_requests.id', 'platform_provision_requests.name', 'platform_provision_requests.slug',
+                'platform_provision_requests.is_demonstration', 'platform_provision_requests.status',
+                'platform_provision_requests.admin_name', 'platform_provision_requests.created_at', 'tenants.operation_segment');
+        if ($segment = $data['segment'] ?? null) {
+            foreach ([$companies, $requests] as $query) {
+                if ($segment === 'unassigned') {
+                    $query->whereNull('tenants.operation_segment');
+                } else {
+                    $query->where('tenants.operation_segment', $segment);
+                }
+            }
+        }
+        $segmentCounts = (clone $companies)->select('operation_segment')->selectRaw('COUNT(*) AS quantity')
+            ->groupBy('operation_segment')->pluck('quantity', 'operation_segment');
+        $companies->orderByRaw('operation_segment IS NULL')->orderBy('operation_segment')->orderBy('name')->orderBy('id');
+        return view('platform.index', [
+            'companies' => $companies->paginate(20)->appends($data + $request->only('requests_page')),
+            'filters' => $data, 'segments' => $segments, 'segmentCounts' => $segmentCounts,
+            'provisionAvailable' => false, 'requestAvailable' => true,
+            'requests' => $requests->latest('platform_provision_requests.id')->paginate(10, ['*'], 'requests_page'),
+        ]);
     }
 
     public function create(Request $request)
