@@ -21,3 +21,5 @@ O journal privado conserva o manifesto anterior, o hash novo, o nome do template
 A verificação `SharedSchemaExtensionTest` parte do schema anterior da produção e cobre falha após DDL, ausência de acesso às tabelas físicas, FKs entre empresas, índices únicos por namespace, runtime futuro e reversão estrutural. Os focos de domínio usam os bancos descartáveis `a/b/central` em janelas sequenciais; o teste estrutural usa bancos aleatórios próprios.
 
 A ampliação de schema não habilita conectores externos, emissões fiscais ou cobranças C6. Essas integrações permanecem sujeitas às habilitações e ao escopo próprio de cada módulo.
+
+Quando a mesma publicação incluir a listagem central por segmento, o pacote também contém a migração central `2026_11_22_000001_index_company_operation_segments` e o comando `platform:sync-company-segments`. O publicador aplica a migração, sincroniza as empresas ativas depois de atualizar o hash de isolamento e registra o resultado em `segments.log`. A versão anterior da aplicação tolera as duas colunas centrais adicionais em uma reversão do código.

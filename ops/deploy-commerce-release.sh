@@ -60,8 +60,12 @@ if sys.argv[3]=='--apply-segments':
     if {name for name in new if name.startswith('database/')}!=expected:raise SystemExit('Segmentos requerem somente as migrações aditivas tenant revisadas.')
 if sys.argv[3]=='--apply-operational-expansion':
     profile=json.loads((release/'stage/ops/operational-schema-release.json').read_bytes())
-    expected=set(profile.get('migrations',[]))
-    if (profile.get('version')!=1 or not expected or any(not re.fullmatch(r'database/tenant-migrations/[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[a-z0-9_]+\.php',name) for name in expected)
+    tenant_migrations=set(profile.get('migrations',[]))
+    segment_index='database/migrations/2026_11_22_000001_index_company_operation_segments.php'
+    expected=tenant_migrations | ({segment_index} if segment_index in new else set())
+    if segment_index in new and 'app/Console/Commands/SyncCompanySegments.php' not in new:
+        raise SystemExit('O índice de segmentos requer o comando de sincronização.')
+    if (profile.get('version')!=1 or not tenant_migrations or any(not re.fullmatch(r'database/tenant-migrations/[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[a-z0-9_]+\.php',name) for name in tenant_migrations)
         or {name for name in new if name.startswith('database/')}!=expected or any(baseline[name]!='-' for name in expected)):
         raise SystemExit('Expansão operacional requer somente migrações tenant novas do perfil revisado.')
     if not {'ops/extend-operational-schema.php','ops/operational-schema-release.json','app/Tenancy/OperationalSchemaRelease.php'}<=set(new):
@@ -193,6 +197,12 @@ if [[ $mode == --apply-central-settings || $mode == --apply-mail-history ]]; the
     artisan config:clear > "$journal/settings-config.log"
     runuser -u vendra-web -- "${phpcli[@]}" -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); if(config("platform.mfa_required")!==false)exit(1);'
 fi
+segment_index=database/migrations/2026_11_22_000001_index_company_operation_segments.php
+sync_segments=0
+if [[ $mode == --apply-operational-expansion ]] && grep -Fq "  $segment_index" "$manifest"; then
+    migrations+=("$segment_index")
+    sync_segments=1
+fi
 for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1
 done
@@ -217,6 +227,9 @@ os.replace(temporary,source)
 PY_SCHEMA_ENV
 fi
 cache > "$journal/cache.log" 2>&1
+if ((sync_segments)); then
+    artisan platform:sync-company-segments > "$journal/segments.log" 2>&1
+fi
 systemctl start vendra.service
 health
 web_paused=0
