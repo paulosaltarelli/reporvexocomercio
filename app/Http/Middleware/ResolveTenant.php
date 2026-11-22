@@ -17,8 +17,8 @@ class ResolveTenant
         try {
             $connection->connect($tenant);
             $request->attributes->set('tenant', $tenant);
-            // Login branding resolves the store but must never switch or clear the visitor's session.
-            if ($request->routeIs('business.logo')) return $next($request);
+            // Public pages resolve store data independently of the visitor's signed-in store.
+            if ($request->routeIs('business.logo', 'storefront.*')) return $next($request);
             if ($request->session()->has('tenant_id') && (int) $request->session()->get('tenant_id') !== $tenant->id) {
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();

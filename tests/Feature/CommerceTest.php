@@ -22,12 +22,15 @@ use Tests\TestCase;
 
 class CommerceTest extends TestCase
 {
+    use \Tests\Support\StockReplenishmentCases;
     use \Tests\Support\OperationalCompletionCases;
     use \Tests\Support\RestaurantPaymentCases;
     use \Tests\Support\RestaurantCatalogCases;
     use \Tests\Support\SupermarketControlCases;
     use \Tests\Support\DeliveryIntegrationCases;
+    use \Tests\Support\PublicCatalogCases;
     use \Tests\Support\StoreReviewCases;
+    use \Tests\Support\ProductLabelCases;
     use \Tests\Support\SupermarketSearchCases;
     use \Tests\Support\OperationalImageCases;
     use \Tests\Support\OperationalExpansionCases;
@@ -989,6 +992,45 @@ class CommerceTest extends TestCase
         $this->get('/app/a/documents?type=unknown')->assertSessionHasErrors('type');
         $this->get('/app/a/documents?status=unknown')->assertSessionHasErrors('status');
         $this->get('/app/a/documents?q='.str_repeat('x', 101))->assertSessionHasErrors('q');
+    }
+
+    public function test_quotation_whatsapp_uses_saved_terms_and_opens_only_on_operator_action(): void
+    {
+        $customer = \App\Models\Customer::create(['name' => 'Cliente privado', 'phone' => '(35) 99999-4455', 'email' => 'interno@example.test']);
+        $documents = app(Documents::class);
+        $quote = $documents->create(['type' => 'quote', 'customer_id' => $customer->id,
+            'valid_until' => '2030-05-31', 'notes' => 'Anotação interna', 'request_key' => (string) Str::uuid(),
+            'items' => $this->saleData('1.250')['items']], $this->user->id);
+        $workOrder = $documents->create(['type' => 'work_order', 'items' => [], 'request_key' => (string) Str::uuid()], $this->user->id);
+        $this->product->update(['name' => 'Nome posterior', 'sale_price' => '130']);
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
+        $url = '/app/a/documents/'.$quote->id;
+        $page = $this->get($url)->assertOk()->assertSee('Compartilhar orçamento por WhatsApp');
+        $html = new \DOMDocument();
+        @$html->loadHTML('<?xml encoding="utf-8" ?>'.$page->getContent());
+        $xpath = new \DOMXPath($html);
+        $form = $xpath->query('//details[@id="quote-sharing"]//form')->item(0);
+        $this->assertSame('https://wa.me/5535999994455', $form->getAttribute('action'));
+        $this->assertSame('noopener noreferrer', $form->getAttribute('rel'));
+        $this->assertSame(1, $xpath->query('.//*[@name]', $form)->length);
+        $message = $xpath->query('.//textarea[@name="text"]', $form)->item(0)->textContent;
+        $this->assertStringContainsString('1,25 × Produto teste — R$ 125,00', $message);
+        $this->assertStringContainsString('Total do orçamento: R$ 125,00', $message);
+        $this->assertStringContainsString('31/05/2030', $message);
+        foreach (['Cliente privado', 'interno@example.test', 'Anotação interna', 'Nome posterior', '/app/', 'http'] as $private) {
+            $this->assertStringNotContainsString($private, $message);
+        }
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame('draft', $quote->fresh()->status);
+        $customer->update(['phone' => 'consultar ramal 123']);
+        $quote->update(['status' => 'approved', 'valid_until' => null, 'items' => array_fill(0, 50, array_merge($quote->items[0], ['description' => str_repeat('Produto ', 12)]))]);
+        $this->get($url)->assertOk()->assertSee('action="https://wa.me/"', false)
+            ->assertSee('Copie a mensagem completa')->assertDontSee('name="text"', false)->assertSee('Validade não informada.');
+        $this->get('/app/a/documents/'.$workOrder->id)->assertOk()->assertDontSee('id="quote-sharing"', false);
+        app(TenantConnection::class)->connect($this->a);
+        $quote->update(['status' => 'cancelled']);
+        $this->get($url)->assertOk()->assertDontSee('id="quote-sharing"', false);
+        $this->get('/app/b/documents/'.$quote->id)->assertRedirect('/app/b/login');
     }
 
     public function test_work_order_edit_preserves_seller_allows_operator_and_isolates_tenants(): void

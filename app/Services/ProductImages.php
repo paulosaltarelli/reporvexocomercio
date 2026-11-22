@@ -96,6 +96,41 @@ final class ProductImages
         return $result;
     }
 
+    /** A public image must contain only the selected product, even on seeded sprite sheets. */
+    public function catalogPhoto(int $tenantId, int $productId): ?string
+    {
+        $source = $this->file($tenantId, $productId);
+        if (!$source || basename($source) === $productId.'.png') return $source;
+        $tile = $this->mapping($tenantId)[$productId];
+        $key = hash('sha256', json_encode($tile, JSON_THROW_ON_ERROR));
+        $output = $this->directory($tenantId).'/thumb-'.$key.'.png';
+        if (is_link($output)) throw new \RuntimeException('Imagem de catálogo inválida.');
+        if (is_file($output)) return $output;
+        $sheet = @imagecreatefrompng($source);
+        if (!$sheet) return null;
+        $column = $tile['index'] % $tile['columns'];
+        $row = intdiv($tile['index'], $tile['columns']);
+        $left = intdiv(imagesx($sheet) * $column, $tile['columns']);
+        $top = intdiv(imagesy($sheet) * $row, $tile['rows']);
+        $width = intdiv(imagesx($sheet) * ($column + 1), $tile['columns']) - $left;
+        $height = intdiv(imagesy($sheet) * ($row + 1), $tile['rows']) - $top;
+        if ($width < 1 || $height < 1) return null;
+        $scale = min(1, 480 / max($width, $height));
+        $photo = imagecreatetruecolor(max(1, (int) round($width * $scale)), max(1, (int) round($height * $scale)));
+        imagealphablending($photo, false);
+        imagesavealpha($photo, true);
+        imagecopyresampled($photo, $sheet, 0, 0, $left, $top, imagesx($photo), imagesy($photo), $width, $height);
+        ob_start();
+        try {
+            if (!imagepng($photo)) return null;
+            $contents = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $this->atomicWrite($output, $contents);
+        return $output;
+    }
+
     public function sheetProductIds(int $tenantId, string $digest): array
     {
         if (!preg_match('/^[a-f0-9]{64}$/D', $digest)) return [];

@@ -1,6 +1,9 @@
 
 @extends('layout')
 @section('title',$product->exists?'Editar produto ou serviço':'Novo produto ou serviço')
+@if($product->exists && $product->active && $product->type==='product')
+@section('actions')<a class="button secondary" href="{{ route('product.labels',['company'=>$tenant->slug,'qty'=>[$product->id=>1]]) }}">Imprimir etiquetas</a>@endsection
+@endif
 @section('subtitle','Um único cadastro para produtos e serviços, com estoque apenas quando fizer sentido para a operação.')
 @push('styles')<link rel="stylesheet" href="/product-images.css?v={{ filemtime(public_path('product-images.css')) }}">@endpush
 @section('content')<form class="panel" method="post" action="{{ route('product.save',['company'=>$tenant->slug,'id'=>$product->id]) }}">

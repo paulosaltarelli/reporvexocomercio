@@ -27,6 +27,7 @@
         ])],
         ['label' => $operationConfig['inventory'] ? 'Estoque e compras' : 'Compras e preços', 'icon' => 'box', 'links' => array_filter([
             $operationConfig['inventory'] ? $link('stock', 'Movimentações', request()->routeIs('stock')) : null,
+            $operationConfig['inventory'] ? $link('stock.replenishment', 'Reposição de estoque', request()->routeIs('stock.replenishment')) : null,
             $currentUser->allows('purchases.view') ? $link('purchases', 'Compras', request()->routeIs('purchases', 'purchase.*')) : null,
             $currentUser->allows('prices.view') ? $link('prices', 'Preços e alertas', request()->routeIs('prices', 'price.*')) : null,
         ])],

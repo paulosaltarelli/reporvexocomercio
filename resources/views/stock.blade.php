@@ -3,6 +3,7 @@
 @section('title','Estoque')
 @section('subtitle',$currentUser->allows('costs.view') ? 'Entradas atualizam o custo médio. '.match($operationConfig['negative_stock']??'block') { 'warn'=>'Saídas com saldo negativo geram um alerta.', 'allow'=>'Saídas podem gerar saldo negativo, conforme a configuração da empresa.', default=>'Saídas são bloqueadas se o saldo ficar negativo.' } : 'Consulte o saldo e o histórico de movimentações dos produtos.')
 @section('actions')
+@if($operationConfig['inventory'])<a class="button secondary" href="{{ route('stock.replenishment', ['company' => $tenant->slug]) }}">Reposição de estoque</a>@endif
 @if($currentUser->allows('prices.view'))<a class="button secondary" href="{{ route('prices',['company'=>$tenant->slug]) }}">Conferir preços e alertas</a>
 @endif
 @endsection
