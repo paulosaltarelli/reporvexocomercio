@@ -23,6 +23,7 @@ final class Permissions
         ['Vendas','sales',[],'sales.view'],['Orçamentos e OS','documents',[],'documents.view'],
         ['Produtos e serviços','products',[],'products.view'],['Clientes','catalog',['kind'=>'customers'],'customers.view'],['Fornecedores','catalog',['kind'=>'suppliers'],'suppliers.view'],['Grupos','catalog',['kind'=>'groups'],'groups.view'],
         ['Vendedores','sellers',[],'sellers.manage'],['Movimentações de estoque','stock',[],'stock.view'],['Compras','purchases',[],'purchases.view'],['Preços e alertas','prices',[],'prices.view'],
+        ['Reposição de estoque','stock.replenishment',[],'stock.view'],
         ['Contas a pagar e receber','finance',[],'finance.view'],['Caixa diário','cash',[],'cash.view'],['Fluxo e previsão','cashflow',[],'cashflow.view'],['Relatórios gerenciais','reports',[],'reports.view'],['Comissões','commissions',[],'commissions.view'],['Fiscal','fiscal',[],'fiscal.manage'],
     ];
     public const DEPENDENCIES = [
@@ -63,6 +64,7 @@ final class Permissions
             'LicenseSelfServiceController','CompanySetupController','AccessProfileController','PaymentMethodController'=>'administration',
             'SicoobPixController'=>'finance.manage',
             'DeskController'=>'desk.use',
+            'StockReplenishmentController'=>'stock.view',
             'RestaurantController'=>match($action) {
                 'createTable'=>'restaurant.manage', 'production','transitionItem'=>'restaurant.kitchen',
                 'close','receipt'=>'restaurant.checkout', 'deliverItem'=>'restaurant.deliver', 'transfer'=>'restaurant.transfer', 'ticket'=>'restaurant.print', 'cancel','cancelItem'=>'restaurant.cancel', default=>'restaurant.use',
@@ -71,6 +73,7 @@ final class Permissions
                 'checkout','receipt'=>'supermarket.checkout', 'cancel','removeItem'=>'supermarket.cancel', default=>'supermarket.use',
             },
             'ProductImageController'=>match($action) { 'show','sheet'=>'account.self', 'save'=>'products.manage', default=>'denied' },
+            'ProductLabelController'=>'products.view',
             'RestaurantActivityController'=>'account.self', // The endpoint checks kitchen or salon scope explicitly.
             'RestaurantCatalogController'=>'restaurant.catalog.manage',
             'RestaurantPaymentController'=>match($action){'refund'=>'restaurant.refund',default=>'restaurant.receive'},

@@ -104,6 +104,20 @@ class BusinessController extends Controller
         if ($r->routeIs('setup.company.save')) return redirect()->route('setup',['company'=>$r->route('company'),'step'=>2])->with('success','Dados da empresa salvos. Continue com a operação.');
         return back()->with('success', 'Dados e identidade da empresa atualizados.');
     }
+    public function publishCatalog(Request $request, \App\Services\CompanyOperations $operations)
+    {
+        $this->admin($request);
+        $data = $request->validate([
+            'visibility' => 'required|in:public,private', 'version' => 'required|integer|min:0',
+            'publish_all' => 'accepted_if:visibility,public',
+        ]);
+        $published = $data['visibility'] === 'public';
+        $operations->publishCatalog($published, (int) $data['version'], $request->attributes->get('currentUser')->id);
+        return redirect()->route('business', ['company' => $request->route('company')])
+            ->withFragment('catalogo-publico')
+            ->with('success', $published ? 'Catálogo publicado.' : 'Catálogo retirado do ar.');
+    }
+
     public function logo(Request $r){
         $tenantId=$r->attributes->get('tenant')->id;$path=BusinessProfile::whereKey(1)->value('logo_path');
         if($path&&$this->ownedPath($path,$tenantId)&&Storage::disk('local')->exists($path))return $this->privateImage(Storage::disk('local')->path($path),'image/png');

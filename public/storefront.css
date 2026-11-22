@@ -1,0 +1,14 @@
+@font-face{font-family:Inter;src:url("/fonts/inter-variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#142942;background:#f5f7fa;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+.brand-bar{background:#fff;border-bottom:1px solid #d9e2ec}.brand-bar .wrap{display:flex;align-items:center;gap:18px;min-height:94px}
+.brand-bar img{object-fit:contain;object-position:left;max-width:32vw}.brand-bar strong{font-size:clamp(1.1rem,3vw,1.65rem);overflow-wrap:anywhere}
+.catalog-header{display:flex;align-items:end;justify-content:space-between;gap:24px;margin:44px 0 24px}
+h1,h2,p{margin:0}h1{font-size:clamp(1.65rem,4vw,2.5rem);line-height:1.2;letter-spacing:-.035em}
+.catalog-header form{width:min(100%,375px)}label{display:block;font-weight:600;margin-bottom:6px;font-size:.9rem}.search-row{display:flex;gap:8px}
+input,button{font:inherit;padding:10px 14px;border-radius:7px}input{min-width:0;width:100%;border:1px solid #869ab1;background:white}button,nav a{color:white;border:0;background:#165bd1;cursor:pointer;font-weight:600}
+:focus-visible{outline:3px solid #236df0;outline-offset:3px}.catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(215px,100%),1fr));gap:16px;list-style:none;margin:0;padding:0}
+.catalog li,.empty{background:white;border:1px solid #d8e2ed;border-radius:12px;overflow:hidden}.catalog li{display:flex;flex-direction:column;justify-content:flex-end}
+.photo{width:100%;aspect-ratio:4/3;object-fit:contain;background:#f8fafc}.item,.empty{padding:18px}.item h2{font-size:1.05rem;line-height:1.35;margin-bottom:12px;overflow-wrap:anywhere}
+.item strong{font-size:1.2rem;font-variant-numeric:tabular-nums}.item span,.query,footer{color:#4c6076}.query,.empty p{margin-bottom:12px}a{color:#144db5}nav{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:14px;margin-top:22px}nav a{padding:9px 14px;border-radius:6px;text-decoration:none}footer.wrap{margin-top:38px;margin-bottom:24px;font-size:.87rem}
+@media(max-width:650px){.wrap{padding:0 16px}.catalog-header{margin:26px 0 16px;align-items:stretch;flex-direction:column;gap:16px}.catalog-header form{width:100%}.brand-bar .wrap{min-height:76px}.catalog{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.item{padding:12px}.item h2{font-size:.95rem}.item strong{font-size:1.08rem}}

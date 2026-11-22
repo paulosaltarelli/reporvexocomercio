@@ -27,6 +27,16 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => view('welcome'));
 Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(ResolveTenant::class)->group(function () {
+    Route::prefix('catalogo-publico')->name('storefront.')->middleware(\App\Http\Middleware\PublicCatalogEnabled::class)
+        ->withoutMiddleware([
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        ])->group(function () {
+            Route::get('/', [\App\Http\Controllers\PublicCatalogController::class, 'index'])->middleware('throttle:120,1,storefront:')->name('index');
+            Route::get('logo', [BusinessController::class, 'logo'])->name('logo');
+            Route::get('produtos/{id}/foto', [\App\Http\Controllers\PublicCatalogController::class, 'image'])->where('id', '[1-9][0-9]{0,17}')->middleware('throttle:360,1,storefront-image:')->name('image');
+        });
     Route::view('ativar', 'auth.activate')->name('company.activate');
     Route::post('ativar', [\App\Http\Controllers\CompanyActivationController::class, 'activate'])->middleware('throttle:6,1');
     Route::get('convite-implantacao', [\App\Http\Controllers\InstallerInvitationController::class, 'form'])->name('installer.invite');
@@ -79,6 +89,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::post('setup/team', [\App\Http\Controllers\CompanySetupController::class,'team'])->name('setup.team.save');
         Route::post('setup/complete', [\App\Http\Controllers\CompanySetupController::class,'complete'])->name('setup.complete');
         Route::post('business', [BusinessController::class, 'save']);
+        Route::post('business/catalogo-publico', [BusinessController::class, 'publishCatalog'])->name('business.public-catalog');
         Route::get('fiscal', [FiscalController::class, 'index'])->name('fiscal');
         Route::get('fiscal/company', [BusinessController::class, 'fiscal'])->name('fiscal.company');
         Route::middleware(\App\Http\Middleware\ProductInvoicesEnabled::class)->group(function () {
@@ -156,6 +167,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'show'])->whereNumber('id')->name('product.image');
         Route::post('products/{id}/image', [\App\Http\Controllers\ProductImageController::class, 'save'])->whereNumber('id')->name('product.image.save');
         Route::get('products', [CommerceController::class, 'products'])->name('products');
+        Route::get('products/labels', [\App\Http\Controllers\ProductLabelController::class, 'index'])->name('product.labels');
+        Route::get('products/labels/print', [\App\Http\Controllers\ProductLabelController::class, 'preview'])->name('product.labels.print');
         Route::get('products/new', [CommerceController::class, 'productForm'])->name('product.new');
         Route::get('measure-units', [\App\Http\Controllers\MeasureUnitController::class,'index'])->name('units');
         Route::post('measure-units', [\App\Http\Controllers\MeasureUnitController::class,'store'])->name('units.store');
@@ -167,6 +180,7 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
         Route::get('catalog/{kind}', [CommerceController::class, 'catalog'])->name('catalog');
         Route::post('catalog/{kind}', [CommerceController::class, 'saveCatalog']);
         Route::get('stock', [CommerceController::class, 'stock'])->name('stock');
+        Route::get('stock/replenishment', \App\Http\Controllers\StockReplenishmentController::class)->name('stock.replenishment');
         Route::post('stock', [CommerceController::class, 'moveStock']);
         Route::get('sales', [CommerceController::class, 'sales'])->name('sales');
         Route::get('sales/new', [CommerceController::class, 'saleForm'])->name('sale.new');

@@ -21,7 +21,7 @@
 @forelse($recent as $s)<tr><td><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$s->id]) }}">#{{ $s->id }}</a></td><td>{{ $s->customer?->name ?? 'Consumidor final' }}</td><td><span class="badge {{ $s->status==='cancelled'?'bad':(!$s->paid?'warn':'') }}">{{ $s->status==='cancelled'?'Cancelada':($s->paid?'Recebida':'A receber') }}</span></td><td class="num">R$ {{ number_format($s->total,2,',','.') }}</td></tr>
 @empty<tr><td colspan="4" class="empty">Suas vendas aparecerão aqui.</td></tr>
 @endforelse</tbody></table></div></section>@endif
-@if($operationConfig['inventory'] && $currentUser->allows('stock.view'))<section class="panel"><div class="section-heading"><h2>Repor estoque</h2><a href="{{ route('stock',['company'=>$tenant->slug]) }}">Conferir saldos</a></div><p class="hint">Produtos que atingiram o mínimo cadastrado. Confira a necessidade antes de comprar.</p>
+@if($operationConfig['inventory'] && $currentUser->allows('stock.view'))<section class="panel"><div class="section-heading"><h2>Repor estoque</h2><a href="{{ route('stock.replenishment',['company'=>$tenant->slug,'sales'=>'all']) }}">Ver produtos abaixo do mínimo</a></div><p class="hint">Produtos que atingiram o mínimo cadastrado. Confira a necessidade antes de comprar.</p>
 @forelse($lowStock as $p)<p><strong>{{ $p->name }}</strong><br><span class="muted">Saldo {{ number_format($p->quantity,3,',','.') }} {{ $p->unit }} · mínimo {{ $p->minimum_stock }}</span></p>
 @empty<p class="muted">Nenhum produto abaixo do estoque mínimo.</p>
 @endforelse</section>@endif</div>

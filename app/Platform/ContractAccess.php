@@ -50,6 +50,7 @@ final class ContractAccess
     /** Permissions identify controllers and actions, including unnamed POST and quick-create routes. */
     public function modulesFor(Request $request): array
     {
+        if ($request->routeIs('business.public-catalog') && $request->input('visibility') === 'public') return ['catalog'];
         if ($request->routeIs('restaurant.activity')) return ['sales'];
         $permission = Permissions::request($request);
         return match ($permission) {

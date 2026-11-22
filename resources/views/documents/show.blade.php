@@ -13,6 +13,9 @@
     $documentGross = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['gross_total'] ?? $item['total']), 2), '0.00');
     $documentDiscount = collect($document->items)->reduce(fn ($total, $item) => bcadd($total, (string) ($item['discount_amount'] ?? '0'), 2), '0.00');
 @endphp
+@if($document->type === 'quote' && in_array($document->status, ['draft', 'approved'], true) && $currentUser->allows('documents.create'))
+    @include('documents.quote-sharing')
+@endif
 @if($document->type==='work_order')
 <section class="panel no-print"><h2>Etapas da ordem de serviço</h2><p>Aberta → Em serviço → Finalizada → Recebimento no caixa.</p><p class="hint">Salvar ou concluir a OS não reserva nem baixa estoque. O movimento de estoque e os títulos financeiros são gerados ao confirmar a venda.</p>
 @if(in_array($document->status,['draft','approved','in_progress'],true) && $currentUser->allows('documents.edit'))<a class="button secondary" href="{{ route('document.edit',['company'=>$tenant->slug,'id'=>$document->id]) }}">Editar atendimento e itens da OS</a>@endif

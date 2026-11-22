@@ -154,6 +154,26 @@ class CompanyOperations
             return $row;
         },3);
     }
+    public function publishCatalog(bool $published, int $version, int $actor): void
+    {
+        DB::connection('tenant')->transaction(function () use ($published, $version, $actor) {
+            $row = InstallerAccess::lockSetup();
+            InstallerAccess::authorizedActor($actor, 'administration');
+            $configuration = $row->configuration;
+            if ($published && ($configuration['catalog_mode'] ?? 'mixed') === 'services') {
+                throw ValidationException::withMessages(['visibility' => 'Esta empresa trabalha somente com serviços. Habilite produtos em Operação e implantação para publicar a vitrine.']);
+            }
+            $wasPublished = ($configuration['public_catalog_published'] ?? false) === true;
+            if ($wasPublished === $published) return;
+            if ((int) $row->version !== $version) {
+                throw ValidationException::withMessages(['version' => 'A configuração mudou. Reabra Minha empresa antes de alterar a publicação.']);
+            }
+            $configuration['public_catalog_published'] = $published;
+            $row->update(['configuration' => $configuration, 'version' => $row->version + 1, 'updated_by' => $actor]);
+            $this->audit($row, $actor, 'public_catalog', ['published' => $wasPublished], ['published' => $published]);
+        }, 3);
+    }
+
     public function pending(): array
     {
         return array_keys($this->pendingSteps());
