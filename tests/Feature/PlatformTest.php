@@ -428,13 +428,17 @@ class PlatformTest extends TestCase
         $this->assertSame(['name' => 'Responsável novo', 'email' => 'new-owner@example.test', 'must_change_password' => true], $storage->captured['attributes']);
         $created = Tenant::findOrFail($completed->tenant_id);
         $this->assertTrue($created->active);
+        $this->assertSame('commerce', $created->operation_segment);
+        $this->assertSame('0', (string) $created->operation_segment_version);
         $this->assertTrue($created->is_demonstration);
         $this->assertTrue($created->fiscal_demonstration);
         $this->assertNotNull($created->provisioned_at);
         $this->assertSame(1, $created->platform_version);
         $this->assertNull($completed->active_slug);
         $this->assertSame(2, Tenant::count());
+        $created->update(['operation_segment'=>'restaurant', 'operation_segment_version'=>1]);
         $this->assertSame($completed->id, $worker->process($job->id, 'Initial-test-secret-1234')->id);
+        $this->assertSame('restaurant', $created->fresh()->operation_segment);
         $this->assertSame(1, $storage->calls);
         $this->assertSame(1, PlatformAudit::where('action', 'company.provision_completed')->count());
         $this->assertSame($original, Snapshot::hash($this->company->fresh()->getRawOriginal()));
@@ -635,6 +639,8 @@ class PlatformTest extends TestCase
         $this->assertSame([$failed->tenant_id], $storage->rollbackIds);
         $company = Tenant::findOrFail($failed->tenant_id);
         $this->assertFalse($company->active);
+        $this->assertNull($company->operation_segment);
+        $this->assertNull($company->operation_segment_version);
         $this->assertNull($company->provisioned_at);
         $this->assertSame(1, $company->platform_version);
         $this->assertStringNotContainsString('SYNTHETIC-ADAPTER-SECRET', json_encode([$failed->toArray(), PlatformAudit::all()->toArray()], JSON_THROW_ON_ERROR));

@@ -4,6 +4,7 @@ namespace App\Platform;
 
 use App\Fiscal\Snapshot;
 use App\Models\Tenant;
+use App\Services\CompanyOperations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -84,6 +85,9 @@ final class ProcessProvisionRequest
                 }
                 $company->provisioned_at = now();
                 $company->active = true;
+                // The newly provisioned wizard starts at revision zero with this default segment.
+                $company->operation_segment = CompanyOperations::DEFAULTS['segment'];
+                $company->operation_segment_version = 0;
                 $company->platform_version = (int) $company->platform_version + 1;
                 $company->save();
                 $current->status = 'completed';

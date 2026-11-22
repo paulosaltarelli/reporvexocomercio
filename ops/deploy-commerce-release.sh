@@ -202,6 +202,8 @@ sync_segments=0
 if [[ $mode == --apply-operational-expansion ]] && grep -Fq "  $segment_index" "$manifest"; then
     migrations+=("$segment_index")
     sync_segments=1
+elif [[ $mode == --apply-code-only ]] && grep -Fq '  app/Platform/CompanySegment.php' "$manifest"; then
+    sync_segments=1
 fi
 for migration in "${migrations[@]}"; do
     artisan migrate --database=central --force --path="$migration" >> "$journal/migrations.log" 2>&1

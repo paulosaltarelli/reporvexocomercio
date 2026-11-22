@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Models\CompanyOperation;
+use App\Platform\PlatformAdmin;
 use App\Services\CompanyOperations;
 use App\Services\OperationalModes;
 use App\Services\TenantConnection;
@@ -54,7 +55,7 @@ trait OperationalSegmentCases
         }
     }
 
-    public function test_backfill_projects_each_tenants_saved_segment_and_preserves_unassigned_and_newer_data(): void
+    public function test_backfill_projects_each_tenants_effective_segment_and_preserves_newer_data(): void
     {
         $connection = app(TenantConnection::class);
         $legacy = CompanyOperation::updateOrCreate(['id' => 1], ['configuration' => ['segment' => 'supermarket'], 'version' => 5]);
@@ -66,7 +67,7 @@ trait OperationalSegmentCases
         $this->assertNull($this->b->fresh()->operation_segment_version);
 
         $this->artisan('platform:sync-company-segments')->assertSuccessful();
-        $this->assertNull($this->b->fresh()->operation_segment);
+        $this->assertSame('commerce', $this->b->fresh()->operation_segment);
         $this->assertEquals(11, $this->b->fresh()->operation_segment_version);
         $this->assertNull(config('tenancy.resolved_tenant_id'));
         $captured = $this->a->fresh()->getRawOriginal();
@@ -80,6 +81,58 @@ trait OperationalSegmentCases
         app(\App\Platform\CompanySegment::class)->sync($this->a->id, $legacy);
         $this->assertSame($captured, $this->a->fresh()->getRawOriginal());
         $this->artisan('platform:sync-company-segments', ['--company' => 'inexistente'])->assertFailed();
+    }
+
+    public function test_backfill_shows_completed_legacy_wizard_as_commerce_and_keeps_a_store_without_settings_unassigned(): void
+    {
+        $connection = app(TenantConnection::class);
+        $settings = CompanyOperation::create([
+            'id' => 1, 'version' => 12, 'updated_by' => $this->user->id,
+            'completed_at' => now()->subWeek(),
+            'configuration' => ['_setup_step' => 5, 'catalog_mode' => 'mixed', 'inventory' => true],
+        ]);
+        $original = $settings->refresh()->getRawOriginal();
+        $this->artisan('platform:sync-company-segments')->assertSuccessful();
+        $this->assertSame('commerce', $this->a->fresh()->operation_segment);
+        $this->assertEquals(12, $this->a->fresh()->operation_segment_version);
+        $this->assertNull($this->b->fresh()->operation_segment);
+        $this->assertSame('0', (string) $this->b->fresh()->operation_segment_version);
+        $connection->connect($this->b);
+        $this->assertNull(CompanyOperation::find(1));
+
+        $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id, 'auth_version' => 0]);
+        $step = $this->get('/app/a/setup?step=2')->assertOk();
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($step->getContent());
+        $selected = (new \DOMXPath($dom))->query('//select[@name="segment"]/option[@selected]');
+        $this->assertCount(1, $selected);
+        $this->assertSame('commerce', $selected->item(0)->getAttribute('value'));
+
+        $values = array_intersect_key($step->viewData('configuration'), CompanyOperations::DEFAULTS);
+        $this->post('/app/a/setup', $values + ['version' => $step->viewData('setup')->version])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $connection->connect($this->a);
+        $this->assertSame($original['completed_at'], $settings->fresh()->getRawOriginal('completed_at'));
+        $this->get('/app/a/setup?step=5')->assertOk()->assertSee('Implantação conferida em')
+            ->assertSee('<dt>Segmento</dt><dd>Comércio em geral</dd>', false);
+
+        $admin = PlatformAdmin::create([
+            'name' => 'Gestão da implantação', 'email' => 'implantacao@example.test',
+            'password' => 'test-central-password-123', 'active' => true, 'auth_version' => 0,
+        ]);
+        $this->withSession(['platform_admin_id' => $admin->id, 'platform_auth_version' => 0, 'platform_mfa_at' => time()]);
+        $commerce = $this->get('/vexo-admin?segment=commerce')->assertOk()->assertSee('Comércio em geral');
+        $this->assertEquals($this->a->id, $commerce->viewData('companies')->sole()->id);
+        $unassigned = $this->get('/vexo-admin?segment=unassigned')->assertOk()->assertSee('Segmento a definir');
+        $this->assertEquals($this->b->id, $unassigned->viewData('companies')->sole()->id);
+
+        $this->a->update(['operation_segment' => 'restaurant', 'operation_segment_version' => 13]);
+        $this->artisan('platform:sync-company-segments', ['--company' => $this->a->slug])->assertSuccessful();
+        $this->assertSame('restaurant', $this->a->fresh()->operation_segment);
+        $this->assertEquals(13, $this->a->fresh()->operation_segment_version);
+        $connection->connect($this->a);
+        $this->assertSame($original, $settings->fresh()->getRawOriginal());
+        $this->assertDatabaseCount('company_operation_audits', 0, 'tenant');
     }
 
     public function test_restaurant_http_flow_closes_once_and_keeps_inventory_unchanged_until_checkout(): void

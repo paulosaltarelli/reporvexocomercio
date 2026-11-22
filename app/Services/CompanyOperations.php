@@ -14,6 +14,13 @@ class CompanyOperations
         'catalog_mode'=>'mixed', 'inventory'=>true, 'negative_stock'=>'block', 'commissions'=>true, 'commission_basis'=>'cash',
         'discounts'=>true, 'quotes'=>true, 'work_orders'=>true, 'nfce'=>true, 'nfe'=>true, 'nfse'=>false,
     ];
+
+    public static function effectiveSegment(array $configuration): string
+    {
+        $segment = $configuration['segment'] ?? null;
+        return is_string($segment) && isset(OperationalModes::SEGMENTS[$segment]) ? $segment : self::DEFAULTS['segment'];
+    }
+
     private function effective(array $stored): array
     {
         $configuration = array_replace(self::DEFAULTS, $stored);
@@ -30,7 +37,7 @@ class CompanyOperations
         if (!in_array($configuration['default_operation'], $configuration['operation_modes'], true)) {
             $configuration['default_operation'] = $configuration['operation_modes'][0];
         }
-        if (!isset(OperationalModes::SEGMENTS[$configuration['segment']])) $configuration['segment'] = 'commerce';
+        $configuration['segment'] = self::effectiveSegment($stored);
         return $configuration;
     }
 
@@ -142,7 +149,7 @@ class CompanyOperations
             }
             unset($data['version']);
             $data=array_replace($defaults,$data);
-            if ($before !== $data || !isset($row->configuration['segment'])) {
+            if ($before !== $data) {
                 $configuration = array_replace($row->configuration, $data);
                 $row->update(['configuration'=>$configuration,'version'=>$row->version+1,'updated_by'=>$actor,'completed_at'=>null]);
                 $this->audit($row, $actor, 'configuration', $before, $data);
