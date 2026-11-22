@@ -69,7 +69,8 @@ final class FiscalReadiness
         } elseif ($credential->valid_until->isPast() || ! $credential->validated_hash || ! hash_equals($credential->validated_hash, app(CompanyFiscalConfiguration::class)->hash($configuredIssuer))) {
             $add('credentials.validation', 'Confira a validade do certificado e valide localmente a configuração fiscal atual.');
         }
-        $catalogRules = app(FiscalRuleResolver::class)->resolveMany(Product::where('type', 'product')->get());
+        $reviewDate = now($configuredIssuer?->validated_configuration['timezone'] ?? config('app.timezone'));
+        $catalogRules = app(FiscalRuleResolver::class)->resolveMany(Product::where('type', 'product')->get(), $reviewDate);
         if (collect($catalogRules)->contains(fn ($rule) => ! ($rule['available'] ?? false))) {
             $add('tax.validation', 'Há produtos sem regra fiscal disponível. Confira o perfil, a exceção individual e a identificação própria de cada produto.');
         }
@@ -90,7 +91,7 @@ final class FiscalReadiness
             $totals = ['goods' => '0.00', 'services' => '0.00', 'unclassified' => '0.00'];
             $lines = [];
             $products = Product::whereIn('id', $sale->items->pluck('product_id')->filter())->get()->keyBy('id');
-            $resolvedRules = app(FiscalRuleResolver::class)->resolveMany($products);
+            $resolvedRules = app(FiscalRuleResolver::class)->resolveMany($products, $reviewDate);
             foreach ($sale->items->sortBy('id') as $item) {
                 $kind = $item->fiscal_kind === 'service' || $item->service_id ? 'services' : ($item->fiscal_kind === 'product' ? 'goods' : 'unclassified');
                 $totals[$kind] = bcadd($totals[$kind], $item->total, 2);
@@ -109,6 +110,9 @@ final class FiscalReadiness
                     $line['tax_rule_at_review'] = $effective;
                     if (! ($effective['available'] ?? false)) {
                         $add('item.'.$item->id.'.tax_rule', 'Item #'.$item->id.': '.app(FiscalRuleResolver::class)->explain($effective));
+                    }
+                    if (($effective['parameters']['tax_model'] ?? null) === TaxProfile::REGULAR_RESALE_2027) {
+                        $add('item.'.$item->id.'.tax_model', 'Item #'.$item->id.': a regra de revenda de 2027 está disponível somente para prévia de cálculo.');
                     }
                     if (! preg_match('/^[0-9]{8}$/D', (string) $product?->ncm)) {
                         $add('item.'.$item->id.'.ncm', 'Item #'.$item->id.': complete e valide o NCM do produto.');

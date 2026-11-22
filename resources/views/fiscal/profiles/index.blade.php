@@ -5,7 +5,17 @@
 <div class="actions"><a class="button" href="{{ route('fiscal.profiles.create',['company'=>$tenant->slug]) }}">Novo perfil tributário</a><a href="{{ route('fiscal',['company'=>$tenant->slug]) }}">Voltar ao fiscal</a></div>
 <section class="panel"><h2>Como a regra é escolhida</h2><p><strong>Exceção individual → perfil do produto → perfil do grupo.</strong> O primeiro vínculo aplicável tem prioridade. Um perfil inativo bloqueia seu uso; não há troca silenciosa para outra regra.</p><p class="hint">Revisões valem para futuras conferências e emissões. Conferências e documentos anteriores mantêm seus dados capturados.</p></section>
 <section class="panel"><h2>Perfis da empresa</h2><div class="scroll"><table><thead><tr><th>Perfil</th><th>Revisão</th><th>Situação</th><th>Produtos vinculados</th><th>Grupos vinculados</th><th>Ações</th></tr></thead><tbody>
-@forelse($profiles as $profile)<tr><td class="product-name">{{ $profile->name }}</td><td>{{ $profile->revision }}</td><td><span class="badge {{ $profile->active?'':'warn' }}">{{ $profile->active?'Ativo':'Inativo' }}</span></td><td>{{ $profile->products_count }}</td><td>{{ $profile->groups_count }}</td><td><div class="actions"><a href="{{ route('fiscal.profiles.edit',['company'=>$tenant->slug,'id'=>$profile->id]) }}">Editar</a>@if($profile->active)<a href="{{ route('fiscal.profiles.bulk',['company'=>$tenant->slug,'id'=>$profile->id]) }}">Vincular em lote</a>@endif</div></td></tr>@empty<tr><td colspan="6" class="empty">Nenhum perfil tributário cadastrado. Crie um perfil com os parâmetros confirmados da empresa.</td></tr>@endforelse
+@forelse($profiles as $profile)
+<tr><td class="product-name">
+    {{ $profile->name }}
+    <div class="hint">{{ ($profile->parameters['tax_model'] ?? null) === \App\Fiscal\TaxProfile::REGULAR_RESALE_2027 ? 'Prévia de revenda em 2027' : 'Homologação de NF-e e NFC-e' }}</div>
+    @if(!empty($profile->parameters['valid_from']) || !empty($profile->parameters['valid_until']))
+        <div class="hint">
+            @if(!empty($profile->parameters['valid_from']))Desde {{ \Illuminate\Support\Carbon::parse($profile->parameters['valid_from'])->format('d/m/Y') }}@endif
+            @if(!empty($profile->parameters['valid_until'])) até {{ \Illuminate\Support\Carbon::parse($profile->parameters['valid_until'])->format('d/m/Y') }}@endif
+        </div>
+    @endif
+</td><td>{{ $profile->revision }}</td><td><span class="badge {{ $profile->active?'':'warn' }}">{{ $profile->active?'Ativo':'Inativo' }}</span></td><td>{{ $profile->products_count }}</td><td>{{ $profile->groups_count }}</td><td><div class="actions"><a href="{{ route('fiscal.profiles.edit',['company'=>$tenant->slug,'id'=>$profile->id]) }}">Editar</a>@if($profile->active)<a href="{{ route('fiscal.profiles.bulk',['company'=>$tenant->slug,'id'=>$profile->id]) }}">Vincular em lote</a>@endif</div></td></tr>@empty<tr><td colspan="6" class="empty">Nenhum perfil tributário cadastrado. Crie um perfil com os parâmetros confirmados da empresa.</td></tr>@endforelse
 </tbody></table></div></section>
 <section class="panel"><h2>Perfil padrão de cada grupo</h2><p>O vínculo é usado apenas por produtos sem exceção individual e sem perfil próprio. Trocar o padrão altera a regra de todos os produtos que herdam deste grupo, atuais e futuros, nas próximas conferências e emissões; não substitui escolhas explícitas.</p>
 @foreach($groups as $group)

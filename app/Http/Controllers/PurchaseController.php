@@ -34,7 +34,7 @@ class PurchaseController extends Controller
     public function previewXml(Request $r, string $company)
     {
         $this->admin($r);
-        abort_unless(config('fiscal.product_invoices_enabled', false), 404);
+        abort_unless(PurchaseInvoice::enabled(), 404);
         $r->validate(['invoice_xml'=>'required|file|max:2048']);
         $preview = \App\Services\PurchaseInvoiceXml::preview(
             $r->file('invoice_xml')->getContent(),
@@ -80,7 +80,7 @@ class PurchaseController extends Controller
     {
         $this->admin($r);
 
-        $invoice = config('fiscal.product_invoices_enabled', false)
+        $invoice = PurchaseInvoice::enabled()
             ? OperationRecord::where('action','purchase_invoice')->where('after->purchase_id',$id)->first()?->after : null;
         return view('purchases.show', ['invoice' => $invoice, 'purchase' => Purchase::with('supplier', 'items')->findOrFail($id)]);
     }

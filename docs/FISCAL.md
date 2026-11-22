@@ -6,11 +6,21 @@ O módulo fiscal integra a aplicação existente e as vendas. Não há PDV separ
 
 Em Minha empresa, complete razão social, CNPJ, IE, regime tributário, endereço e código IBGE. Informe credenciamento NFC-e de homologação, responsável contábil e operação. Cadastre PFX/A1 da empresa, senha, CSC e identificador de homologação, CRT, série, próxima numeração reconciliada, fuso horário e limites aplicáveis à UF. Nenhum dado fiscal da empresa é fixado no código.
 
-Certificado e segredos ficam criptografados com a chave da aplicação no banco exclusivo da empresa. Nunca são exibidos novamente, enviados a intermediário ou incluídos no repositório. A validação local confere certificado/configuração; não comprova credenciamento nem autorização da SEFAZ. Alterações invalidam a validação anterior.
+Certificado e segredos ficam criptografados com a chave da aplicação e vinculados à empresa emitente. A validação local confere o certificado e a configuração da empresa. O credenciamento e a autorização de documentos são verificados junto à SEFAZ. Alterações invalidam a validação anterior.
 
 Cadastre as regras fiscais dos produtos com o contador. A implementação inicial atende somente operações expressamente suportadas e bloqueia situações sem dados suficientes; não presume alíquotas, benefícios ou enquadramentos. Serviços precisam de NFS-e e não são emitidos neste módulo. Confira as restrições tributárias na interface e no código TaxProfile.
 
 ## Venda e documento
+
+### Prévia da reforma em 2027
+
+Em **Fiscal → Gerenciar perfis tributários**, crie um perfil com a finalidade **Prévia de revenda em 2027**. Informe a data de início, a alíquota efetiva de CBS e a referência da validação contábil. A data final padrão é 31/12/2027. Em **Fiscal → Regras por produto → Simular 2027**, selecione esse perfil para comparar o cálculo antes de mudar o vínculo do produto.
+
+A prévia atende uma revenda interna CFOP 5102 no lucro real ou presumido, com ICMS CST 00 e IBS/CBS integrais. Ela calcula o IBS estadual, o municipal e a CBS por item e exibe a base, o ICMS destacado e o total. A transmissão de documentos com essa regra, o Simples Nacional, o tratamento específico de restaurantes e as mercadorias com alíquotas reduzidas exigem outras etapas de implementação.
+
+Em **Compras**, a configuração `VENDRA_PURCHASE_INVOICES_ENABLED=true` disponibiliza a entrada de NF-e de fornecedores independentemente da emissão de mercadorias. A prévia do XML confere os valores declarados de IBS, CBS e Imposto Seletivo com os totais da nota. O responsável informa o tratamento dos tributos cobrados antes da confirmação da compra.
+
+### Homologação da venda
 
 A ação fiscal na venda permite conferir a operação e solicitar NFC-e em homologação. A série/número são reservados sob bloqueio; XML assinado, chave, configurações e itens são congelados antes de qualquer transmissão. A outbox processa a comunicação fora das transações comerciais. Repetir a solicitação retorna o mesmo documento.
 
@@ -32,8 +42,6 @@ Fontes: https://www.nfe.fazenda.gov.br/portal/ ; https://dfe-portal.svrs.rs.gov.
 
 ## OS mista em homologação
 
-No fiscal da venda, uma OS faturada com uma linha de serviço do catálogo e uma ou mais mercadorias permite preparar os documentos em duas etapas. Abra a conferência do serviço, informe a competência e confirme o valor reservado à DPS. O Vendra assina e valida a DPS localmente no ambiente restrito. Em seguida, confira as peças na venda, selecione NFC-e ou NF-e conforme a operação e confirme separadamente a segregação e o envio em homologação. Havendo vários meios de recebimento, informe os centavos de cada meio destinados às mercadorias. A diferença corresponde ao serviço. O total das peças e o valor da DPS devem recompor o total da venda original. Os dois documentos mantêm identificação da OS, da venda e dos itens.
-
-O escopo municipal atual contempla um único serviço catalogado, local e sem retenção ou desconto no serviço. Linhas sem classificação histórica, cobrança de cartão com acréscimo, serviços múltiplos e divergências de total exigem revisão. A transmissão nacional da DPS depende do contrato autenticado do contribuinte. A geração fiscal mantém estoque e recebíveis registrados pelo faturamento comercial da OS.
+A área de NFS-e permite consultar os registros históricos da empresa. A emissão da nota de serviço é externa ao Vendra. Na conferência de uma OS mista já vinculada a um registro histórico de DPS, a aplicação verifica a integridade desse registro e a correspondência entre itens e valores da venda. A segregação para homologação de mercadorias exige que o valor total seja integralmente reconciliado.
 
 Os modelos 55 e 65 consultam os meios efetivamente recebidos para exibir a modalidade do Pix. Para uma unidade comercial acima de seis caracteres, abra a regra fiscal do produto e informe uma abreviação equivalente. Ela é aplicada a uCom e uTrib sem conversão adicional de quantidade ou preço.

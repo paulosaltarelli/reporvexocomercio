@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Fiscal\FiscalProfileManager;
+use App\Fiscal\StandardResalePreview;
+use App\Fiscal\TaxProfile;
 use App\Models\FiscalItemRule;
 use App\Models\FiscalTaxProfile;
 use App\Models\Product;
@@ -27,6 +29,23 @@ class FiscalProfileController extends Controller
         $groupHashes = $groups->mapWithKeys(fn ($g) => [$g->id => $manager->groupBindingHash($g)])->all();
         $groupImpactCounts = Product::where('type', 'product')->whereNull('fiscal_tax_profile_id')->whereNotIn('id', FiscalItemRule::select('product_id'))->selectRaw('product_group_id, COUNT(*) AS aggregate')->groupBy('product_group_id')->pluck('aggregate', 'product_group_id')->all();
         return view('fiscal.profiles.index', compact('profiles', 'groups', 'groupHashes', 'groupImpactCounts'));
+    }
+
+    public function reformPreview(Request $request, string $company, int $id, FiscalProfileManager $manager, StandardResalePreview $preview)
+    {
+        $this->context($request, $manager);
+        $product = Product::where('type', 'product')->findOrFail($id);
+        $result = $request->isMethod('post') ? $preview->calculate($product, $request->all()) : null;
+
+        $profiles = FiscalTaxProfile::where('active', true)->where('parameters->tax_model', TaxProfile::REGULAR_RESALE_2027)
+            ->orderBy('name')->get(['id', 'name']);
+        $values = [];
+        foreach (['reference_date', 'icms_base', 'item_amount', 'profile_id', 'confirm_scope'] as $key) {
+            $value = $request->isMethod('post') ? $request->input($key) : old($key);
+            $values[$key] = is_scalar($value) ? (string) $value : null;
+        }
+
+        return view('fiscal.profiles.reform-preview', compact('product', 'result', 'profiles', 'values'));
     }
 
     public function create(Request $r, string $company, FiscalProfileManager $manager)

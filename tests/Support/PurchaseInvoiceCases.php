@@ -33,6 +33,45 @@ trait PurchaseInvoiceCases
         $this->assertSame('3.000',$this->product->fresh()->quantity);
     }
 
+    public function test_inbound_reform_invoice_can_be_received_while_issuance_is_off(): void
+    {
+        config(['fiscal.product_invoices_enabled'=>false,'fiscal.purchase_invoices_enabled'=>true]);
+        \App\Models\BusinessProfile::forceCreate(['id'=>1, 'legal_name'=>'Loja RTC', 'document'=>'11444777000161']);
+        $supplier = Supplier::create(['name'=>'Fornecedor RTC', 'document'=>'11222333000181']);
+        $this->withSession(['tenant_id'=>$this->a->id,'user_id'=>$this->user->id]);
+        $this->get('/app/a/purchases/new')->assertOk()->assertSee('name="invoice_xml"', false)->assertSee('IBS estadual');
+        $this->assertFalse(\App\Fiscal\ProductInvoiceGate::enabled());
+        $xml = <<<'XML'
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe"><infNFe Id="NFe35261111222333000181550010000000181123456781">
+<ide><mod>55</mod><serie>1</serie><nNF>18</nNF><dhEmi>2026-11-01T10:00:00-03:00</dhEmi></ide>
+<emit><CNPJ>11222333000181</CNPJ><xNome>Fornecedor RTC</xNome></emit><dest><CNPJ>11444777000161</CNPJ></dest>
+<det nItem="1"><prod><cProd>X</cProd><xProd>Produto</xProd><uCom>UN</uCom><qCom>1</qCom><vUnCom>10.00</vUnCom><vProd>10.00</vProd></prod>
+<imposto><IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib><gIBSCBS><gIBSUF><vIBSUF>0.01</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.00</vIBSMun></gIBSMun><vIBS>0.01</vIBS><gCBS><vCBS>0.09</vCBS></gCBS></gIBSCBS></IBSCBS></imposto></det>
+<total><ICMSTot><vNF>10.00</vNF></ICMSTot><IBSCBSTot><gIBS><gIBSUF><vIBSUF>0.01</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.00</vIBSMun></gIBSMun><vIBS>0.01</vIBS></gIBS><gCBS><vCBS>0.09</vCBS></gCBS></IBSCBSTot><vNFTot>10.00</vNFTot></total></infNFe></NFe>
+XML;
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('entrada.xml', $xml);
+        $this->post('/app/a/purchases/preview-xml', ['invoice_xml'=>$file])->assertRedirect('/app/a/purchases/new')
+            ->assertSessionHasNoErrors()->assertSessionHasInput('supplier_id', $supplier->id)
+            ->assertSessionHasInput('items.0.taxes.cbs.composition', 'reported');
+        $input = session()->getOldInput();
+        app(TenantConnection::class)->connect($this->a);
+        $this->assertSame(0, Purchase::count());
+        $draft = $input['items'][0];
+        $date = '2026-11-02';
+        $this->travelTo(\Carbon\Carbon::parse($date.' 12:00:00'));
+        $purchase = ['request_key'=>(string)Str::uuid(),'supplier_id'=>$input['supplier_id'],
+            'purchased_on'=>$date,'due_date'=>$date,'paid'=>0,'payment_method'=>'invoice',
+            'invoice'=>$input['invoice'], 'items'=>[['product_id'=>$this->product->id,
+                'quantity'=>$draft['quantity'],'unit_cost'=>$draft['unit_cost'],'rtc_codes'=>$draft['rtc_codes'],
+                'fiscal_detail'=>json_encode(['adjustments'=>$draft['adjustments'],'taxes'=>$draft['taxes']])]]];
+        $this->post('/app/a/purchases', $purchase)->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->a);
+        $entry = Purchase::sole();
+        $this->assertSame('10.00', $entry->entries()->sole()->amount);
+        $this->assertSame('10.0000000', app(Inventory::class)->totalValue());
+        $this->get('/app/a/purchases/'.$entry->id)->assertOk()->assertSee('CBS R$ 0,09')->assertSee('Destaque informativo')->assertSee('Classificação IBS/CBS 000001');
+    }
+
     public function test_supplier_invoice_preserves_total_stock_value_and_blocks_duplicate_receipt(): void
     {
         config(['fiscal.product_invoices_enabled'=>true]);
