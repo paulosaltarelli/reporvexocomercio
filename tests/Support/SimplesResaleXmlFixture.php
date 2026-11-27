@@ -20,7 +20,7 @@ use RuntimeException;
 /** Fixed model-65 test case. All inputs are synthetic, including issuer and signing key. */
 final class SimplesResaleXmlFixture
 {
-    public const SCHEMA = __DIR__.'/../Fixtures/nfce-simples/PL_010h_v1.03/nfe_v4.00.xsd';
+    public const SCHEMA = FiscalSchema::NFCE_SCHEMA_DIRECTORY.'/nfe_v4.00.xsd';
     private const NS = 'http://www.portalfiscal.inf.br/nfe';
 
     public static function build(): DOMDocument

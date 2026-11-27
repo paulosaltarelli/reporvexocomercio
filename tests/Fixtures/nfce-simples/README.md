@@ -7,7 +7,7 @@ Revenda presencial interna em Araguari/MG para consumidor final, com CFOP 5102, 
 Na raiz do projeto, com as dependências do `composer.lock` instaladas inclusive as de desenvolvimento, execute
 
 ```sh
-(cd tests/Fixtures/nfce-simples/PL_010h_v1.03 && sha256sum -c SHA256SUMS)
+(cd app/Fiscal/Nfce/schemas/PL_010h_v1.03 && sha256sum -c SHA256SUMS)
 php tests/Fixtures/nfce-simples/ensaio.php
 php vendor/bin/phpunit tests/Unit/SimplesResaleXmlTest.php
 ```
@@ -34,8 +34,8 @@ O ensaio verifica o documento completo no XSD oficial, a assinatura e as quatro 
 
 **Pendência para autorização com a classificação da amostra.** Na tabela do IT 2025.002 v1.71, a classe 000001 aparece vinculada ao CST 000, admite NFC-e e indica receita bruta interna do Simples. O CST tem o indicador que exige `gIBSCBS`. UB13-30 da NT 2025.002 v1.53 prevê rejeição 1022 se esse grupo faltar. A tabela específica do §2.3 da NT 2026.005 v1.00 orienta omitir o grupo no CRT 1 que permanece no regime único. A combinação precisa de esclarecimento oficial ou de verificação pelo autorizador de MG antes de liberar uma venda com esta classificação. [Tabela oficial SVRS](https://dfe-portal.svrs.rs.gov.br/Cff/ClassificacaoTributaria) · [Informe Técnico v1.71 e notas técnicas](https://dfe-portal.svrs.rs.gov.br/Nfe/Documentos)
 
-Na revisão de origem, o emissor utiliza NFePHP v5.2.9 com `PL_010_V1.30`. A geração direta pela loja requer um perfil versionado com vigência, regime do IBS/CBS, atividade por item e parâmetros aprovados para a competência. Também requer validação na assinatura e no protocolo com o pacote congelado da venda. Este ensaio é privado, usa uma identidade sintética e confirma as propriedades listadas acima.
+O assinador do emissor utiliza NFePHP v5.2.9 com `PL_010_V1.30`. Para a nova venda convencional do perfil do Simples de 2026, a fila também valida o XML assinado no PL_010h antes de reservar o número e grava o identificador desse pacote para conferir o retorno. Para conectar o leiaute do Simples de 2027, o assinador precisa aceitar as tags da NT 2026.005. A seleção futura pelo comércio também requer um perfil versionado com vigência, regime do IBS/CBS, atividade por item e parâmetros aprovados para a competência.
 
 ## Origem dos XSD
 
-O diretório `PL_010h_v1.03` contém os cinco arquivos da pasta `NFe/` necessários para validar `nfe_v4.00.xsd` e suas dependências, copiados byte a byte do pacote de 13/11/2026. O manifesto `SHA256SUMS` registra cada arquivo. O SHA-256 do ZIP original é `bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81`. [Download oficial do pacote](https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=YhWikFoTxUo%3D)
+O emissor e o ensaio usam os mesmos arquivos locais. O manifesto registra o SHA-256 de cada XSD. [Origem, tamanho e composição dos schemas](../../../app/Fiscal/Nfce/schemas/README.md)

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Fiscal\CertificateInspector;
 use App\Fiscal\CompanyFiscalConfiguration;
 use App\Fiscal\FiscalReadiness;
+use App\Fiscal\FiscalSchema;
 use App\Fiscal\FiscalTransportException;
 use App\Fiscal\PrepareFiscalReview;
 use App\Fiscal\PrivateFiscalFiles;
@@ -507,8 +508,32 @@ class FiscalTest extends TestCase
             $xp->evaluate('string(//n:infAdic/n:infCpl)'));
         $this->assertTrue(\NFePHP\Common\Signer::isSigned($doc->signed_xml, 'infNFe'));
         $this->assertSame('pending', $doc->state);
-        $this->travelTo(\Carbon\Carbon::parse('2027-01-01T00:00:00-03:00'));
+        $this->assertSame(FiscalSchema::NFCE_PACKAGE, $doc->snapshot['schema_package']);
+        $simulatedReturn = \NFePHP\NFe\Complements::toAuthorize($doc->signed_xml, FiscalFixtures::authorizationResponse($doc->signed_xml));
+        $evidence = app(\App\Fiscal\XmlEvidence::class)->authorization($simulatedReturn, $doc->snapshot['payload'] + [
+            '_signed_xml' => $doc->signed_xml, '_schema_package' => $doc->snapshot['schema_package'],
+        ], FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail());
+        $this->assertSame($doc->access_key, $evidence['key']);
+
         $next = DB::connection('tenant')->table('fiscal_sequences')->where('model', 65)->value('next_number');
+        $this->app->instance(\App\Fiscal\NfceXmlBuilder::class, new class {
+            public function prepare(): array
+            {
+                return ['xml' => '<NFe/>', 'access_key' => ''];
+            }
+        });
+        try {
+            app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $operation);
+            $this->fail('O XML fora do esquema chegou à fila.');
+        } catch (FiscalTransportException $e) {
+            $this->assertSame('nfce_signed_schema_invalid', $e->getMessage());
+        } finally {
+            $this->app->forgetInstance(\App\Fiscal\NfceXmlBuilder::class);
+        }
+        $this->assertSame($next, DB::connection('tenant')->table('fiscal_sequences')->where('model', 65)->value('next_number'));
+        $this->assertSame(1, DB::connection('tenant')->table('fiscal_outbox')->count());
+        $this->assertSame(1, FiscalDocument::count());
+        $this->travelTo(\Carbon\Carbon::parse('2027-01-01T00:00:00-03:00'));
         try {
             app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $operation);
             $this->fail('O perfil convencional de 2026 ultrapassou a vigência.');
@@ -645,6 +670,7 @@ class FiscalTest extends TestCase
         $this->product->update(['sale_price' => '1000']);
         $again = $queue->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
         $this->assertSame($doc->id, $again->id);
+        $this->assertSame(FiscalSchema::PACKAGE, $doc->snapshot['schema_package']);
         $this->assertSame('10.01', $doc->snapshot['payload']['valor_total']);
         $this->assertSame('0.00', $doc->snapshot['services_total']);
         $this->assertCount(1, $doc->snapshot['payload']['items']);

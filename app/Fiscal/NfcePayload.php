@@ -151,7 +151,9 @@ final class NfcePayload
             'commercial_lines' => $commercialLines, 'payment_evidence' => $payment,
             'work_order_split' => $split, 'services_total' => $split['services_total'] ?? '0.00', 'goods_total' => $goods, 'operation' => $operation,
             'tax_rules' => $rules, 'configuration_hash' => $configurationHash,
-            'certificate_fingerprint' => $credential->certificate_fingerprint, 'schema_package' => FiscalSchema::PACKAGE,
+            'certificate_fingerprint' => $credential->certificate_fingerprint,
+            'schema_package' => collect($rules)->every(fn (array $rule) => ($rule['parameters']['tax_model'] ?? null) === TaxProfile::SIMPLES_NFCE_2026)
+                ? FiscalSchema::NFCE_PACKAGE : FiscalSchema::PACKAGE,
         ];
     }
 

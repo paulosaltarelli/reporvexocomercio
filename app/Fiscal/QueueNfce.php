@@ -54,6 +54,9 @@ final class QueueNfce
             $snapshot['tenant_id'] = $tenant->id;
             $snapshot['configuration'] = $issuer->validated_configuration;
             $prepared = app(NfceXmlBuilder::class)->prepare($snapshot['payload'], $snapshot['issuer_snapshot'], $snapshot['configuration'], $credential, (int) $sequence->next_number, (int) $series);
+            if ($snapshot['schema_package'] === FiscalSchema::NFCE_PACKAGE) {
+                app(FiscalSchema::class)->validateSignedNfce($prepared['xml']);
+            }
             $document = FiscalDocument::create(['issuer_id' => $issuer->id, 'sale_id' => $saleId, 'reference' => (string) Str::uuid(), 'model' => 65, 'series' => $series, 'number' => $sequence->next_number, 'state' => 'pending', 'snapshot' => $snapshot, 'snapshot_sha256' => Snapshot::hash($snapshot), 'access_key' => $prepared['access_key'], 'signed_xml' => $prepared['xml'], 'signed_xml_sha256' => hash('sha256', $prepared['xml'])]);
             $sequences->where('id', $sequence->id)->update(['next_number' => $sequence->next_number + 1]);
             DB::connection('tenant')->table('fiscal_outbox')->insert(['tenant_id' => $tenant->id, 'document_id' => $document->id, 'operation_id' => (string) Str::uuid(), 'operation' => 'issue', 'available_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
