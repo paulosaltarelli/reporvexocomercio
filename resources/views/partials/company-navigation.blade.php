@@ -1,5 +1,6 @@
 @php
     $isAdmin = $currentUser?->role === 'admin';
+    $certificateInMenu = $nfceAvailable && $currentUser->canEnrollFiscalCertificate();
     $link = fn ($route, $label, $active, $parameters = [], $fragment = '') => [
         'label' => $label,
         'href' => route($route, ['company' => $tenant->slug] + $parameters).$fragment,
@@ -40,8 +41,8 @@
                 $link('cash', 'Caixa diário', request()->routeIs('cash', 'cash.*')),
             ]],
             ['label' => 'Fiscal', 'icon' => 'document', 'links' => array_filter([
-                $nfceAvailable ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
-                $nfceAvailable && $currentUser->canEnrollFiscalCertificate() ? $link('fiscal.company', 'Certificado digital', request()->routeIs('fiscal.company'), [], '#certificado-digital-a1') : null,
+                $nfceAvailable ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product') || (!$certificateInMenu && request()->routeIs('fiscal.company'))) : null,
+                $certificateInMenu ? $link('fiscal.company', 'Certificado digital', request()->routeIs('fiscal.company'), [], '#certificado-digital-a1') : null,
                 $link('nfse.index', 'Arquivo de serviços', request()->routeIs('nfse.*')),
                 $nfceAvailable ? $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')) : null,
                 $allProductInvoices ? $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')) : null,

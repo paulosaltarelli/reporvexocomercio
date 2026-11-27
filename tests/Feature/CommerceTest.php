@@ -554,7 +554,7 @@ class CommerceTest extends TestCase
         $this->withSession(['tenant_id' => $this->a->id, 'user_id' => $this->user->id]);
         foreach ([
             '/app/a/fiscal' => '/app/a/fiscal',
-            '/app/a/fiscal/company' => '/app/a/fiscal',
+            '/app/a/fiscal/company' => '/app/a/fiscal/company',
             '/app/a/nfse' => '/app/a/nfse',
             '/app/a/fiscal/profiles' => '/app/a/fiscal/profiles',
             '/app/a/fiscal/simulations' => '/app/a/fiscal/simulations',
