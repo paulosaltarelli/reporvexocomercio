@@ -41,7 +41,7 @@
             ]],
             ['label' => 'Fiscal', 'icon' => 'document', 'links' => array_filter([
                 $nfceAvailable ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
-                $nfceAvailable && $isAdmin ? $link('fiscal.company', 'Certificado digital', request()->routeIs('fiscal.company'), [], '#certificado-digital-a1') : null,
+                $nfceAvailable && $currentUser->getRawOriginal('role') === 'admin' ? $link('fiscal.company', 'Certificado digital', request()->routeIs('fiscal.company'), [], '#certificado-digital-a1') : null,
                 $link('nfse.index', 'Arquivo de serviços', request()->routeIs('nfse.*')),
                 $nfceAvailable ? $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')) : null,
                 $allProductInvoices ? $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')) : null,
