@@ -13,7 +13,7 @@
             <div class="field"><label for="installer-team-email">E-mail de contato (opcional)</label><input id="installer-team-email" type="email" name="email" maxlength="180" value="{{ old('email') }}"></div>
         </div>
         <div class="setup-actions">
-            <a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>config('fiscal.product_invoices_enabled')?3:2]) }}">Voltar</a>
+            <a class="button secondary" href="{{ route('setup',['company'=>$tenant->slug,'step'=>$nfceAvailable?3:2]) }}">Voltar</a>
             <button class="primary">Salvar responsável e continuar</button>
         </div>
     </form>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Models\DemoRun;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
@@ -28,6 +29,8 @@ class ResolveTenant
             view()->share('demoMode', DemoRun::where('code', 'computer-store-v1')->whereNotNull('completed_at')->exists());
             view()->share('currentUser', null);
             view()->share('supportAdmin', null);
+            view()->share('nfceAvailable', ProductInvoiceGate::enabled(65));
+            view()->share('allProductInvoices', ProductInvoiceGate::enabled(null));
             view()->share('operationConfig', app(\App\Services\CompanyOperations::class)->current());
             view()->share('companySetup', \App\Models\CompanyOperation::find(1));
 

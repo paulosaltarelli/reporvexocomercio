@@ -7,7 +7,7 @@
 @if(request()->routeIs('business') && $currentUser->allows('administration'))
 @include('storefront.publication')
 @endif
-@if(config('fiscal.product_invoices_enabled') && $currentUser->allows('fiscal.manage'))
+@if($nfceAvailable && $currentUser->allows('fiscal.manage'))
 @include('fiscal.company')
 @endif
 @endsection

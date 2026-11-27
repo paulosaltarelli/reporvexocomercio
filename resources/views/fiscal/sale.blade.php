@@ -3,13 +3,15 @@
 @section('subtitle','Prévia para revisão. Não é NF-e, NFC-e, DANFE nem autorização fiscal.')
 @section('content')
 @include('fiscal.nfse.entry',['nfseSale'=>$sale])
+@if($allProductInvoices)
 <section class="panel"><h2>Simular o fluxo sem certificado</h2><div class="notice"><strong>Simulação interna · sem valor fiscal</strong><p>Não se comunica com a SEFAZ, não usa certificado e não gera NFC-e, DANFE ou XML fiscal. As pendências da conferência abaixo não impedem o teste local.</p></div>
 @if($sale->status==='completed')<form method="post" action="{{ route('fiscal.simulations.create',['company'=>$tenant->slug,'id'=>$sale->id]) }}">
 @csrf
 <input type="hidden" name="request_key" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
 <div class="field"><label for="simulation-scenario">Cenário de teste</label><select id="simulation-scenario" name="scenario" required><option value="accepted">Aceite simulado</option><option value="rejected">Rejeição simulada</option><option value="uncertain">Timeout e consulta posterior simulados</option></select><small class="hint">O resultado é determinado pelo cenário escolhido; não representa validação tributária.</small></div><div class="actions"><button class="primary">Iniciar simulação interna</button><a href="{{ route('fiscal.simulations.index',['company'=>$tenant->slug]) }}">Histórico de simulações</a></div></form>@else<p>Esta venda foi cancelada. Abra uma venda concluída para iniciar um novo teste.</p>@endif</section>
+@endif
 
-<section class="panel"><h2>Conferência para homologação NFC-e · modelo 65</h2><p class="hint">As pendências desta seção se referem à NFC-e. A NF-e possui configuração própria abaixo; a simulação interna é independente.</p>@include('fiscal.summary') @include('fiscal.blockers')
+<section class="panel"><h2>Conferência para homologação NFC-e · modelo 65</h2><p class="hint">As pendências desta seção se referem à NFC-e. @if($allProductInvoices)A NF-e possui configuração própria abaixo; a simulação interna é independente.@endif</p>@include('fiscal.summary') @include('fiscal.blockers')
 @if($sale->status==='completed')<form method="post" action="{{ route('fiscal.prepare',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 <input type="hidden" name="request_key" value="{{ old('request_key',(string)\Illuminate\Support\Str::uuid()) }}">
 <p>A conferência registra os dados exibidos agora, incluindo as pendências. Não reserva numeração, não transmite e não altera estoque ou financeiro.</p>
@@ -26,7 +28,7 @@
 <label class="checkbox-line"><input type="checkbox" name="homologation_consent" value="1" required> Autorizo transmitir os dados desta empresa e venda à SEFAZ para teste em homologação, sem valor fiscal.</label>
 <button class="primary">Solicitar emissão em homologação</button></form></section>@endif
 
-@if($sale->status==='completed')
+@if($allProductInvoices && $sale->status==='completed')
 <section class="panel"><h2>Emitir NF-e · modelo 55 · homologação</h2><p>Fluxo para venda interna de mercadorias, com destinatário identificado e endereço fiscal completo, sem frete, ST ou IPI. Serviços não são incluídos. A NF-e utiliza configuração e numeração próprias, sem CSC.</p>
 @if($sale->customer_id)
 <p>Destinatário: <strong>{{ $sale->customer?->name }}</strong>. <a href="{{ route('nfe.customer',['company'=>$tenant->slug,'id'=>$sale->customer_id]) }}">Conferir identificação e endereço fiscal</a></p>

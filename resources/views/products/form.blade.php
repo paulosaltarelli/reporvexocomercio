@@ -47,10 +47,10 @@ Desmarque para vender sem controlar quantidade. Informe o custo de referência p
     <div class="form-note" id="effective-commercial-rules" role="status" aria-live="polite"></div>
     <p class="hint">Cada campo herda de forma independente. A comissão usa o valor líquido após descontos; sua apuração não registra pagamento ao vendedor.</p>
 </details>
-<details id="item-tax-section" class="disclosure compact" style="margin-top:24px" @if(!config('fiscal.product_invoices_enabled') && $itemType!=='service') hidden @endif @if($errors->hasAny(['ncm','origin','municipal_service_code','iss_rate'])) open @endif>
-    <summary>{{ config('fiscal.product_invoices_enabled') ? 'Dados fiscais preparatórios (opcional)' : 'Dados municipais do serviço (opcional)' }}</summary>
+<details id="item-tax-section" class="disclosure compact" style="margin-top:24px" @if(!$nfceAvailable && $itemType!=='service') hidden @endif @if($errors->hasAny(['ncm','origin','municipal_service_code','iss_rate'])) open @endif>
+    <summary>{{ $nfceAvailable ? 'Dados fiscais preparatórios (opcional)' : 'Dados municipais do serviço (opcional)' }}</summary>
     <div class="disclosure-content">
-        @if(config('fiscal.product_invoices_enabled'))
+        @if($nfceAvailable)
         <div id="product-fiscal-fields" class="form-grid"><div class="field"><label>NCM (opcional)</label><input name="ncm" maxlength="8" value="{{ old('ncm',$product->ncm) }}"></div><div class="field"><label>Origem fiscal (opcional)</label><select name="origin"><option value="">Não informada</option>
 @foreach(range(0,8) as $o)<option value="{{ $o }}"
 @selected((string)old('origin',$product->origin)===(string)$o)>{{ $o }}</option>

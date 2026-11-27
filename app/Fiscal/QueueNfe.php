@@ -16,7 +16,7 @@ final class QueueNfe
 {
     public function enqueue(Tenant $tenant, int $saleId, int $userId, array $operation): FiscalDocument
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(55);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
@@ -65,7 +65,7 @@ final class QueueNfe
 
     public function cancel(Tenant $tenant, int $documentId, string $reason): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(55);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
@@ -90,7 +90,7 @@ final class QueueNfe
 
     public function consult(Tenant $tenant, int $documentId): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(55);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
@@ -109,7 +109,7 @@ final class QueueNfe
 
     public function resend(Tenant $tenant, int $documentId, int $userId): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(55);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }

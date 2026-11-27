@@ -16,7 +16,7 @@ final class QueueNfce
 {
     public function enqueue(Tenant $tenant, int $saleId, int $userId, array $operation): FiscalDocument
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
@@ -64,12 +64,12 @@ final class QueueNfce
 
     public function cancel(Tenant $tenant, int $documentId, string $reason): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId, $reason) {
-            $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            $doc = FiscalDocument::accessible()->whereKey($documentId)->lockForUpdate()->firstOrFail();
             abort_unless((int) $doc->model === 65, 404);
             if ($doc->state === 'cancelled') {
                 return;
@@ -79,7 +79,7 @@ final class QueueNfce
             if ($doc->state !== 'authorized' || ! $doc->authorized_at || $minutes <= 0 || $doc->authorized_at->addMinutes($minutes)->isPast()) {
                 throw ValidationException::withMessages(['fiscal' => 'Cancelamento fora do estado/prazo configurado para a UF.']);
             }
-            $outbox = DB::connection('tenant')->table('fiscal_outbox');
+            $outbox = DB::connection('tenant')->table('fiscal_outbox')->where('tenant_id', $tenant->id);
             if ((clone $outbox)->where('document_id', $documentId)->where('operation', 'cancel')->whereNull('completed_at')->exists()) {
                 return;
             }
@@ -89,14 +89,14 @@ final class QueueNfce
 
     public function consult(Tenant $tenant, int $documentId): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         DB::connection('tenant')->transaction(function () use ($tenant, $documentId) {
-            $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+            $doc = FiscalDocument::accessible()->whereKey($documentId)->lockForUpdate()->firstOrFail();
             abort_unless((int) $doc->model === 65, 404);
-            $outbox = DB::connection('tenant')->table('fiscal_outbox');
+            $outbox = DB::connection('tenant')->table('fiscal_outbox')->where('tenant_id', $tenant->id);
             if ((clone $outbox)->where('document_id', $documentId)->whereNull('completed_at')->exists()) {
                 $outbox->where('document_id', $documentId)->whereNull('completed_at')->whereNull('lease_token')->update(['available_at' => now()]);
 
@@ -108,15 +108,15 @@ final class QueueNfce
 
     public function resend(Tenant $tenant, int $documentId, int $userId): void
     {
-        ProductInvoiceGate::assertEnabled();
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
         \App\Services\InstallerAccess::authorizedActor($userId, 'fiscal.manage');
-        DB::connection('tenant')->transaction(function () use ($documentId, $userId) {
-            $doc = FiscalDocument::whereKey($documentId)->lockForUpdate()->firstOrFail();
+        DB::connection('tenant')->transaction(function () use ($tenant, $documentId, $userId) {
+            $doc = FiscalDocument::accessible()->whereKey($documentId)->lockForUpdate()->firstOrFail();
             abort_unless((int) $doc->model === 65, 404);
-            $table = DB::connection('tenant')->table('fiscal_outbox');
+            $table = DB::connection('tenant')->table('fiscal_outbox')->where('tenant_id', $tenant->id);
             $job = (clone $table)->where('document_id', $documentId)->where('operation', 'issue')->whereNull('completed_at')->lockForUpdate()->first();
             if ($doc->state !== 'uncertain' || ! $job || $job->last_error !== 'reference_not_found' || $job->lease_token) {
                 throw ValidationException::withMessages(['fiscal' => 'Reenvio exige consulta que confirme referência não encontrada e nenhum processamento em andamento.']);

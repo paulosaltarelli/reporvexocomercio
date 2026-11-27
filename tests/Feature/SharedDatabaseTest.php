@@ -6,6 +6,7 @@ use App\Fiscal\FiscalTransportException;
 use App\Fiscal\Nfse\Access;
 use App\Fiscal\PrivateFiscalFiles;
 use App\Fiscal\ProcessFiscalOutbox;
+use App\Fiscal\ProductInvoiceGate;
 use App\Fiscal\QueueNfce;
 use App\Fiscal\QueueNfe;
 use App\Fiscal\SefazTransport;
@@ -472,6 +473,38 @@ class SharedDatabaseTest extends TestCase
         $grant->fresh()->update(['status' => 'revoked', 'revoked_at' => now()]);
         $this->post('/app/shared-a/login', ['email' => $typedEmail, 'password' => $payload['password']])
             ->assertSessionHasErrors('email')->assertSessionMissing('user_id');
+    }
+
+    public function test_nfce_pilot_follows_resolved_shared_identity_and_filters_existing_jobs(): void
+    {
+        config(['fiscal.product_invoices_enabled' => false, 'fiscal.nfce_homologation_tenant_ids' => (string) $this->a->id]);
+        $jobs = [];
+        foreach ([$this->a, $this->b] as $tenant) {
+            $catalog = $this->catalog($tenant);
+            $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
+                'items' => [['kind' => 'product', 'id' => $catalog['service']->id, 'quantity' => '1', 'unit_price' => '50']]], $catalog['owner']->id);
+            $issuer = FiscalIssuer::create(['document' => '11222333000181', 'environment' => 'homologation', 'provider' => 'sefaz_direct']);
+            $snapshot = ['tenant_id' => $tenant->id];
+            $document = FiscalDocument::create(['issuer_id' => $issuer->id, 'sale_id' => $sale->id, 'reference' => (string) Str::uuid(),
+                'model' => 65, 'series' => 1, 'number' => 1, 'state' => 'pending', 'snapshot' => $snapshot, 'snapshot_sha256' => Snapshot::hash($snapshot)]);
+            $jobs[$tenant->id] = DB::connection('tenant')->table('fiscal_outbox')->insertGetId(['document_id' => $document->id,
+                'tenant_id' => $tenant->id, 'operation_id' => (string) Str::uuid(), 'operation' => 'issue', 'available_at' => now()]);
+        }
+
+        $worker = app(ProcessFiscalOutbox::class);
+        $this->assertSame($this->a->db_name, $this->b->db_name);
+        $this->assertFalse(ProductInvoiceGate::enabled(65));
+        $worker->run($this->b->id, $jobs[$this->b->id]);
+        $this->assertSame(0, DB::connection('tenant')->table('fiscal_outbox')->where('id', $jobs[$this->b->id])->value('attempts'));
+        $this->assertSame(0, FiscalDocument::accessible()->count());
+        config(['tenancy.resolved_tenant_id' => $this->a->id]);
+        $this->assertFalse(ProductInvoiceGate::enabled(), 'The connection still belongs to B.');
+        $this->connect($this->a);
+        $this->assertTrue(ProductInvoiceGate::enabled());
+        $this->assertFalse(ProductInvoiceGate::enabled(55));
+        $this->assertSame([$jobs[$this->a->id]], $worker->pendingJobs($this->a)->pluck('id')->all());
+        app(TenantConnection::class)->disconnect();
+        $this->assertFalse(ProductInvoiceGate::enabled());
     }
 
     public function test_shared_first_login_setup_csrf_logo_private_files_and_job_context_do_not_leak_between_companies(): void

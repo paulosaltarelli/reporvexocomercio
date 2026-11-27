@@ -84,6 +84,10 @@ final class NfeCompanyConfiguration
         $allowed = ['mei' => ['4'], 'simples' => ['1', '2'], 'presumido' => ['3'], 'real' => ['3']];
         if (! in_array($crt, $allowed[$regime] ?? [], true)) { $this->fail('crt', 'Confira o regime tributário da empresa e o CRT da NF-e com o contador.'); }
     }
-    private function context(Tenant $tenant): void { abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403); }
+    private function context(Tenant $tenant): void
+    {
+        ProductInvoiceGate::assertEnabled(55);
+        abort_unless(app(\App\Services\TenantConnection::class)->matches($tenant), 403);
+    }
     private function fail(string $key, string $message): never { throw ValidationException::withMessages([$key => $message]); }
 }

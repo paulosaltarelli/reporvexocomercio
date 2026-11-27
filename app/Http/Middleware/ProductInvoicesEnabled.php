@@ -2,14 +2,15 @@
 
 namespace App\Http\Middleware;
 
+use App\Fiscal\ProductInvoiceGate;
 use Closure;
 use Illuminate\Http\Request;
 
 final class ProductInvoicesEnabled
 {
-    public function handle(Request $request, Closure $next)
+    public function handle(Request $request, Closure $next, ?string $model = null)
     {
-        abort_unless(config('fiscal.product_invoices_enabled', false), 404);
+        ProductInvoiceGate::assertEnabled($model === null ? null : (int) $model);
 
         return $next($request);
     }

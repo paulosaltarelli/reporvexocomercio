@@ -7,7 +7,6 @@ use App\Fiscal\ProductInvoiceGate;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class ProcessFiscal extends Command
 {
@@ -21,13 +20,18 @@ class ProcessFiscal extends Command
         if (! $limit) {
             return self::FAILURE;
         }
-        // In V1 the product outbox stays untouched, including pending legacy operations.
-        if (!ProductInvoiceGate::enabled()) return self::SUCCESS;
-
-        foreach (Tenant::where('active', true)->when($this->option('company'), fn ($q) => $q->where('slug', $this->option('company')))->orderBy('id')->get() as $tenant) {
+        $pilots = ProductInvoiceGate::pilotTenantIds();
+        $global = ProductInvoiceGate::globallyEnabled();
+        if (! $global && ! $pilots) {
+            return self::SUCCESS;
+        }
+        $tenants = Tenant::where('active', true)
+            ->when(! $global, fn ($q) => $q->whereIn('id', $pilots))
+            ->when($this->option('company') !== null, fn ($q) => $q->where('slug', $this->option('company')));
+        foreach ($tenants->orderBy('id')->get() as $tenant) {
             try {
                 $connection->connect($tenant);
-                $ids = DB::connection('tenant')->table('fiscal_outbox')->where('tenant_id', $tenant->id)->whereNull('completed_at')->where('available_at', '<=', now())->orderBy('id')->limit($limit)->pluck('id')->all();
+                $ids = $worker->pendingJobs($tenant)->orderBy('id')->limit($limit)->pluck('id')->all();
             } finally {
                 $connection->disconnect();
             }

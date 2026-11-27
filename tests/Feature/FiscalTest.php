@@ -9,6 +9,7 @@ use App\Fiscal\FiscalTransportException;
 use App\Fiscal\PrepareFiscalReview;
 use App\Fiscal\PrivateFiscalFiles;
 use App\Fiscal\ProcessFiscalOutbox;
+use App\Fiscal\ProductInvoiceGate;
 use App\Fiscal\QueueNfce;
 use App\Fiscal\QueueVoid;
 use App\Fiscal\Snapshot;
@@ -155,6 +156,99 @@ class FiscalTest extends TestCase
     private function settings(): array
     {
         return ['environment' => 'homologation', 'provider' => 'sefaz_direct', 'nfce_accredited' => '0', 'operation' => 'both', 'accountant_name' => 'Contador de teste'];
+    }
+
+    public function test_nfce_pilot_exposes_only_the_selected_store_model_and_preserves_module_settings(): void
+    {
+        $this->tenant->update(['is_demonstration' => true]);
+        config(['fiscal.product_invoices_enabled' => false, 'fiscal.nfce_homologation_tenant_ids' => (string) $this->tenant->id]);
+        $this->assertTrue(ProductInvoiceGate::enabled(65));
+        $this->assertFalse(ProductInvoiceGate::enabled(55));
+        $this->assertFalse(\App\Services\PurchaseInvoice::enabled());
+        $operations = app(\App\Services\CompanyOperations::class);
+        $defaults = \App\Services\CompanyOperations::DEFAULTS;
+        $saved = $operations->save(array_replace($defaults, ['version' => 0, 'nfe' => false]), $this->user->id);
+        $this->assertTrue($saved->configuration['nfe']);
+        $this->assertTrue($operations->current()['nfce']);
+        $this->assertFalse($operations->current()['nfe']);
+
+        $this->login();
+        $this->get('/app/a/business')->assertOk()->assertSee('Ativar configuração de homologação')->assertDontSee('fiscal-nfe-company');
+        $this->get('/app/a/setup?step=2')->assertOk()->assertSee('name="nfce"', false)->assertDontSee('name="nfe"', false);
+        $this->get('/app/a/fiscal')->assertOk()->assertSee('NFC-e · modelo 65')->assertDontSee('NF-e · modelo 55');
+        $this->get('/app/a/fiscal/profiles')->assertOk();
+        $this->get('/app/a/fiscal/products/'.$this->product->id)->assertOk();
+        $this->get('/app/a/sales/'.$this->sale->id)->assertOk()->assertSee('Conferir dados fiscais');
+        $this->get('/app/a/sales/'.$this->sale->id.'/fiscal')->assertOk()->assertSee('Solicitar emissão em homologação')->assertDontSee('Emitir NF-e · modelo 55');
+        $this->post('/app/a/business/fiscal/nfe')->assertNotFound();
+        $this->post('/app/a/sales/'.$this->sale->id.'/fiscal/nfe/emit')->assertNotFound();
+        $this->get('/app/a/fiscal/nfe/documents/1')->assertNotFound();
+        $this->post('/app/a/business/fiscal', ['intent' => 'draft', 'environment' => 'production'])->assertSessionHasErrors('environment');
+        $this->post('/app/a/sales/'.$this->sale->id.'/fiscal/emit', ['environment' => 'production'])->assertSessionHasErrors('environment');
+
+        $other = Tenant::where('slug', 'b')->firstOrFail();
+        app(TenantConnection::class)->connect($other);
+        $admin = User::create(['role' => 'admin', 'name' => 'Admin B', 'email' => 'other@example.test', 'password' => 'fixture-only']);
+        $this->assertFalse(ProductInvoiceGate::enabled(65));
+        $this->withSession(['tenant_id' => $other->id, 'user_id' => $admin->id, 'auth_version' => 0]);
+        $this->get('/app/b/business?tenant_id='.$this->tenant->id)->assertOk()->assertDontSee('Ativar configuração de homologação');
+        $this->get('/app/b/fiscal')->assertRedirect(route('nfse.index', ['company' => 'b']));
+        $this->post('/app/b/business/fiscal', ['tenant_id' => $this->tenant->id])->assertNotFound();
+        $this->get('/app/b/fiscal/profiles')->assertNotFound();
+        $this->assertFalse(ProductInvoiceGate::enabled(65));
+    }
+
+    public function test_nfce_pilot_worker_filters_legacy_operations_before_limit_and_claim(): void
+    {
+        $historicalSale = $this->sale;
+        $this->tenant->update(['is_demonstration' => true]);
+        config(['fiscal.product_invoices_enabled' => false, 'fiscal.nfce_homologation_tenant_ids' => (string) $this->tenant->id]);
+        [$issuer, $cert] = $this->configuredFiscal();
+        $production = \App\Models\FiscalIssuer::create(['document' => $issuer->document, 'environment' => 'production', 'provider' => 'sefaz_direct']);
+        $archived = [];
+        $jobIds = [];
+        $outbox = DB::connection('tenant')->table('fiscal_outbox');
+        foreach ([[$issuer, 55], [$production, 65]] as [$historicalIssuer, $model]) {
+            $snapshot = ['tenant_id' => $this->tenant->id];
+            $document = FiscalDocument::create(['issuer_id' => $historicalIssuer->id, 'sale_id' => $historicalSale->id, 'model' => $model,
+                'reference' => (string) Str::uuid(), 'series' => 1, 'number' => 100, 'state' => 'pending',
+                'snapshot' => $snapshot, 'snapshot_sha256' => Snapshot::hash($snapshot)]);
+            $archived[] = $document->id;
+            $jobIds[] = $outbox->insertGetId(['tenant_id' => $this->tenant->id, 'document_id' => $document->id,
+                'operation_id' => (string) Str::uuid(), 'operation' => 'issue', 'available_at' => now()]);
+        }
+        $doc = app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
+        $this->assertStringContainsString('<mod>65</mod>', $doc->signed_xml);
+        $this->assertStringContainsString('<tpAmb>2</tpAmb>', $doc->signed_xml);
+        $this->fakeAuthorization($doc, $cert);
+        $other = Tenant::where('slug', 'b')->firstOrFail();
+        $scanned = [];
+        DB::listen(function ($event) use (&$scanned) {
+            if ($event->connectionName === 'tenant' && str_contains($event->sql, 'fiscal_outbox')) {
+                $scanned[] = $event->connection->getConfig('vendra_tenant_id');
+            }
+        });
+        app(ProcessFiscalOutbox::class)->run($other->id, $jobIds[0]);
+        $this->assertSame(0, Artisan::call('vendra:fiscal-work', ['--company' => 'b']));
+        $this->assertSame([], $scanned);
+        foreach ($jobIds as $jobId) {
+            app(ProcessFiscalOutbox::class)->run($this->tenant->id, $jobId);
+        }
+        $this->assertSame([], $this->transportCalls);
+        $this->assertSame(0, Artisan::call('vendra:fiscal-work', ['--limit' => 1]));
+        $this->assertSame(['authorize'], $this->transportCalls);
+        $this->assertSame([$this->tenant->id], array_values(array_unique($scanned)));
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->assertSame('authorized', $doc->fresh()->state);
+        $this->assertSame(2, DB::connection('tenant')->table('fiscal_outbox')->whereIn('id', $jobIds)
+            ->where('attempts', 0)->whereNull('lease_token')->whereNull('completed_at')->count());
+        $this->assertSame(2, FiscalDocument::whereKey($archived)->where('state', 'pending')->count());
+        $this->login();
+        foreach ($archived as $id) {
+            $this->get('/app/a/fiscal/documents/'.$id)->assertNotFound();
+            $this->post('/app/a/fiscal/documents/'.$id.'/consult')->assertNotFound();
+        }
+        $this->get('/app/a/fiscal/documents/'.$doc->id)->assertOk();
     }
 
     public function test_admin_can_configure_and_review_but_cannot_enable_production(): void

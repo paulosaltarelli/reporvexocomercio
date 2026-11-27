@@ -2,6 +2,12 @@
 
 O módulo fiscal integra a aplicação existente e as vendas. Não há PDV separado nem provedor pago. A comunicação usa endpoints oficiais selecionados pela biblioteca NFePHP conforme a UF do emitente. A primeira UF informada pelo proprietário é MG; os dados reais permanecem configuráveis por empresa.
 
+## Piloto de NFC-e em homologação
+
+No ambiente compartilhado, mantenha `VENDRA_PRODUCT_INVOICES_ENABLED=false` e defina `VENDRA_NFCE_HOMOLOGATION_TENANT_IDS` com o ID da loja no cadastro central. Web e worker precisam carregar a mesma configuração. Se a instalação usa cache de configuração, regenere o cache da release depois de atualizar o ambiente. A lista aceita IDs inteiros positivos separados por vírgulas. Uma lista vazia ou inválida desabilita o piloto.
+
+A loja selecionada pode configurar e validar a NFC-e em **Minha empresa**, preparar os produtos e abrir a conferência de uma venda. O módulo NFC-e também precisa estar habilitado em **Operação e implantação** para enfileirar a emissão. O worker `vendra:fiscal-work` processa os documentos modelo 65 do emitente SEFAZ de homologação dessa loja. A opção `--company` restringe o lote dentro da lista. Para suspender o piloto, remova o ID e recarregue a configuração da web e do worker. As pendências ficam preservadas.
+
 ## Configuração
 
 Em Minha empresa, complete razão social, CNPJ, IE, regime tributário, endereço e código IBGE. Informe credenciamento NFC-e de homologação, responsável contábil e operação. Cadastre PFX/A1 da empresa, senha, CSC e identificador de homologação, CRT, série, próxima numeração reconciliada, fuso horário e limites aplicáveis à UF. Nenhum dado fiscal da empresa é fixado no código.

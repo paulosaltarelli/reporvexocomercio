@@ -138,7 +138,7 @@ class FiscalEmissionController extends Controller
     public function emit(Request $r, string $company, int $id, QueueNfce $queue)
     {
         $this->admin($r);
-        $operation = $r->validate(['segregate_work_order'=>'sometimes|accepted', 'goods_payments'=>'sometimes|array:cash,pix,transfer', 'goods_payments.*'=>'required|decimal:0,2|min:0', 'consumer_final' => 'accepted', 'not_taxpayer' => 'accepted', 'homologation_consent' => 'accepted', 'presence' => 'required|in:1', 'destination_state' => 'required|alpha|size:2', 'pix_mode' => 'nullable|in:dynamic,static', 'tenant_id' => 'prohibited']);
+        $operation = $r->validate(['segregate_work_order'=>'sometimes|accepted', 'goods_payments'=>'sometimes|array:cash,pix,transfer', 'goods_payments.*'=>'required|decimal:0,2|min:0', 'consumer_final' => 'accepted', 'not_taxpayer' => 'accepted', 'homologation_consent' => 'accepted', 'presence' => 'required|in:1', 'destination_state' => 'required|alpha|size:2', 'pix_mode' => 'nullable|in:dynamic,static', 'tenant_id' => 'prohibited', 'model' => 'prohibited', 'environment' => 'sometimes|in:homologation']);
         $operation['consumer_final'] = $r->boolean('consumer_final');
         $operation['not_taxpayer'] = $r->boolean('not_taxpayer');
         $doc = $queue->enqueue($r->attributes->get('tenant'), $id, $r->attributes->get('currentUser')->id, $operation);
@@ -149,7 +149,7 @@ class FiscalEmissionController extends Controller
     private function documentFor(Request $r, int $id): FiscalDocument
     {
         $this->admin($r);
-        $doc = FiscalDocument::where('model', 65)->findOrFail($id);
+        $doc = FiscalDocument::accessible()->where('model', 65)->findOrFail($id);
         abort_unless((int) ($doc->snapshot['tenant_id'] ?? 0) === (int) $r->attributes->get('tenant')->id, 404);
 
         return $doc;

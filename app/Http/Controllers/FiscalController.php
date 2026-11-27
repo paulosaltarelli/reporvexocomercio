@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Fiscal\FiscalReadiness;
 use App\Fiscal\PrepareFiscalReview;
 use App\Fiscal\Snapshot;
@@ -11,7 +12,6 @@ use App\Models\FiscalSetting;
 use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class FiscalController extends Controller
 {
@@ -24,16 +24,15 @@ class FiscalController extends Controller
     {
         $this->admin($request);
 
-        if (!config('fiscal.product_invoices_enabled', false)) return redirect()->route('nfse.index', ['company' => $request->route('company')]);
+        if (!ProductInvoiceGate::enabled(65)) return redirect()->route('nfse.index', ['company' => $request->route('company')]);
 
         return view('fiscal.index', [
             'settings' => FiscalSetting::find(1),
             'report' => $readiness->inspect($request->attributes->get('tenant')),
-            'preparations' => FiscalPreparation::latest('id')->paginate(15),
-            'documents' => FiscalDocument::where('model', 65)->latest('id')->limit(20)->get(),
-            'nfeDocuments' => FiscalDocument::where('model', 55)->with('sale')->latest('id')->paginate(15, ['*'], 'nfe_page'),
+            'preparations' => FiscalPreparation::where('tenant_id', $request->attributes->get('tenant')->id)->latest('id')->paginate(15),
+            'documents' => FiscalDocument::accessible()->where('model', 65)->latest('id')->limit(20)->get(),
+            'nfeDocuments' => ProductInvoiceGate::enabled(55) ? FiscalDocument::where('model', 55)->with('sale')->latest('id')->paginate(15, ['*'], 'nfe_page') : null,
             'taxProducts' => Product::where('type', 'product')->orderBy('name')->limit(100)->get(),
-            'voids' => DB::connection('tenant')->table('fiscal_voids')->latest('id')->limit(20)->get(),
         ]);
     }
 

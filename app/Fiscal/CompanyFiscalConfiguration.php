@@ -13,6 +13,7 @@ final class CompanyFiscalConfiguration
 {
     public function save(Tenant $tenant, array $configuration, #[\SensitiveParameter] array $input, #[\SensitiveParameter] ?string $pfx): FiscalIssuer
     {
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
@@ -78,6 +79,7 @@ final class CompanyFiscalConfiguration
     /** Local certificate/configuration validation only: never transmits or enables production. */
     public function validateLocal(Tenant $tenant): FiscalIssuer
     {
+        ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) { abort(403); }
         return DB::connection('tenant')->transaction(function () {
             $profile = BusinessProfile::whereKey(1)->lockForUpdate()->firstOrFail();

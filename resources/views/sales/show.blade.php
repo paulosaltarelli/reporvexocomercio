@@ -31,10 +31,10 @@
 @if($currentUser->allows('commissions.view'))
 <details class="disclosure compact no-print" style="margin-top:24px"><summary>Comissão interna desta venda</summary><div class="disclosure-content"><p><strong>Apurada:</strong> R$ {{ number_format($sale->commission_total??0,2,',','.') }} · <strong>Vendedor:</strong> {{ $sale->seller_name??'Não informado' }}</p><div class="scroll"><table><thead><tr><th>Item</th><th class="num">Alíquota de comissão</th><th class="num">Comissão apurada (R$)</th></tr></thead><tbody>@foreach($sale->items as $item)<tr><td>{{ $item->description }}</td><td class="num">{{ number_format($item->commission_rate??0,2,',','.') }}%</td><td class="num">{{ number_format($item->commission_amount??0,2,',','.') }}</td></tr>@endforeach</tbody></table></div><p class="hint">Informação interna, excluída da impressão do comprovante. Apuração não significa pagamento ao vendedor; vendas canceladas não compõem o relatório de comissões.</p><a href="{{ route('commissions',['company'=>$tenant->slug,'salesperson_id'=>$sale->salesperson_id,'from'=>$sale->created_at->toDateString(),'to'=>$sale->created_at->toDateString()]) }}">Conferir relatório de comissões</a></div></details>
 @endif
-@if($sale->status==='completed' && ($currentUser->allows('sales.cancel')||$currentUser->allows('sales.receive')||$currentUser->allows('finance.view')||(config('fiscal.product_invoices_enabled')&&$currentUser->allows('fiscal.manage'))))
+@if($sale->status==='completed' && ($currentUser->allows('sales.cancel')||$currentUser->allows('sales.receive')||$currentUser->allows('finance.view')||($nfceAvailable&&$currentUser->allows('fiscal.manage'))))
 <div class="form-note no-print"><strong>Recebido:</strong> R$ {{ number_format($received,2,',','.') }} · <strong>Saldo:</strong> R$ {{ number_format(max(0,bcsub((string)$sale->total,(string)$received,2)),2,',','.') }}</div>
 <div class="actions no-print">
-    @if(config('fiscal.product_invoices_enabled') && $currentUser->allows('fiscal.manage'))<a class="button secondary" href="{{ route('fiscal.sale',['company'=>$tenant->slug,'id'=>$sale->id]) }}">Conferir dados fiscais</a>@endif
+    @if($nfceAvailable && $currentUser->allows('fiscal.manage'))<a class="button secondary" href="{{ route('fiscal.sale',['company'=>$tenant->slug,'id'=>$sale->id]) }}">Conferir dados fiscais</a>@endif
     @if(!$sale->paid && $currentUser->allows('finance.manage'))
         <a class="button" href="{{ route('finance',['company'=>$tenant->slug,'sale'=>$sale->id]) }}">Registrar recebimento</a>
     @endif
@@ -57,7 +57,7 @@
 </details>
 @endif
 @endif
-@if(config('fiscal.product_invoices_enabled'))
+@if($nfceAvailable)
 <div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>{{ (string)$fiscalDocument->model === '55' ? 'NF-e' : 'NFC-e' }} {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->allows('fiscal.manage'))<a href="{{ route((string)$fiscalDocument->model === '55' ? 'nfe.document' : 'fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente o documento fiscal. O cancelamento fiscal é solicitado separadamente.</p></div>
 @endif
 <p class="hint">Este comprovante interno não substitui nota fiscal. Não realiza cobranças ou reembolsos automáticos.</p></section>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Models\Customer;
 use App\Models\FinancialEntry;
 use App\Models\Product;
@@ -93,7 +94,7 @@ class CommerceController extends Controller
     {
         $this->admin($r);
         $p = $id ? Product::findOrFail($id) : new Product;
-        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'discount_enabled'=>'nullable|boolean','max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => ['required',Rule::in(array_keys(\App\Services\MeasureUnits::catalog(app(\App\Services\CompanyOperations::class)->current())))], 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => config('fiscal.product_invoices_enabled')?'nullable|digits:8':'exclude', 'origin' => config('fiscal.product_invoices_enabled')?'nullable|in:0,1,2,3,4,5,6,7,8':'exclude', 'active' => 'nullable|boolean']);
+        $d = $r->validate(['name' => 'required|string|max:180', 'sku' => ['required', 'string', 'max:80', Rule::unique('tenant.products', 'sku')->ignore($p->id)], 'barcode' => ['nullable', 'string', 'max:80', Rule::unique('tenant.products', 'barcode')->ignore($p->id)], 'discount_enabled'=>'nullable|boolean','max_discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','commission_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','type'=>'sometimes|required|in:product,service','controls_stock'=>'nullable|boolean','reference_cost'=>'nullable|numeric|min:0|max:999999999999.9999|decimal:0,4','municipal_service_code'=>'nullable|string|max:30','iss_rate'=>'nullable|numeric|min:0|max:100|decimal:0,2', 'product_group_id' => 'required|exists:tenant.product_groups,id', 'unit' => ['required',Rule::in(array_keys(\App\Services\MeasureUnits::catalog(app(\App\Services\CompanyOperations::class)->current())))], 'price_policy'=>'nullable|in:alert,automatic', 'margin' => 'nullable|numeric|min:0|max:99.99|decimal:0,2', 'sale_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'minimum_stock' => 'nullable|numeric|min:0|max:999999999|decimal:0,3', 'ncm' => ProductInvoiceGate::enabled(65)?'nullable|digits:8':'exclude', 'origin' => ProductInvoiceGate::enabled(65)?'nullable|in:0,1,2,3,4,5,6,7,8':'exclude', 'active' => 'nullable|boolean']);
         $d['active'] = $r->boolean('active');
         $d['type']=$d['type']??$p->type??'product';
         $d['controls_stock']=$d['type']==='product' ? ($r->has('controls_stock')?$r->boolean('controls_stock'):($p->exists?(bool)$p->controls_stock:true)) : false;
@@ -274,7 +275,7 @@ class CommerceController extends Controller
             ->first();
         return view('sales.show', [
             'sale'=>$sale, 'received'=>$ledger->received, 'receiptLedger'=>$ledger,
-            'fiscalDocuments'=>config('fiscal.product_invoices_enabled') ? \App\Models\FiscalDocument::where('sale_id',$id)->orderBy('id')->get() : collect(),
+            'fiscalDocuments'=>ProductInvoiceGate::enabled(65) ? \App\Models\FiscalDocument::accessible()->where('sale_id',$id)->orderBy('id')->get() : collect(),
         ]);
     }
 

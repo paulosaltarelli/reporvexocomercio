@@ -10,6 +10,7 @@ use App\Models\Sale;
 use App\Models\Tenant;
 use App\Services\TenantConnection;
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use NFePHP\DA\NFe\Danfce;
@@ -17,17 +18,35 @@ use NFePHP\DA\NFe\Danfe;
 
 final class ProcessFiscalOutbox
 {
+    public function pendingJobs(Tenant $tenant): Builder
+    {
+        ProductInvoiceGate::assertEnabled(65);
+        app(TenantConnection::class)->assertTenant($tenant);
+        $jobs = DB::connection('tenant')->table('fiscal_outbox')
+            ->where('tenant_id', $tenant->id)->whereNull('completed_at')->where('available_at', '<=', now());
+        if (! ProductInvoiceGate::globallyEnabled()) {
+            $jobs->whereNull('void_id')->whereIn('operation', ['issue', 'consult', 'cancel'])
+                ->whereIn('document_id', FiscalDocument::accessible()->select('id'));
+        }
+        return $jobs;
+    }
+
     public function run(int $tenantId, int $outboxId): void
     {
-        if (!ProductInvoiceGate::enabled()) return;
+        if (! ProductInvoiceGate::globallyEnabled() && ! in_array($tenantId, ProductInvoiceGate::pilotTenantIds(), true)) {
+            return;
+        }
 
         $connection = app(TenantConnection::class);
         try {
-            $tenant = Tenant::where('active', true)->findOrFail($tenantId);
+            $tenant = Tenant::where('active', true)->find($tenantId);
+            if (! $tenant) {
+                return;
+            }
             $connection->connect($tenant);
-            $claim = DB::connection('tenant')->transaction(function () use ($tenantId, $outboxId) {
+            $claim = DB::connection('tenant')->transaction(function () use ($tenant, $tenantId, $outboxId) {
                 $table = DB::connection('tenant')->table('fiscal_outbox');
-                $job = (clone $table)->where('id', $outboxId)->where('tenant_id', $tenantId)->whereNull('completed_at')->where('available_at', '<=', now())->where(fn ($q) => $q->whereNull('leased_until')->orWhere('leased_until', '<', now()))->lockForUpdate()->first();
+                $job = $this->pendingJobs($tenant)->where('id', $outboxId)->where(fn ($q) => $q->whereNull('leased_until')->orWhere('leased_until', '<', now()))->lockForUpdate()->first();
                 if (! $job) {
                     return null;
                 }
@@ -36,7 +55,7 @@ final class ProcessFiscalOutbox
                 if ($job->operation === 'invalidate' && $job->void_id) {
                     return [$job, null, $token, false];
                 }
-                $doc = FiscalDocument::whereKey($job->document_id)->lockForUpdate()->firstOrFail();
+                $doc = FiscalDocument::accessible()->whereKey($job->document_id)->lockForUpdate()->firstOrFail();
                 if ((int) ($doc->snapshot['tenant_id'] ?? 0) !== $tenantId || ! hash_equals($doc->snapshot_sha256, Snapshot::hash($doc->snapshot))) {
                     throw new FiscalTransportException('snapshot_integrity_invalid');
                 }

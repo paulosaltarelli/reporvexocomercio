@@ -3,7 +3,7 @@
 @section('subtitle','Preencha os dados da empresa, configure a operação e revise a equipe responsável.')
 @section('content')
 @php($installer = $currentUser->role === \App\Models\User::ROLE_INSTALLER)
-@php($steps=[1=>'Empresa',2=>'Operação',3=>config('fiscal.product_invoices_enabled')?'Fiscal':null,4=>'Equipe',5=>'Revisão'])
+@php($steps=[1=>'Empresa',2=>'Operação',3=>$nfceAvailable?'Fiscal':null,4=>'Equipe',5=>'Revisão'])
 <nav class="panel setup-steps" aria-label="Etapas de implantação">
 @foreach(array_filter($steps) as $number=>$label)
 <a class="button {{ $step===$number?'primary':'secondary' }}" href="{{ route('setup',['company'=>$tenant->slug,'step'=>$number]) }}" @if($step===$number) aria-current="step" @endif>{{ $loop->iteration }}. {{ $label }}</a>
@@ -40,8 +40,8 @@
 <div><label for="catalog-mode">O que comercializa?</label><select id="catalog-mode" name="catalog_mode">@foreach(['mixed'=>'Produtos e serviços','products'=>'Somente produtos','services'=>'Somente serviços'] as $value=>$label)<option value="{{ $value }}" @selected(old('catalog_mode',$configuration['catalog_mode'])===$value)>{{ $label }}</option>@endforeach</select></div>
 <div><label for="commission-basis">Regime de comissão das novas vendas</label><select id="commission-basis" name="commission_basis"><option value="cash" @selected(old('commission_basis',$configuration['commission_basis'])==='cash')>Caixa · proporcional ao recebimento</option><option value="accrual" @selected(old('commission_basis',$configuration['commission_basis'])==='accrual')>Competência · na conclusão da venda</option></select></div>
 </div>
-<p class="form-note">Somente serviços: desabilite {{ config('fiscal.product_invoices_enabled',false) ? 'estoque, NFC-e e NF-e' : 'a gestão de estoque' }}. Somente produtos: desabilite as ordens de serviço. Para restringir tipos, desative antes os itens incompatíveis e resolva documentos pendentes.</p>
-@foreach(['Rotina comercial'=>['inventory'=>'Gestão de estoque','quotes'=>'Orçamentos','work_orders'=>'Ordens de serviço','commissions'=>'Comissões por vendedor','discounts'=>'Descontos dentro dos limites do grupo ou produto'],'Documentos fiscais'=>(config('fiscal.product_invoices_enabled',false) ? ['nfce'=>'NFC-e · consumidor final (modelo 65)','nfe'=>'NF-e · mercadorias (modelo 55)'] : [])] as $heading=>$fields)
+<p class="form-note">Somente serviços: desabilite {{ $allProductInvoices ? 'estoque, NFC-e e NF-e' : ($nfceAvailable ? 'estoque e NFC-e' : 'a gestão de estoque') }}. Somente produtos: desabilite as ordens de serviço. Para restringir tipos, desative antes os itens incompatíveis e resolva documentos pendentes.</p>
+@foreach(['Rotina comercial'=>['inventory'=>'Gestão de estoque','quotes'=>'Orçamentos','work_orders'=>'Ordens de serviço','commissions'=>'Comissões por vendedor','discounts'=>'Descontos dentro dos limites do grupo ou produto'],'Documentos fiscais'=>array_filter(['nfce'=>$nfceAvailable ? 'NFC-e · consumidor final (modelo 65)' : null,'nfe'=>$allProductInvoices ? 'NF-e · mercadorias (modelo 55)' : null])] as $heading=>$fields)
 @continue(empty($fields))
 <fieldset><legend>{{ $heading }}</legend><div class="setup-options">
 @foreach($fields as $key=>$label)

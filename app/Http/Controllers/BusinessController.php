@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Fiscal\TaxpayerDocument;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
@@ -58,12 +59,12 @@ class BusinessController extends Controller
     public function viewData(Request $r): array
     {
         $profile = BusinessProfile::find(1) ?? new BusinessProfile(['legal_name' => $r->attributes->get('tenant')->name]);
-        if (!config('fiscal.product_invoices_enabled', false)) return ['profile' => $profile];
+        if (!ProductInvoiceGate::enabled(65)) return ['profile' => $profile];
         $issuer = FiscalIssuer::where('document', TaxpayerDocument::normalize((string) $profile->document))->where('environment', 'homologation')->first();
         $credential = $issuer ? FiscalCredential::where('issuer_id', $issuer->id)->first() : null;
         $sequence = $issuer && isset($issuer->validated_configuration['series']) ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 65)->where('series', $issuer->validated_configuration['series'])->first() : null;
 
-        $nfeConfiguration = $issuer ? FiscalModelConfiguration::where('issuer_id', $issuer->id)->where('model', 55)->first() : null;
+        $nfeConfiguration = $issuer && ProductInvoiceGate::enabled(55) ? FiscalModelConfiguration::where('issuer_id', $issuer->id)->where('model', 55)->first() : null;
         $nfeSequence = $nfeConfiguration ? DB::connection('tenant')->table('fiscal_sequences')->where('issuer_id', $issuer->id)->where('model', 55)->where('series', $nfeConfiguration->configuration['series'])->first() : null;
         $nfeNextNumber = $nfeSequence?->next_number;
         $settings = FiscalSetting::find(1);

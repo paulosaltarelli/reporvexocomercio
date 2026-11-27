@@ -1,6 +1,7 @@
 <?php
 namespace App\Services;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Models\{BusinessProfile, CompanyOperation, Document, FiscalCredential, FiscalIssuer, Product, User};
 use Illuminate\Support\Facades\{DB, Validator};
 use Illuminate\Validation\ValidationException;
@@ -24,10 +25,8 @@ class CompanyOperations
     private function effective(array $stored): array
     {
         $configuration = array_replace(self::DEFAULTS, $stored);
-        if (!config('fiscal.product_invoices_enabled', false)) {
-            $configuration['nfce'] = false;
-            $configuration['nfe'] = false;
-        }
+        if (! ProductInvoiceGate::enabled(65)) $configuration['nfce'] = false;
+        if (! ProductInvoiceGate::enabled(55)) $configuration['nfe'] = false;
         $configuration['nfse'] = false;
         $configuration['operation_modes'] = array_values(array_intersect(
             array_keys(OperationalModes::MODES),
@@ -74,8 +73,8 @@ class CompanyOperations
         $rules=['version'=>'required|integer|min:0', 'catalog_mode'=>'required|in:mixed,products,services', 'commission_basis'=>'required|in:cash,accrual', 'negative_stock'=>'sometimes|required|in:block,warn,allow'];
         $defaults = self::DEFAULTS;
         unset($defaults['nfse']);
-        $productInvoices = config('fiscal.product_invoices_enabled', false);
-        if (!$productInvoices) unset($defaults['nfe'], $defaults['nfce']);
+        if (! ProductInvoiceGate::enabled(65)) unset($defaults['nfce']);
+        if (! ProductInvoiceGate::enabled(55)) unset($defaults['nfe']);
         foreach (array_diff(array_keys($defaults), ['catalog_mode','commission_basis','negative_stock','segment','operation_modes','default_operation','weighed_labels']) as $key) $rules[$key]='required|boolean';
         $rules += [
             'weighed_labels' => 'sometimes|required|array',
@@ -91,7 +90,12 @@ class CompanyOperations
         if (array_key_exists('weighed_labels', $data)) $data['weighed_labels'] = WeightedLabels::normalize($data['weighed_labels']);
         foreach (array_keys($defaults) as $key) if (is_bool($defaults[$key])) $data[$key]=(bool)$data[$key];
         if ($data['catalog_mode']==='services' && ($data['inventory'] || ($data['nfce'] ?? false) || ($data['nfe'] ?? false))) {
-            throw ValidationException::withMessages(['catalog_mode'=>$productInvoices ? 'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.' : 'Desabilite a gestão de estoque para operar somente com serviços.']);
+            $message = match (true) {
+                isset($defaults['nfe']) => 'Operação somente de serviços exige estoque, NFC-e e NF-e desabilitados.',
+                isset($defaults['nfce']) => 'Operação somente de serviços exige estoque e NFC-e desabilitados.',
+                default => 'Desabilite a gestão de estoque para operar somente com serviços.',
+            };
+            throw ValidationException::withMessages(['catalog_mode' => $message]);
         }
         if ($data['catalog_mode']==='products' && $data['work_orders']) {
             throw ValidationException::withMessages(['catalog_mode'=>'Para ordens de serviço, habilite também serviços.']);

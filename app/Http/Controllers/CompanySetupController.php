@@ -1,6 +1,7 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Fiscal\ProductInvoiceGate;
 use App\Models\{BusinessProfile, CompanyOperation, Seller, User};
 use App\Services\CompanyOnboarding;
 use App\Access\{AccessProfiles,Permissions};
@@ -22,7 +23,7 @@ class CompanySetupController extends Controller
         $this->admin($r);
         $data=$r->validate(['step'=>'nullable|integer|between:1,5']);
         $step=(int)($data['step']??app(CompanyOnboarding::class)->step());
-        if ($step===3 && !config('fiscal.product_invoices_enabled')) {
+        if ($step===3 && !ProductInvoiceGate::enabled(65)) {
             return redirect()->route('setup',['company'=>$r->route('company'),'step'=>4]);
         }
         $installer = $r->attributes->get('currentUser')->role===User::ROLE_INSTALLER;
@@ -71,7 +72,7 @@ class CompanySetupController extends Controller
     {
         $actor=$this->admin($r);
         $operations->save($r->all(),$actor);
-        $next=config('fiscal.product_invoices_enabled')?3:4;
+        $next=ProductInvoiceGate::enabled(65)?3:4;
         app(CompanyOnboarding::class)->advance($next,$actor);
         return redirect()->route('setup',['company'=>$company,'step'=>$next])->with('success','Configurações salvas. As novas operações já seguem estas escolhas.');
     }
