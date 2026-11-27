@@ -241,7 +241,7 @@ trait PreparedFiscalCertificateCases
         Storage::fake('fiscal');
         [$issuer, $cert] = $this->configuredFiscal();
         $nf55 = app(\App\Fiscal\NfeCompanyConfiguration::class);
-        $nf55->save($this->tenant, $this->nfe55Configuration(), [], null);
+        $nf55->save($this->tenant, $this->nfe55Configuration($issuer->validated_configuration['crt']), [], null);
         $nf55->validateLocal($this->tenant);
         $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
         $oldIssuer = $issuer->fresh()->getRawOriginal();
