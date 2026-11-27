@@ -93,7 +93,7 @@ final class NfcePayload
             $amounts = $this->fiscalAmounts((string) $line->quantity, (string) $line->unit_price,
                 (string) $line->gross_total, (string) $line->discount_amount, (string) $line->total);
             $fiscalUnit = FiscalUnit::required($product);
-            $tax = app(TaxProfile::class)->fields($rule['parameters'], $amounts['net'], (string) $c['crt']);
+            $tax = app(TaxProfile::class)->fields($rule['parameters'], $amounts['net'], (string) $c['crt'], $issuedAt);
             $rules[$product->id] = ['parameters' => $rule['parameters'], 'accountant_reference' => $rule['accountant_reference'], 'validated_at' => $rule['validated_at'], 'source' => $rule['source'], 'profile_id' => $rule['profile_id'] ?? null, 'profile_revision' => $rule['profile_revision'] ?? null, 'group_id' => $rule['group_id'] ?? null];
             $items[] = array_merge($tax, [
                 'numero_item' => (string) (count($items) + 1), 'codigo_ncm' => $product->ncm, 'codigo_produto' => $product->sku,
@@ -125,6 +125,9 @@ final class NfcePayload
             'formas_pagamento' => WorkOrderFiscalSplit::goodsPayments($payment, $split, $operation['goods_payments'] ?? []),
             'valor_total' => $goods, 'valor_produtos' => $goodsGross, 'valor_desconto' => $goodsDiscount,
         ];
+        if ((string) $c['crt'] === '1' && $issuedAt->format('Y') === '2026') {
+            $payload['informacoes_complementares'] = 'DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL. NÃO GERA DIREITO A CRÉDITO FISCAL DE IPI.';
+        }
         // Required legal homologation label; business/issuer data are never fixtures.
         $payload['items'][0]['descricao'] = 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
         $document = TaxpayerDocument::normalize((string) $sale->customer?->document);

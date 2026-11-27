@@ -3,9 +3,11 @@
     <label for="tax-model">Finalidade da regra</label>
     <select name="tax_model" id="tax-model">
         <option value="legacy" @selected(old('tax_model', $p['tax_model'] ?? 'legacy') === 'legacy')>Homologação de NF-e e NFC-e com PIS/Cofins</option>
+        <option value="simples_nfce_2026" @selected(old('tax_model', $p['tax_model'] ?? '') === 'simples_nfce_2026')>NFC-e de revenda interna em 2026 · Simples Nacional (CRT 1)</option>
         <option value="regular_resale_2027" @selected(old('tax_model', $p['tax_model'] ?? '') === 'regular_resale_2027')>Prévia de revenda em 2027 · regime regular</option>
     </select>
     <small class="hint" data-reform-help>Na prévia de revenda interna, informe a vigência em 2027, ICMS 00, IBS/CBS integral 000/000001, IBS de 0,05% estadual e 0,05% municipal e a alíquota efetiva da CBS validada para a operação. O limite da vigência é 31/12/2027.</small>
+    <small class="hint" data-simples-help hidden>Use para mercadoria adquirida de terceiros na venda presencial a consumidor final. Confirme CFOP 5102, CSOSN 102 e PIS/Cofins 99 com base e alíquotas zeradas. A vigência termina em 31/12/2026.</small>
 </div>
 <div class="field"><label for="tax-valid-from">Início da vigência <span data-optional-start>(opcional)</span></label><input type="date" id="tax-valid-from" name="valid_from" value="{{ old('valid_from', $p['valid_from'] ?? '') }}"></div>
 <div class="field"><label for="tax-valid-until">Último dia de vigência (opcional)</label><input type="date" id="tax-valid-until" name="valid_until" value="{{ old('valid_until', $p['valid_until'] ?? '') }}"></div>

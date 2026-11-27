@@ -2,6 +2,14 @@
 
 Esta etapa permite organizar parâmetros tributários comuns em perfis, vinculá-los a produtos em lote e definir um perfil padrão por grupo, preservando exceções individuais. A organização do cadastro não amplia os modelos/operações fiscais suportados nem constitui validação legal automática.
 
+## Revenda interna do Simples Nacional em 2026
+
+Em **Finalidade da regra**, a opção **NFC-e de revenda interna em 2026 · Simples Nacional (CRT 1)** atende a venda presencial de mercadoria adquirida de terceiros a consumidor final. Confirme o CFOP 5102, o CSOSN 102, os CST 99 de PIS e Cofins com base e alíquotas zeradas e o percentual aproximado dos tributos da mercadoria. Este é o recorte implementado para a operação comum sem permissão de crédito de ICMS. A regra expira em 31/12/2026 e pode receber uma vigência menor. O XML convencional preserva ICMS e PIS/Cofins e omite os grupos de IBS/CBS. A RV UB12-10 da NT 2025.002 v1.53 exige esses grupos na homologação de 2026 para o CRT 3. [MOC, regras N12a-20 e N12a-40](https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=J%2BI%2Bv4eN00E%3D) · [Orientação de preenchimento, p. 20](https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=oH6wJkQF24k%3D) · [NT 2025.002 v1.53, pp. 7 e 40](https://dfe-portal.svrs.rs.gov.br/NFE/DownloadArquivoEstatico/?sistema=NFE&tipoArquivo=3&nomeArquivo=NT_2025.002_v1.53_RTC_NF-e_IBS_CBS_IS.pdf)
+
+Em 2026 o campo de informações complementares identifica a ME ou EPP optante pelo Simples e a ausência de direito a crédito de IPI. Essa redação consta do art. 59, § 4º, II, da Resolução CGSN nº 140 e vale até 31/12/2026 nos termos dos arts. 7º e 8º da Resolução CGSN nº 196. [Resolução CGSN nº 140](https://normas.receita.fazenda.gov.br/sijut2consulta/link.action?idAto=92278) · [Resolução CGSN nº 196](https://www.in.gov.br/web/dou/-/resolucao-cgsn-n-196-de-16-de-novembro-de-2026-745832719)
+
+Em 27/11/2026 o cronograma técnico já prevê o ensaio do leiaute específico do Simples. A NT 2026.005 v1.00 indica homologação até 26/10 e o aviso de 12/11 adia a implantação em produção para 14/12. O cronograma da Receita atualizado em 19/11 situa a NFC-e das demais hipóteses do Simples em 01/03/2027. Para ensaiar esse leiaute, confirme se o estabelecimento optou pelo regime regular do IBS/CBS. Na revenda comum de CRT 1, a opção define o grupo de tributos e o código de atividade do item é 01. A regra convencional desta tela encerra seus cálculos no último dia de 2026. [NT 2026.005, seções 2 e 3](https://dfe-portal.svrs.rs.gov.br/NFE/DownloadArquivoEstatico/?sistema=NFE&tipoArquivo=3&nomeArquivo=NT_2026.005_v1.00_RTC_SimplesNacional.pdf) · [Aviso de implantação](https://dfe-portal.svrs.rs.gov.br/Nfce/Avisos/3021) · [Cronograma da Receita Federal](https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/reforma-tributaria-do-consumo/orientacoes-da-reforma-tributaria/cronograma)
+
 ## Regras de uso
 
 A prioridade de resolução é:

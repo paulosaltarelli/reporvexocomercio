@@ -8,7 +8,11 @@
 @forelse($profiles as $profile)
 <tr><td class="product-name">
     {{ $profile->name }}
-    <div class="hint">{{ ($profile->parameters['tax_model'] ?? null) === \App\Fiscal\TaxProfile::REGULAR_RESALE_2027 ? 'Prévia de revenda em 2027' : 'Homologação de NF-e e NFC-e' }}</div>
+    <div class="hint">{{ match($profile->parameters['tax_model'] ?? null) {
+        \App\Fiscal\TaxProfile::SIMPLES_NFCE_2026 => 'NFC-e de revenda do Simples Nacional em 2026',
+        \App\Fiscal\TaxProfile::REGULAR_RESALE_2027 => 'Prévia de revenda em 2027',
+        default => 'Homologação de NF-e e NFC-e',
+    } }}</div>
     @if(!empty($profile->parameters['valid_from']) || !empty($profile->parameters['valid_until']))
         <div class="hint">
             @if(!empty($profile->parameters['valid_from']))Desde {{ \Illuminate\Support\Carbon::parse($profile->parameters['valid_from'])->format('d/m/Y') }}@endif

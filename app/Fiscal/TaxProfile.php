@@ -9,11 +9,12 @@ use Illuminate\Validation\ValidationException;
 final class TaxProfile
 {
     public const REGULAR_RESALE_2027 = 'regular_resale_2027';
+    public const SIMPLES_NFCE_2026 = 'simples_nfce_2026';
 
     public function validate(array $data): array
     {
         $rules = [
-            'tax_model' => 'sometimes|required|in:legacy,'.self::REGULAR_RESALE_2027,
+            'tax_model' => 'sometimes|required|in:legacy,'.self::REGULAR_RESALE_2027.','.self::SIMPLES_NFCE_2026,
             'valid_from' => 'nullable|date_format:Y-m-d',
             'valid_until' => ['nullable', 'date_format:Y-m-d'],
             'cfop' => 'required|in:5102',
@@ -23,7 +24,21 @@ final class TaxProfile
         if (!empty($data['valid_from'])) {
             $rules['valid_until'][] = 'after_or_equal:valid_from';
         }
-        if (($data['tax_model'] ?? null) === self::REGULAR_RESALE_2027) {
+        $model = $data['tax_model'] ?? 'legacy';
+        if ($model === self::SIMPLES_NFCE_2026) {
+            $rules['valid_from'] = 'nullable|date_format:Y-m-d|after_or_equal:2026-01-01|before_or_equal:2026-12-31';
+            $rules['valid_until'][] = 'after_or_equal:2026-01-01';
+            $rules['valid_until'][] = 'before_or_equal:2026-12-31';
+            $rules += [
+                'icms_code' => 'required|in:102',
+                'pis_code' => 'required|in:99', 'pis_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
+                'cofins_code' => 'required|in:99', 'cofins_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
+                'transparency_rate' => 'required|numeric|min:0|max:100|decimal:0,4',
+            ];
+            foreach (['icms_rate', 'rtc_mode', 'rtc_cst', 'rtc_class', 'ibs_uf_rate', 'ibs_municipal_rate', 'cbs_rate', 'rtc_reason', 'pis_cofins_base_mode'] as $unused) {
+                $rules[$unused] = 'prohibited';
+            }
+        } elseif ($model === self::REGULAR_RESALE_2027) {
             $rules['valid_from'] = 'required|date_format:Y-m-d|after_or_equal:2027-01-01|before_or_equal:2027-12-31';
             $rules['valid_until'][] = 'before_or_equal:2027-12-31';
             $rules += [
@@ -52,7 +67,10 @@ final class TaxProfile
             ];
         }
         $validated = Validator::make($data, $rules)->validate();
-        if (($validated['tax_model'] ?? null) === self::REGULAR_RESALE_2027) {
+        if ($model === self::SIMPLES_NFCE_2026) {
+            $validated['valid_from'] ??= '2026-01-01';
+            $validated['valid_until'] ??= '2026-12-31';
+        } elseif ($model === self::REGULAR_RESALE_2027) {
             $validated['valid_until'] ??= '2027-12-31';
         }
         if ($validated['gtin'] !== 'SEM GTIN') {
@@ -80,14 +98,25 @@ final class TaxProfile
         return $validated;
     }
 
-    public function fields(array $rule, string $gross, string $crt): array
+    public function fields(array $rule, string $gross, string $crt, ?\DateTimeInterface $nfceIssuedAt = null): array
     {
         $r = $this->validate($rule);
         if (($r['tax_model'] ?? null) === self::REGULAR_RESALE_2027) {
             throw ValidationException::withMessages(['tax_model' => 'A regra de revenda de 2027 está disponível para prévia de cálculo. A emissão de XML com esta regra ainda está em desenvolvimento.']);
         }
         $gross = Decimal::input($gross, 2, 'tax', '0.01');
-        if ($r['rtc_mode'] !== 'standard') {
+        $simples = ($r['tax_model'] ?? null) === self::SIMPLES_NFCE_2026;
+        if ($simples && ($crt !== '1' || $nfceIssuedAt === null
+            || $nfceIssuedAt->format('Y-m-d') < $r['valid_from'] || $nfceIssuedAt->format('Y-m-d') > $r['valid_until'])) {
+            throw ValidationException::withMessages(['tax_model' => 'Confira a vigência da regra de revenda de 2026 e a configuração da NFC-e para CRT 1.']);
+        }
+        if (! $simples && $crt === '1' && $nfceIssuedAt !== null) {
+            $message = $nfceIssuedAt->format('Y') === '2026'
+                ? 'Para a NFC-e convencional de CRT 1, selecione a regra de revenda do Simples Nacional em 2026 e confirme os códigos da operação.'
+                : 'O emissor convencional de NFC-e para CRT 1 atende a revenda em 2026. Para 2027, confira a opção de apuração do IBS/CBS e utilize o leiaute da NT 2026.005.';
+            throw ValidationException::withMessages(['tax_model' => $message]);
+        }
+        if (! $simples && $r['rtc_mode'] !== 'standard') {
             throw ValidationException::withMessages(['rtc_mode' => 'A emissão direta inicial exige IBS/CBS integral validado (CST 000/cClassTrib 000001). A dispensa ou outro tratamento ainda não tem cálculo implementado; não use justificativa livre para omitir grupo obrigatório.']);
         }
         $taxedPis = in_array($r['pis_code'], ['01', '02'], true);
@@ -104,6 +133,11 @@ final class TaxProfile
             $fields['codigo_cest'] = $r['cest'];
         }
         foreach (['icms' => 'icms_code', 'pis' => 'pis_code', 'cofins' => 'cofins_code'] as $prefix => $code) {
+            if ($simples && $prefix !== 'icms') {
+                $fields[$prefix.'_base_calculo'] = '0.00';
+                $fields[$prefix.'_aliquota'] = $r[$prefix.'_rate'];
+                $fields[$prefix.'_valor'] = '0.00';
+            }
             if (($prefix === 'icms' && $r[$code] === '00') || ($prefix !== 'icms' && in_array($r[$code], ['01', '02'], true))) {
                 $base = $gross;
                 if ($prefix !== 'icms' && ($r['pis_cofins_base_mode'] ?? null) === 'exclude_icms') {
@@ -120,7 +154,7 @@ final class TaxProfile
                 }
             }
         }
-        if ($r['rtc_mode'] === 'standard') {
+        if (! $simples) {
             $base = $gross;
             foreach (['icms_valor', 'pis_valor', 'cofins_valor'] as $deduct) {
                 $base = bcsub($base, $fields[$deduct] ?? '0.00', 2);

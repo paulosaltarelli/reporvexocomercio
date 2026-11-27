@@ -75,6 +75,9 @@ final class NfceXmlBuilder
             foreach ($payload['formas_pagamento'] as $payment) {
                 $make->tagdetPag((object) ['indPag' => 0, 'tPag' => $payment['forma_pagamento'], 'vPag' => $payment['valor_pagamento']]);
             }
+            if (isset($payload['informacoes_complementares'])) {
+                $make->taginfAdic((object) ['infCpl' => $payload['informacoes_complementares']]);
+            }
             $xml = $make->getXML();
             if (! $xml || $make->getErrors()) {
                 throw new FiscalTransportException('nfce_xml_invalid');

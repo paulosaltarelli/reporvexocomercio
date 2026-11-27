@@ -422,7 +422,7 @@ class FiscalTest extends TestCase
         $this->assertNotSame($legacy,$stored);$this->assertTrue(openssl_pkcs12_read($stored,$keys,$fixture['password']));$this->assertSame($fixture['fingerprint'],$credential->certificate_fingerprint);
         app(CompanyFiscalConfiguration::class)->validateLocal($this->tenant);
         $other=FiscalFixtures::certificate();$legacy=FiscalFixtures::legacyCertificate($other);
-        app(\App\Fiscal\NfeCompanyConfiguration::class)->save($this->tenant,$this->nfe55Configuration(),['certificate_password'=>$other['password']],$legacy);
+        app(\App\Fiscal\NfeCompanyConfiguration::class)->save($this->tenant,$this->nfe55Configuration('3'),['certificate_password'=>$other['password']],$legacy);
         $credential=$credential->fresh();$stored=base64_decode($credential->secrets['pfx']);
         $this->assertNotSame($legacy,$stored);$this->assertTrue(openssl_pkcs12_read($stored,$keys,$other['password']));$this->assertSame($other['fingerprint'],$credential->certificate_fingerprint);
         app(\App\Fiscal\NfeCompanyConfiguration::class)->validateLocal($this->tenant);
@@ -431,17 +431,17 @@ class FiscalTest extends TestCase
     private function configuredFiscal(): array
     {
         Http::preventStrayRequests();
-        BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'SIMULACAO SEM VALOR FISCAL', 'document' => '11.222.333/0001-81', 'state_registration' => '111111111111', 'tax_regime' => 'simples', 'street' => 'Rua de teste', 'number' => '1', 'district' => 'Teste', 'city' => 'São Paulo', 'state' => 'SP', 'postal_code' => '01001000', 'municipality_code' => '3550308']);
+        BusinessProfile::forceCreate(['id' => 1, 'legal_name' => 'SIMULACAO SEM VALOR FISCAL', 'document' => '11.222.333/0001-81', 'state_registration' => '111111111111', 'tax_regime' => 'presumido', 'street' => 'Rua de teste', 'number' => '1', 'district' => 'Teste', 'city' => 'São Paulo', 'state' => 'SP', 'postal_code' => '01001000', 'municipality_code' => '3550308']);
         FiscalSetting::forceCreate(['id' => 1, 'provider' => 'sefaz_direct', 'environment' => 'homologation', 'nfce_accredited' => true, 'operation' => 'presential', 'accountant_name' => 'Contador de teste', 'updated_by' => $this->user->id]);
         $this->product->update(['ncm' => '84713012', 'origin' => '0']);
         $certificate = FiscalFixtures::certificate();
         $issuer = app(CompanyFiscalConfiguration::class)->save($this->tenant, [
-            'timezone' => 'America/Sao_Paulo', 'series' => 1, 'next_number' => 1, 'crt' => '1', 'natureza_operacao' => 'VENDA TESTE', 'identification_limit' => '10000.00', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'Referência de teste sem validade fiscal', 'csc_required' => true,
+            'timezone' => 'America/Sao_Paulo', 'series' => 1, 'next_number' => 1, 'crt' => '3', 'natureza_operacao' => 'VENDA TESTE', 'identification_limit' => '10000.00', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'Referência de teste sem validade fiscal', 'csc_required' => true,
         ], ['csc' => 'CSC-SYNTHETIC-NOT-A-SECRET', 'csc_id' => '000001', 'certificate_password' => $certificate['password']], $certificate['pfx']);
         $credential = FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail();
         app(CompanyFiscalConfiguration::class)->validateLocal($this->tenant);
         $credential = $credential->fresh();
-        FiscalItemRule::create(['product_id' => $this->product->id, 'parameters' => FiscalFixtures::rule(), 'accountant_reference' => 'Somente simulação de teste', 'validated_by' => $this->user->id]);
+        FiscalItemRule::create(['product_id' => $this->product->id, 'parameters' => FiscalFixtures::regularRule(), 'accountant_reference' => 'Somente simulação de teste', 'validated_by' => $this->user->id]);
 
         $profile = BusinessProfile::findOrFail(1)->toArray();
         $this->transport = \Mockery::mock(SefazTransport::class.'[authorize,consult,cancel]', [$profile, $issuer->validated_configuration, $credential]);
@@ -468,6 +468,57 @@ class FiscalTest extends TestCase
         }
     }
 
+    public function test_simples_nacional_2026_cash_resale_in_mg_queues_only_the_conventional_nfce(): void
+    {
+        [$issuer] = $this->configuredFiscal();
+        BusinessProfile::whereKey(1)->update(['tax_regime' => 'simples', 'city' => 'São João del-Rei', 'state' => 'MG',
+            'municipality_code' => '3162500', 'postal_code' => '36300000', 'state_registration' => '9999999999999']);
+        $this->product->update(['name' => 'Mouse de teste', 'ncm' => '84716053']);
+        $configuration = app(CompanyFiscalConfiguration::class);
+        $configuration->save($this->tenant, array_replace($issuer->validated_configuration, ['crt' => '1']), [], null);
+        $configuration->validateLocal($this->tenant);
+        // Keep the business-date tests repeatable while signing with a fresh disposable certificate.
+        FiscalCredential::where('issuer_id', $issuer->id)->update(['valid_from' => '2026-01-01', 'valid_until' => '2027-12-31']);
+        $this->login();
+        $url = '/app/a/fiscal/products/'.$this->product->id;
+        $this->get($url)->assertOk()->assertSee('NFC-e de revenda interna em 2026');
+        $this->from($url)->post($url, FiscalFixtures::simplesNfce2026() + ['accountant_reference' => 'Conferência sintética do ensaio.'])
+            ->assertRedirect($url)->assertSessionHasNoErrors();
+        app(TenantConnection::class)->connect($this->tenant);
+        $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]], $this->user->id);
+        $operation = array_replace($this->operation(), ['destination_state' => 'MG']);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
+        $doc = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $operation);
+        $dom = new \DOMDocument;
+        $this->assertTrue($dom->loadXML($doc->signed_xml, LIBXML_NONET));
+        $xp = new \DOMXPath($dom);
+        $xp->registerNamespace('n', 'http://www.portalfiscal.inf.br/nfe');
+        foreach (['ide/n:mod' => '65', 'ide/n:tpAmb' => '2', 'ide/n:cMunFG' => '3162500', 'emit/n:CRT' => '1',
+            'det/n:prod/n:CFOP' => '5102', 'det/n:imposto/n:ICMS/n:ICMSSN102/n:CSOSN' => '102',
+            'det/n:imposto/n:PIS/n:PISOutr/n:CST' => '99', 'det/n:imposto/n:COFINS/n:COFINSOutr/n:CST' => '99',
+            'pag/n:detPag/n:tPag' => '01', 'total/n:ICMSTot/n:vNF' => '39.90'] as $path => $expected) {
+            $this->assertSame($expected, $xp->evaluate('string(/n:NFe/n:infNFe/n:'.$path.')'), $path);
+        }
+        $this->assertSame(0, $xp->query('//n:IBSCBS | //n:IBSCBSTot')->length);
+        $this->assertSame('DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL. NÃO GERA DIREITO A CRÉDITO FISCAL DE IPI.',
+            $xp->evaluate('string(//n:infAdic/n:infCpl)'));
+        $this->assertTrue(\NFePHP\Common\Signer::isSigned($doc->signed_xml, 'infNFe'));
+        $this->assertSame('pending', $doc->state);
+        $this->travelTo(\Carbon\Carbon::parse('2027-01-01T00:00:00-03:00'));
+        $next = DB::connection('tenant')->table('fiscal_sequences')->where('model', 65)->value('next_number');
+        try {
+            app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $operation);
+            $this->fail('O perfil convencional de 2026 ultrapassou a vigência.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('vigência', $exception->errors()['fiscal'][0]);
+        }
+        $this->assertSame($next, DB::connection('tenant')->table('fiscal_sequences')->where('model', 65)->value('next_number'));
+        $this->assertSame(1, FiscalDocument::count());
+        $this->assertSame([], $this->transportCalls);
+        Http::assertNothingSent();
+    }
+
     private function simulationProtectedFacts(): array
     {
         $facts = [];
@@ -480,7 +531,7 @@ class FiscalTest extends TestCase
 
     private function sharedFiscalProfileData(string $name, array $changes = []): array
     {
-        $parameters = array_diff_key(FiscalFixtures::rule(), array_flip(['gtin', 'cest']));
+        $parameters = array_diff_key(FiscalFixtures::regularRule(), array_flip(['gtin', 'cest']));
         return ['name' => $name, 'active' => true, 'accountant_reference' => 'Perfil sintético para QA, sem validação contábil real',
             'parameters' => array_replace($parameters, $changes)];
     }
@@ -492,9 +543,9 @@ class FiscalTest extends TestCase
             'ncm' => '84713012', 'origin' => '0', 'fiscal_gtin' => 'SEM GTIN', 'fiscal_cest' => '2106400'], $changes));
     }
 
-    private function nfe55Configuration(): array
+    private function nfe55Configuration(string $crt = '1'): array
     {
-        return ['timezone' => 'America/Sao_Paulo', 'series' => 1, 'next_number' => 1, 'crt' => '1',
+        return ['timezone' => 'America/Sao_Paulo', 'series' => 1, 'next_number' => 1, 'crt' => $crt,
             'natureza_operacao' => 'VENDA NF-E TESTE', 'cancellation_minutes' => 30, 'uf_validation_reference' => 'QA sintético, sem validação contábil real'];
     }
 
@@ -698,7 +749,7 @@ class FiscalTest extends TestCase
         $credential = FiscalCredential::where('issuer_id', $doc->issuer_id)->firstOrFail();
         $payload = $doc->fresh()->snapshot['payload'] + ['_signed_xml' => $this->submittedXml];
         app(\App\Fiscal\XmlEvidence::class)->authorization($xml, $payload, $credential);
-        foreach (['//n:det/n:prod/n:NCM' => '84715010', '//n:det/n:prod/n:cProd' => 'OTHER-SKU', '//n:det/n:imposto/n:ICMS/n:ICMSSN102/n:orig' => '1'] as $path => $value) {
+        foreach (['//n:det/n:prod/n:NCM' => '84715010', '//n:det/n:prod/n:cProd' => 'OTHER-SKU', '//n:det/n:imposto/n:ICMS/n:ICMS00/n:orig' => '1'] as $path => $value) {
             $dom = new \DOMDocument; $dom->loadXML($xml, LIBXML_NONET);
             $xp = new \DOMXPath($dom); $xp->registerNamespace('n', 'http://www.portalfiscal.inf.br/nfe');
             $xp->query($path)->item(0)->nodeValue = $value;
@@ -869,7 +920,7 @@ class FiscalTest extends TestCase
         } catch (ValidationException) {
             $this->assertSame(1, DB::connection('tenant')->table('fiscal_sequences')->value('next_number'));
         }
-        FiscalItemRule::create(['product_id' => $this->product->id, 'parameters' => FiscalFixtures::rule(), 'accountant_reference' => 'TEST', 'validated_by' => $this->user->id]);
+        FiscalItemRule::create(['product_id' => $this->product->id, 'parameters' => FiscalFixtures::regularRule(), 'accountant_reference' => 'TEST', 'validated_by' => $this->user->id]);
         $doc = app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $this->operation());
         BusinessProfile::find(1)->update(['number' => '2']);
         $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));
@@ -1055,7 +1106,7 @@ class FiscalTest extends TestCase
         $credential->validated_hash = $legacyHash; $credential->save();
         $oldSecrets = Snapshot::hash($credential->secrets);
         $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
-        $configuration->save($this->tenant, $this->nfe55Configuration(), [], null);
+        $configuration->save($this->tenant, $this->nfe55Configuration('3'), [], null);
         $configuration->validateLocal($this->tenant);
         $this->assertSame($legacyHash, app(CompanyFiscalConfiguration::class)->hash($issuer));
         $this->assertSame($legacyHash, $credential->fresh()->validated_hash);
@@ -1079,7 +1130,7 @@ class FiscalTest extends TestCase
             } catch (FiscalTransportException) { $this->assertTrue(true); }
         }
         $replacement = FiscalFixtures::certificate();
-        $configuration->save($this->tenant, array_replace($this->nfe55Configuration(), ['next_number' => 2]), ['certificate_password' => $replacement['password']], $replacement['pfx']);
+        $configuration->save($this->tenant, array_replace($this->nfe55Configuration('3'), ['next_number' => 2]), ['certificate_password' => $replacement['password']], $replacement['pfx']);
         $this->assertNull($credential->fresh()->validated_hash, 'Troca de A1 exige revalidação do 65.');
         $this->assertNull($configuration->forIssuer($issuer)->validated_hash);
         $this->assertSame($doc65->signed_xml, $doc65->fresh()->signed_xml);
@@ -1145,7 +1196,7 @@ class FiscalTest extends TestCase
         if (! function_exists('pcntl_fork')) { $this->markTestSkipped('Concorrência real exige pcntl.'); }
         [$issuer] = $this->configuredFiscal();
         $configuration = app(\App\Fiscal\NfeCompanyConfiguration::class);
-        $configuration->save($this->tenant, $this->nfe55Configuration(), [], null);
+        $configuration->save($this->tenant, $this->nfe55Configuration('3'), [], null);
         $configuration->validateLocal($this->tenant);
         $customer = $this->nfe55Customer(); $this->sale->update(['customer_id' => $customer->id]);
         $this->app->bind(SefazTransport::class, function ($app, array $parameters) {

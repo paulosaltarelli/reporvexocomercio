@@ -36,6 +36,21 @@ final class FiscalFixtures
         return ['cfop' => '5102', 'icms_code' => '102', 'pis_code' => '07', 'cofins_code' => '07', 'gtin' => 'SEM GTIN', 'rtc_mode' => 'standard', 'rtc_cst' => '000', 'rtc_class' => '000001', 'ibs_uf_rate' => '0.1', 'ibs_municipal_rate' => '0', 'cbs_rate' => '0.9', 'transparency_rate' => '0'];
     }
 
+    public static function regularRule(): array
+    {
+        return array_replace(self::rule(), ['icms_code' => '00', 'icms_rate' => '18']);
+    }
+
+    public static function simplesNfce2026(): array
+    {
+        return [
+            'tax_model' => \App\Fiscal\TaxProfile::SIMPLES_NFCE_2026,
+            'cfop' => '5102', 'icms_code' => '102', 'gtin' => 'SEM GTIN',
+            'pis_code' => '99', 'pis_rate' => '0', 'cofins_code' => '99', 'cofins_rate' => '0',
+            'transparency_rate' => '10',
+        ];
+    }
+
     /** Synthetic SEFAZ-shaped response to the exact signed request; never official evidence. */
     public static function authorizationResponse(string $signedXml, bool $consult = false): string
     {

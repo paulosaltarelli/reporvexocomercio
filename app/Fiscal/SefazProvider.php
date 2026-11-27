@@ -31,7 +31,7 @@ final class SefazProvider implements FiscalProvider
     {
         // Never reconstruct or sign again after transmission has become possible.
         $this->payload = $frozenPayload + $this->payload;
-        $this->frozen();
+        $this->frozen(forIssue: true);
         $result = $this->transport()->authorize($this->payload['_signed_xml'], $this->payload['_access_key']);
         return $this->normalize($result['response']);
     }
@@ -43,7 +43,7 @@ final class SefazProvider implements FiscalProvider
         return $this->normalize($result['response'], true);
     }
 
-    private function frozen(): void
+    private function frozen(bool $forIssue = false): void
     {
         $xml = (string) ($this->payload['_signed_xml'] ?? '');
         $key = (string) ($this->payload['_access_key'] ?? '');
@@ -64,6 +64,12 @@ final class SefazProvider implements FiscalProvider
             }
         } catch (\Throwable) {
             throw new FiscalTransportException('frozen_xml_signature_invalid');
+        }
+        // Existing queued XML can predate the conventional CRT 1 resale profile.
+        if ($forIssue && $this->model === 65 && $value($base.'/n:emit/n:CRT') === '1'
+            && (! str_starts_with($value($base.'/n:ide/n:dhEmi'), '2026-')
+                || $xp->query($base.'/n:det/n:imposto/n:IBSCBS | '.$base.'/n:total/n:IBSCBSTot')->length > 0)) {
+            throw new FiscalTransportException('nfce_simples_tax_layout_incompatible');
         }
     }
 
