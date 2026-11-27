@@ -33,24 +33,45 @@ class FiscalEmissionController extends Controller
     public function configure(Request $r, CompanyFiscalConfiguration $configuration)
     {
         $this->admin($r);
-        $r->validate(['intent' => 'nullable|in:draft,activate']);
+        $r->validate(['intent' => 'nullable|in:draft,activate,certificate']);
         if ($r->input('intent') === 'draft') {
             return $this->saveDraft($r);
+        }
+        if ($r->input('intent') === 'certificate') {
+            $this->certificateAdmin($r);
+            $data = $r->validate([
+                'environment' => 'required|in:homologation', 'prepared_certificate' => 'nullable|string|regex:/^[a-f0-9]{64}$/D',
+                'certificate' => 'nullable|required_without:prepared_certificate|file|max:2048', 'certificate_password' => 'nullable|string|max:256',
+                'tenant_id' => 'prohibited', 'certificate_path' => 'prohibited', 'csc' => 'prohibited', 'csc_id' => 'prohibited',
+                'series' => 'prohibited', 'next_number' => 'prohibited',
+            ]);
+            $configuration->save($r->attributes->get('tenant'), null, $r->only('certificate_password'), $r->file('certificate')?->get(), $data['prepared_certificate'] ?? null);
+            return back()->with('success', 'Certificado A1 validado e guardado. A configuração da NFC-e de homologação pode ser concluída em outra etapa.');
         }
         $data = $r->validate([
             'environment' => 'required|in:homologation', 'provider_company_id' => 'prohibited', 'series' => 'required|integer|min:0|max:889', 'next_number' => 'required|integer|min:1|max:999999999',
             'timezone' => 'required|timezone', 'crt' => 'required|in:1,2,3,4', 'natureza_operacao' => 'required|string|max:60', 'identification_limit' => 'required|numeric|min:0|max:999999999.99|decimal:0,2',
             'cancellation_minutes' => 'required|integer|min:0|max:30', 'uf_validation_reference' => 'required|string|max:180', 'csc_required' => 'required|accepted',
             'certificate' => 'nullable|file|max:2048', 'certificate_password' => 'nullable|string|max:256', 'csc' => 'nullable|string|max:100', 'csc_id' => 'nullable|digits_between:1,6',
+            'prepared_certificate' => 'nullable|string|regex:/^[a-f0-9]{64}$/D', 'certificate_path' => 'prohibited',
             'emission_token' => 'prohibited', 'management_token' => 'prohibited', 'tenant_id' => 'prohibited',
         ]);
+        $revision = $data['prepared_certificate'] ?? null;
+        if ($revision !== null) {
+            $this->certificateAdmin($r);
+        }
         $secrets = $r->only(['csc', 'csc_id', 'certificate_password']);
-        foreach (['certificate', 'certificate_password', 'csc', 'csc_id', 'emission_token', 'management_token', 'environment', 'provider_company_id'] as $field) {
+        foreach (['certificate', 'certificate_password', 'csc', 'csc_id', 'emission_token', 'management_token', 'environment', 'provider_company_id', 'prepared_certificate', 'certificate_path'] as $field) {
             unset($data[$field]);
         }
-        $configuration->save($r->attributes->get('tenant'), $data, $secrets, $r->file('certificate')?->get());
+        $configuration->save($r->attributes->get('tenant'), $data, $secrets, $r->file('certificate')?->get(), $revision);
 
         return back()->with('success', 'Configuração fiscal salva de forma privada. Valide o certificado e a configuração localmente antes da homologação.');
+    }
+
+    private function certificateAdmin(Request $request): void
+    {
+        abort_unless($request->isSecure() && $request->attributes->get('currentUser')->canEnrollFiscalCertificate(), 403);
     }
 
     private function saveDraft(Request $r)
@@ -64,6 +85,7 @@ class FiscalEmissionController extends Controller
             'cancellation_minutes' => 'nullable|integer|min:0|max:30',
             'uf_validation_reference' => 'nullable|string|max:180', 'csc_required' => 'sometimes|nullable|accepted',
             'certificate' => 'prohibited', 'certificate_password' => 'prohibited', 'csc' => 'prohibited', 'csc_id' => 'prohibited',
+            'prepared_certificate' => 'prohibited', 'certificate_path' => 'prohibited',
             'emission_token' => 'prohibited', 'management_token' => 'prohibited', 'provider_company_id' => 'prohibited',
             'tenant_id' => 'prohibited', 'fiscal_production_approved_at' => 'prohibited',
         ]);

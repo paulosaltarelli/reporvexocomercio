@@ -30,6 +30,11 @@ class User extends Authenticatable
 
     protected $hidden = ['password'];
 
+    public function canEnrollFiscalCertificate(): bool
+    {
+        return $this->getRawOriginal('role') === 'admin' && $this->allows('fiscal.manage');
+    }
+
     public function allows(string $permission): bool
     {
         return app(\App\Access\AccessProfiles::class)->allows($this, $permission);

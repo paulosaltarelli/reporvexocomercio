@@ -11,19 +11,48 @@ use Illuminate\Validation\ValidationException;
 
 final class CompanyFiscalConfiguration
 {
-    public function save(Tenant $tenant, array $configuration, #[\SensitiveParameter] array $input, #[\SensitiveParameter] ?string $pfx): FiscalIssuer
+    /** A null configuration enrolls only the company's A1, without activating an invoice model. */
+    public function save(Tenant $tenant, ?array $configuration, #[\SensitiveParameter] array $input, #[\SensitiveParameter] ?string $pfx, ?string $preparedRevision = null): FiscalIssuer
     {
         ProductInvoiceGate::assertEnabled(65);
         if (! app(\App\Services\TenantConnection::class)->matches($tenant)) {
             abort(403);
         }
-        $cnpj = TaxpayerDocument::normalize((string) BusinessProfile::findOrFail(1)->document);
-        if (! preg_match('/^[0-9]{14}$/D', $cnpj) || ! TaxpayerDocument::cnpj($cnpj)) {
-            throw ValidationException::withMessages(['document' => 'Complete o CNPJ válido em Minha empresa.']);
-        }
-
-        return DB::connection('tenant')->transaction(function () use ($configuration, $input, $pfx, $cnpj) {
+        return DB::connection('tenant')->transaction(function () use ($tenant, $configuration, $input, $pfx, $preparedRevision) {
             $profile = BusinessProfile::whereKey(1)->lockForUpdate()->firstOrFail();
+            $cnpj = TaxpayerDocument::normalize((string) $profile->document);
+            if (! preg_match('/^[0-9]{14}$/D', $cnpj) || ! TaxpayerDocument::cnpj($cnpj)) {
+                throw ValidationException::withMessages(['document' => 'Complete o CNPJ válido em Minha empresa.']);
+            }
+            $issuer = FiscalIssuer::firstOrCreate(['document' => $cnpj, 'environment' => 'homologation'], ['provider' => 'sefaz_direct', 'enabled' => false]);
+            $credential = FiscalCredential::where('issuer_id', $issuer->id)->lockForUpdate()->first();
+            if ($pfx === null && $preparedRevision !== null) {
+                $pfx = app(PendingNfceCertificate::class)->forActivation($tenant, $cnpj, $preparedRevision);
+            } elseif ($preparedRevision !== null) {
+                app(PendingNfceCertificate::class)->discardIfCurrentAfterCommit($tenant, $cnpj, $preparedRevision);
+            }
+            $certificateSecrets = [];
+            $metadata = [];
+            if ($pfx !== null) {
+                $password = (string) ($input['certificate_password'] ?? '');
+                $pfx = app(PfxCompatibility::class)->normalize($pfx, $password);
+                $metadata = app(CertificateInspector::class)->inspect($pfx, $password, $cnpj);
+                $certificateSecrets = ['pfx' => base64_encode($pfx), 'certificate_password' => $password];
+            } elseif (! $credential || $configuration === null) {
+                throw ValidationException::withMessages(['certificate' => 'Envie o certificado A1/PFX da empresa.']);
+            }
+            if ($configuration === null) {
+                if ($issuer->provider !== 'sefaz_direct') {
+                    throw ValidationException::withMessages(['certificate' => 'Confira a configuração do emitente antes de cadastrar o A1 de homologação.']);
+                }
+                if ($credential && ! hash_equals($credential->certificate_fingerprint, $metadata['certificate_fingerprint'])) {
+                    throw ValidationException::withMessages(['certificate' => 'Já existe outro A1 cadastrado nesta empresa. Para trocá-lo, use a etapa de ativação fiscal.']);
+                }
+                if (! $credential) {
+                    FiscalCredential::create(['issuer_id' => $issuer->id, 'secrets' => $certificateSecrets] + $metadata);
+                }
+                return $issuer;
+            }
             if (empty($configuration['timezone']) || ! in_array($configuration['timezone'], \DateTimeZone::listIdentifiers(), true)) {
                 throw ValidationException::withMessages(['timezone' => 'Informe o fuso horário fiscal do emitente.']);
             }
@@ -34,23 +63,12 @@ final class CompanyFiscalConfiguration
             if (! in_array((string) $configuration['crt'], $allowed[$profile->tax_regime] ?? [], true)) {
                 throw ValidationException::withMessages(['crt' => 'CRT incompatível com o regime tributário cadastrado. Confirme os dois campos com o contador.']);
             }
-            $issuer = FiscalIssuer::firstOrCreate(['document' => $cnpj, 'environment' => 'homologation'], ['provider' => 'sefaz_direct', 'enabled' => false]);
-            $credential = FiscalCredential::where('issuer_id', $issuer->id)->first();
-            $secrets = $credential?->secrets ?? [];
-            $metadata = [];
+            $secrets = array_replace($credential?->secrets ?? [], $certificateSecrets);
             unset($secrets['emission_token'], $secrets['management_token']);
             foreach (['csc', 'csc_id'] as $field) {
                 if (isset($input[$field]) && $input[$field] !== '') {
                     $secrets[$field] = $input[$field];
                 }
-            }
-            if ($pfx !== null) {
-                $pfx=app(\App\Fiscal\PfxCompatibility::class)->normalize($pfx,(string)($input['certificate_password']??''));
-                $metadata = app(CertificateInspector::class)->inspect($pfx, (string) ($input['certificate_password'] ?? ''), $cnpj);
-                $secrets['pfx'] = base64_encode($pfx);
-                $secrets['certificate_password'] = (string) ($input['certificate_password'] ?? '');
-            } elseif (! $credential) {
-                throw ValidationException::withMessages(['certificate' => 'Envie o certificado A1/PFX da empresa.']);
             }
             if (empty($secrets['csc']) || ! preg_match('/^[0-9]{1,6}$/D', (string) ($secrets['csc_id'] ?? ''))) {
                 throw ValidationException::withMessages(['csc' => 'Informe CSC e identificador de homologação conforme a UF.']);

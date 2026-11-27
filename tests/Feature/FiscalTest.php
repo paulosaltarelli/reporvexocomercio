@@ -40,6 +40,8 @@ use Tests\TestCase;
 
 class FiscalTest extends TestCase
 {
+    use PreparedFiscalCertificateCases;
+
     private static bool $schemasReady = false;
 
     private Tenant $tenant;

@@ -6,10 +6,29 @@
 @endphp
 <section class="panel" id="fiscal-company"><h2>NFC-e · modelo 65 · configuração da empresa</h2>
 <p>Comunicação direta com a <strong>SEFAZ em homologação, sem valor fiscal</strong>. O emitente e o endereço vêm do cadastro da empresa. A configuração, o certificado e a numeração pertencem exclusivamente a esta empresa. A emissão em produção permanece bloqueada.</p>
+<h3 id="certificado-digital-a1">Certificado digital A1</h3>
 @if($fiscalCertificate)
 <div class="notice"><strong>Certificado A1 cadastrado</strong><p>Validade: {{ \Carbon\Carbon::parse($fiscalCertificate['valid_from'])->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($fiscalCertificate['valid_until'])->format('d/m/Y') }}.</p>
 @if(!empty($fiscalCertificate['certificate_fingerprint']))<p class="hint" style="overflow-wrap:anywhere">Impressão digital: {{ $fiscalCertificate['certificate_fingerprint'] }}</p>@endif
 <p class="hint">Salvar não transmite uma nota. A validação abaixo confere a configuração cadastrada; não substitui o credenciamento na SEFAZ.</p></div>
+@endif
+@if(($canSaveCertificate ?? false) && (!$fiscalCertificate || $preparedCertificate))
+<form method="post" enctype="multipart/form-data" action="{{ route('business.fiscal',['company'=>$tenant->slug]) }}">
+@csrf
+<input type="hidden" name="intent" value="certificate"><input type="hidden" name="environment" value="homologation">
+@if($preparedCertificate)
+<p>O arquivo A1 já foi entregue para este CNPJ. Digite a senha dele para conferir a titularidade e a validade.</p>
+<input type="hidden" name="prepared_certificate" value="{{ $preparedCertificate }}">
+<details class="disclosure"><summary>Usar outro arquivo A1</summary><div class="disclosure-content">
+@else
+<p>Selecione o A1 da empresa e informe a senha para conferir a titularidade e a validade.</p>
+@endif
+<div class="field"><label for="a1_file">Arquivo A1 (.pfx ou .p12, até 2 MB)</label><input id="a1_file" type="file" name="certificate" accept=".pfx,.p12" @required(!$preparedCertificate)></div>
+@if($preparedCertificate)</div></details>@endif
+<div class="field"><label for="a1_password">Senha do certificado A1</label><input id="a1_password" type="password" name="certificate_password" maxlength="256" autocomplete="new-password"></div>
+<p class="hint">Você pode guardar o certificado agora e informar o CSC e a numeração na etapa de ativação.</p>
+<button class="primary">Validar e guardar certificado</button>
+</form>
 @endif
 <h3>1. Preparar dados e regras</h3><p>Salve aos poucos, mesmo sem certificado. Este rascunho não ativa a emissão nem reserva numeração.</p><form method="post" action="{{ route('business.fiscal',['company'=>$tenant->slug]) }}">@csrf
 <input type="hidden" name="_fiscal_form" value="nfce65">
@@ -40,12 +59,15 @@
 @if(!array_key_exists('next_number',$fc))<input type="hidden" name="next_number" value="{{ $fiscalNextNumber }}">@endif
 <div class="form-grid">
 <input type="hidden" name="csc_required" value="1">
-<div class="field"><label for="fc_certificate">Certificado A1 (.pfx ou .p12, até 2 MB)</label><input id="fc_certificate" type="file" name="certificate" accept=".pfx,.p12" @required(!$fiscalCertificate)></div>
+@if($preparedCertificate ?? null)
+<div class="field"><label><input type="checkbox" name="prepared_certificate" value="{{ $preparedCertificate }}" @checked(!$fiscalCertificate)> Usar o certificado A1 já entregue para este CNPJ</label><p class="hint">Informe a senha do arquivo entregue e o CSC de homologação com seu identificador. Se escolher outro arquivo abaixo, ele será usado nesta ativação.</p></div>
+@endif
+<div class="field"><label for="fc_certificate">Certificado A1 (.pfx ou .p12, até 2 MB)</label><input id="fc_certificate" type="file" name="certificate" accept=".pfx,.p12" @required(!$fiscalCertificate && empty($preparedCertificate))></div>
 <div class="field"><label for="fc_certificate_password">Senha do certificado A1 enviado</label><input id="fc_certificate_password" type="password" name="certificate_password" maxlength="256" autocomplete="new-password"></div>
 <div class="field"><label for="fc_csc">CSC do contribuinte</label><input id="fc_csc" type="password" name="csc" maxlength="100" autocomplete="new-password"></div>
 <div class="field"><label for="fc_csc_id">Identificador do CSC do contribuinte</label><input id="fc_csc_id" name="csc_id" autocomplete="off" inputmode="numeric" pattern="[0-9]{1,6}" maxlength="6"></div>
 </div><p class="hint">A senha e o CSC não são exibidos novamente. Deixe os campos de credenciais vazios para manter os dados cadastrados. Para substituir o certificado, envie o arquivo e sua senha. Confira série e próximo número com o responsável fiscal para evitar conflito com emissões anteriores. Os limites de identificação e cancelamento devem seguir a regra vigente da UF. Em MG, a SEF informa que CSC e identificador são os mesmos para homologação e produção; este sistema permanece em homologação.</p><button class="primary">Ativar configuração de homologação</button></form>
-@if($fiscalIssuer)
+@if($fiscalIssuer?->enabled && $fiscalIssuer->validated_configuration)
 <form method="post" action="{{ route('business.fiscal.validate',['company'=>$tenant->slug]) }}" style="margin-top:24px">
 @csrf
 <input type="hidden" name="_fiscal_form" value="nfce65">

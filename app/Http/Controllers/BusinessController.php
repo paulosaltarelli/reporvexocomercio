@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Fiscal\ProductInvoiceGate;
 use App\Fiscal\TaxpayerDocument;
+use App\Fiscal\PendingNfceCertificate;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
@@ -70,7 +71,11 @@ class BusinessController extends Controller
         $settings = FiscalSetting::find(1);
         $draft = $settings?->configuration_draft;
         $draftMatches = is_array($draft) && ($draft['document'] ?? null) === TaxpayerDocument::normalize((string) $profile->document);
-        return ['nfeConfiguration' => $nfeConfiguration, 'nfeNextNumber' => $nfeNextNumber, 'profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches];
+        $canSaveCertificate = $r->isSecure() && $r->attributes->get('currentUser')->canEnrollFiscalCertificate();
+        $preparedCertificate = $canSaveCertificate
+            ? app(PendingNfceCertificate::class)->revision($r->attributes->get('tenant'), $profile->document)
+            : null;
+        return ['canSaveCertificate' => $canSaveCertificate, 'preparedCertificate' => $preparedCertificate, 'nfeConfiguration' => $nfeConfiguration, 'nfeNextNumber' => $nfeNextNumber, 'profile' => $profile, 'fiscalIssuer' => $issuer, 'fiscalCertificate' => $credential?->only(['valid_from', 'valid_until', 'certificate_fingerprint', 'validated_hash']), 'fiscalNextNumber' => $sequence?->next_number, 'fiscalSettings' => $settings, 'fiscalDraft' => $draftMatches ? ($draft['values'] ?? []) : [], 'fiscalDraftPresent' => $draftMatches];
     }
 
     public function save(Request $r)
