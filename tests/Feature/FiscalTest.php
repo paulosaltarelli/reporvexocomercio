@@ -471,7 +471,9 @@ class FiscalTest extends TestCase
         }
     }
 
-    public function test_simples_nacional_2026_cash_resale_in_mg_queues_only_the_conventional_nfce(): void
+    #[\PHPUnit\Framework\Attributes\TestWith(['5102', '99', 'Outr'])]
+    #[\PHPUnit\Framework\Attributes\TestWith(['5101', '08', 'NT'])]
+    public function test_simples_nacional_2026_cash_sale_in_mg_queues_only_the_conventional_nfce(string $cfop, string $cst, string $group): void
     {
         [$issuer] = $this->configuredFiscal();
         BusinessProfile::whereKey(1)->update(['tax_regime' => 'simples', 'city' => 'São João del-Rei', 'state' => 'MG',
@@ -484,8 +486,8 @@ class FiscalTest extends TestCase
         FiscalCredential::where('issuer_id', $issuer->id)->update(['valid_from' => '2026-01-01', 'valid_until' => '2027-12-31']);
         $this->login();
         $url = '/app/a/fiscal/products/'.$this->product->id;
-        $this->get($url)->assertOk()->assertSee('NFC-e de revenda interna em 2026');
-        $this->from($url)->post($url, FiscalFixtures::simplesNfce2026() + ['accountant_reference' => 'Conferência sintética do ensaio.'])
+        $this->get($url)->assertOk()->assertSee('NFC-e de venda interna em 2026');
+        $this->from($url)->post($url, array_replace(FiscalFixtures::simplesNfce2026(), ['cfop' => $cfop, 'pis_code' => $cst, 'cofins_code' => $cst, 'accountant_reference' => 'Conferência sintética do ensaio.']))
             ->assertRedirect($url)->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->tenant);
         $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
@@ -498,8 +500,8 @@ class FiscalTest extends TestCase
         $xp = new \DOMXPath($dom);
         $xp->registerNamespace('n', 'http://www.portalfiscal.inf.br/nfe');
         foreach (['ide/n:mod' => '65', 'ide/n:tpAmb' => '2', 'ide/n:cMunFG' => '3162500', 'emit/n:CRT' => '1',
-            'det/n:prod/n:CFOP' => '5102', 'det/n:imposto/n:ICMS/n:ICMSSN102/n:CSOSN' => '102',
-            'det/n:imposto/n:PIS/n:PISOutr/n:CST' => '99', 'det/n:imposto/n:COFINS/n:COFINSOutr/n:CST' => '99',
+            'det/n:prod/n:CFOP' => $cfop, 'det/n:imposto/n:ICMS/n:ICMSSN102/n:CSOSN' => '102',
+            "det/n:imposto/n:PIS/n:PIS{$group}/n:CST" => $cst, "det/n:imposto/n:COFINS/n:COFINS{$group}/n:CST" => $cst,
             'pag/n:detPag/n:tPag' => '01', 'total/n:ICMSTot/n:vNF' => '39.90'] as $path => $expected) {
             $this->assertSame($expected, $xp->evaluate('string(/n:NFe/n:infNFe/n:'.$path.')'), $path);
         }

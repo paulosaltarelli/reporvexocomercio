@@ -9,7 +9,7 @@
 <tr><td class="product-name">
     {{ $profile->name }}
     <div class="hint">{{ match($profile->parameters['tax_model'] ?? null) {
-        \App\Fiscal\TaxProfile::SIMPLES_NFCE_2026 => 'NFC-e de revenda do Simples Nacional em 2026',
+        \App\Fiscal\TaxProfile::SIMPLES_NFCE_2026 => 'NFC-e de venda interna do Simples Nacional em 2026',
         \App\Fiscal\TaxProfile::REGULAR_RESALE_2027 => 'Prévia de revenda em 2027',
         default => 'Homologação de NF-e e NFC-e',
     } }}</div>

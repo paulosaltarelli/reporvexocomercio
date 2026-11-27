@@ -26,13 +26,15 @@ final class TaxProfile
         }
         $model = $data['tax_model'] ?? 'legacy';
         if ($model === self::SIMPLES_NFCE_2026) {
+            $rules['cfop'] = 'required|in:5101,5102';
+            $pisCofinsCode = ($data['cfop'] ?? null) === '5101' ? '08' : '99';
             $rules['valid_from'] = 'nullable|date_format:Y-m-d|after_or_equal:2026-01-01|before_or_equal:2026-12-31';
             $rules['valid_until'][] = 'after_or_equal:2026-01-01';
             $rules['valid_until'][] = 'before_or_equal:2026-12-31';
             $rules += [
                 'icms_code' => 'required|in:102',
-                'pis_code' => 'required|in:99', 'pis_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
-                'cofins_code' => 'required|in:99', 'cofins_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
+                'pis_code' => 'required|in:'.$pisCofinsCode, 'pis_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
+                'cofins_code' => 'required|in:'.$pisCofinsCode, 'cofins_rate' => 'required|numeric|min:0|max:0|decimal:0,4',
                 'transparency_rate' => 'required|numeric|min:0|max:100|decimal:0,4',
             ];
             foreach (['icms_rate', 'rtc_mode', 'rtc_cst', 'rtc_class', 'ibs_uf_rate', 'ibs_municipal_rate', 'cbs_rate', 'rtc_reason', 'pis_cofins_base_mode'] as $unused) {
@@ -108,12 +110,12 @@ final class TaxProfile
         $simples = ($r['tax_model'] ?? null) === self::SIMPLES_NFCE_2026;
         if ($simples && ($crt !== '1' || $nfceIssuedAt === null
             || $nfceIssuedAt->format('Y-m-d') < $r['valid_from'] || $nfceIssuedAt->format('Y-m-d') > $r['valid_until'])) {
-            throw ValidationException::withMessages(['tax_model' => 'Confira a vigência da regra de revenda de 2026 e a configuração da NFC-e para CRT 1.']);
+            throw ValidationException::withMessages(['tax_model' => 'Confira a vigência da regra do Simples Nacional de 2026 e a configuração da NFC-e para CRT 1.']);
         }
         if (! $simples && $crt === '1' && $nfceIssuedAt !== null) {
             $message = $nfceIssuedAt->format('Y') === '2026'
-                ? 'Para a NFC-e convencional de CRT 1, selecione a regra de revenda do Simples Nacional em 2026 e confirme os códigos da operação.'
-                : 'O emissor convencional de NFC-e para CRT 1 atende a revenda em 2026. Para 2027, confira a opção de apuração do IBS/CBS e utilize o leiaute da NT 2026.005.';
+                ? 'Para a NFC-e convencional de CRT 1, selecione a regra do Simples Nacional em 2026 e confirme os códigos da operação.'
+                : 'O emissor convencional de NFC-e para CRT 1 atende vendas internas em 2026. Para 2027, confira a opção de apuração do IBS/CBS e utilize o leiaute da NT 2026.005.';
             throw ValidationException::withMessages(['tax_model' => $message]);
         }
         if (! $simples && $r['rtc_mode'] !== 'standard') {
@@ -133,7 +135,7 @@ final class TaxProfile
             $fields['codigo_cest'] = $r['cest'];
         }
         foreach (['icms' => 'icms_code', 'pis' => 'pis_code', 'cofins' => 'cofins_code'] as $prefix => $code) {
-            if ($simples && $prefix !== 'icms') {
+            if ($simples && $prefix !== 'icms' && $r[$code] === '99') {
                 $fields[$prefix.'_base_calculo'] = '0.00';
                 $fields[$prefix.'_aliquota'] = $r[$prefix.'_rate'];
                 $fields[$prefix.'_valor'] = '0.00';
