@@ -8,6 +8,7 @@
 
 # Preserve the official fiscal schemas byte for byte for SHA256SUMS.
 app/Fiscal/Nfse/schemas/*.xsd -text -whitespace
+tests/Fixtures/nfce-simples/PL_010h_v1.03/*.xsd -text -whitespace
 
 /.github export-ignore
 CHANGELOG.md export-ignore
