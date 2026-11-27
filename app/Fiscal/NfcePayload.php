@@ -5,7 +5,6 @@ namespace App\Fiscal;
 use App\Models\BusinessProfile;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
-use App\Models\FiscalSetting;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Sale;
@@ -25,7 +24,11 @@ final class NfcePayload
         $profile = BusinessProfile::findOrFail(1);
         $c = $issuer->validated_configuration;
         $report = app(FiscalReadiness::class)->inspect($tenant, $sale);
+        $pilotAttempt = ProductInvoiceGate::allowsPendingAccreditation($tenant);
         foreach ($report['blockers'] as $blocker) {
+            if ($pilotAttempt && in_array($blocker['code'], ['issuer.accreditation', 'issuer.accountant'], true)) {
+                continue;
+            }
             if (str_starts_with($blocker['code'], 'issuer.')) {
                 $fail($blocker['message']);
             }
@@ -40,8 +43,8 @@ final class NfcePayload
             || ! hash_equals((string) $credential->validated_hash, $configurationHash)) {
             $fail('Certificado/configuração local precisa de validação antes da homologação direta.');
         }
-        if (! FiscalSetting::find(1)?->nfce_accredited || empty($c['uf_validation_reference'])) {
-            $fail('Confirme credenciamento e adequação da operação à UF com o contador.');
+        if (empty($c['uf_validation_reference'])) {
+            $fail('Informe a referência fiscal da operação na UF.');
         }
         foreach (['timezone', 'crt', 'natureza_operacao', 'identification_limit'] as $field) {
             if (! isset($c[$field]) || trim((string) $c[$field]) === '') {

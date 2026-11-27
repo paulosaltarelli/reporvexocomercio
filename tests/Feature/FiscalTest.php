@@ -494,6 +494,17 @@ class FiscalTest extends TestCase
             'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]], $this->user->id);
         $operation = array_replace($this->operation(), ['destination_state' => 'MG']);
         $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
+        if ($cfop === '5101') {
+            FiscalSetting::whereKey(1)->update(['nfce_accredited' => false, 'accountant_name' => null]);
+            try {
+                app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $operation);
+                $this->fail('A emissão comum precisa do credenciamento declarado.');
+            } catch (ValidationException $exception) {
+                $this->assertStringContainsString('credenciamento', $exception->errors()['fiscal'][0]);
+            }
+            $this->tenant->update(['is_demonstration' => true, 'fiscal_demonstration' => true]);
+            config(['fiscal.product_invoices_enabled' => false, 'fiscal.nfce_homologation_tenant_ids' => (string) $this->tenant->id]);
+        }
         $doc = app(QueueNfce::class)->enqueue($this->tenant, $sale->id, $this->user->id, $operation);
         $dom = new \DOMDocument;
         $this->assertTrue($dom->loadXML($doc->signed_xml, LIBXML_NONET));

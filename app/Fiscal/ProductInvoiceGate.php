@@ -43,6 +43,14 @@ final class ProductInvoiceGate
         return app(TenantConnection::class)->matchesId($tenantId);
     }
 
+    public static function allowsPendingAccreditation(\App\Models\Tenant $tenant): bool
+    {
+        return !self::globallyEnabled()
+            && $tenant->is_demonstration && $tenant->fiscal_demonstration
+            && in_array($tenant->id, self::pilotTenantIds(), true)
+            && app(TenantConnection::class)->matches($tenant);
+    }
+
     public static function assertEnabled(?int $model = 65): void
     {
         abort_unless(self::enabled($model), 404);
