@@ -1,8 +1,8 @@
 @php
     $isAdmin = $currentUser?->role === 'admin';
-    $link = fn ($route, $label, $active, $parameters = []) => [
+    $link = fn ($route, $label, $active, $parameters = [], $fragment = '') => [
         'label' => $label,
-        'href' => route($route, ['company' => $tenant->slug] + $parameters),
+        'href' => route($route, ['company' => $tenant->slug] + $parameters).$fragment,
         'active' => $active,
         'permission' => \App\Access\Permissions::named($route,$parameters),
     ];
@@ -40,7 +40,8 @@
                 $link('cash', 'Caixa diário', request()->routeIs('cash', 'cash.*')),
             ]],
             ['label' => 'Fiscal', 'icon' => 'document', 'links' => array_filter([
-                $nfceAvailable ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'fiscal.company', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
+                $nfceAvailable ? $link('fiscal', 'Documentos fiscais', request()->routeIs('fiscal', 'nfe.*', 'fiscal.document', 'fiscal.sale', 'fiscal.preparation', 'fiscal.product')) : null,
+                $nfceAvailable && $isAdmin ? $link('fiscal.company', 'Certificado digital', request()->routeIs('fiscal.company'), [], '#certificado-digital-a1') : null,
                 $link('nfse.index', 'Arquivo de serviços', request()->routeIs('nfse.*')),
                 $nfceAvailable ? $link('fiscal.profiles.index', 'Perfis tributários', request()->routeIs('fiscal.profiles.*')) : null,
                 $allProductInvoices ? $link('fiscal.simulations.index', 'Simulações internas', request()->routeIs('fiscal.simulations.*')) : null,

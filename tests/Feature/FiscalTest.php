@@ -176,6 +176,7 @@ class FiscalTest extends TestCase
         $this->get('/app/a/business')->assertOk()->assertSee('Ativar configuração de homologação')->assertDontSee('fiscal-nfe-company');
         $this->get('/app/a/setup?step=2')->assertOk()->assertSee('name="nfce"', false)->assertDontSee('name="nfe"', false);
         $this->get('/app/a/fiscal')->assertOk()->assertSee('NFC-e · modelo 65')->assertDontSee('NF-e · modelo 55');
+        $this->get('/app/a/nfse')->assertOk()->assertSee('/app/a/fiscal/company#certificado-digital-a1', false);
         $this->get('/app/a/fiscal/profiles')->assertOk();
         $this->get('/app/a/fiscal/products/'.$this->product->id)->assertOk();
         $this->get('/app/a/sales/'.$this->sale->id)->assertOk()->assertSee('Conferir dados fiscais');
@@ -193,6 +194,7 @@ class FiscalTest extends TestCase
         $this->withSession(['tenant_id' => $other->id, 'user_id' => $admin->id, 'auth_version' => 0]);
         $this->get('/app/b/business?tenant_id='.$this->tenant->id)->assertOk()->assertDontSee('Ativar configuração de homologação');
         $this->get('/app/b/fiscal')->assertRedirect(route('nfse.index', ['company' => 'b']));
+        $this->get('/app/b/nfse')->assertOk()->assertDontSee('#certificado-digital-a1', false);
         $this->post('/app/b/business/fiscal', ['tenant_id' => $this->tenant->id])->assertNotFound();
         $this->get('/app/b/fiscal/profiles')->assertNotFound();
         $this->assertFalse(ProductInvoiceGate::enabled(65));
