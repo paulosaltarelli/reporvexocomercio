@@ -78,10 +78,11 @@
             const conversionError = scaled % 1000000n ? 'A quantidade convertida exige mais de três casas decimais.' : '';
             let stockError = '';
             if (stockPolicy !== 'allow' && requested.has(choice.value)) {
-                const available = Vendra.decimalUnits(option.dataset.stockQuantity, 3);
-                if (available !== null && requested.get(choice.value) > available) {
+                const stockQuantity = option.dataset.stockQuantity;
+                const available = Vendra.decimalUnits(stockQuantity.startsWith('-') ? stockQuantity.slice(1) : stockQuantity, 3);
+                if (available !== null && (stockQuantity.startsWith('-') || requested.get(choice.value) > available)) {
                     const formatted = new Intl.NumberFormat('pt-BR', {maximumFractionDigits: 3}).format(Number(available) / 1000);
-                    stockError = available <= 0n ? 'Sem saldo em estoque.' : 'Quantidade acima do saldo disponível (' + formatted + ').';
+                    stockError = available === 0n || stockQuantity.startsWith('-') ? 'Sem saldo em estoque.' : 'Quantidade acima do saldo disponível (' + formatted + ').';
                 }
             }
             if (isPos) {
