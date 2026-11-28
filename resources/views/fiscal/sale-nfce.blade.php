@@ -2,11 +2,6 @@
     <h2>Documentos fiscais</h2>
     @php
         $canManageNfce = $currentUser->allows('fiscal.manage');
-        $states = [
-            'pending' => 'Na fila', 'sent' => 'Aguardando resposta da SEFAZ',
-            'uncertain' => 'Consulta necessária', 'authorized' => 'Autorizada em homologação',
-            'rejected' => 'Rejeitada', 'cancelled' => 'Cancelada',
-        ];
     @endphp
     @forelse($fiscalDocuments as $document)
         @php
@@ -23,8 +18,9 @@
         >
             <p aria-live="polite">
                 <strong>{{ $isNfce ? 'NFC-e' : 'NF-e' }} {{ $document->number }} · série {{ $document->series }}</strong>
-                · <span data-nfce-label>{{ $states[$document->state] ?? $document->state }}</span>
+                · <span data-nfce-label>{{ $document->statusLabel() }}</span>
                 <span data-nfce-code>{{ $document->official_code ? ' · SEFAZ '.$document->official_code : '' }}</span>
+                <span data-nfce-protocol>{{ $document->protocol ? ' · Protocolo '.$document->protocol : '' }}</span>
                 <span data-nfce-message>{{ $document->operator_message }}</span>
             </p>
             @if($canManageNfce)

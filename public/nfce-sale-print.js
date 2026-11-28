@@ -5,15 +5,6 @@
     const preview = dialog.querySelector('iframe');
     const pdfLink = dialog.querySelector('[data-nfce-open-pdf]');
     const pending = new Set(['pending', 'sent', 'uncertain']);
-    const labels = {
-        pending: 'Na fila',
-        sent: 'Aguardando resposta da SEFAZ',
-        uncertain: 'Consulta necessária',
-        authorized: 'Autorizada em homologação',
-        rejected: 'Rejeitada',
-        cancelled: 'Cancelada',
-    };
-
     function openPrint(link) {
         pdfLink.href = link.href;
         preview.src = link.href;
@@ -32,8 +23,9 @@
         });
 
         function render(status) {
-            row.querySelector('[data-nfce-label]').textContent = labels[status.state] ?? status.state;
+            row.querySelector('[data-nfce-label]').textContent = status.label ?? status.state;
             row.querySelector('[data-nfce-code]').textContent = status.official_code ? ' · SEFAZ ' + status.official_code : '';
+            row.querySelector('[data-nfce-protocol]').textContent = status.protocol ? ' · Protocolo ' + status.protocol : '';
             row.querySelector('[data-nfce-message]').textContent = status.operator_message ?? '';
             printLink.hidden = status.state !== 'authorized';
             printLink.style.display = printLink.hidden ? 'none' : '';

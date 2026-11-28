@@ -259,11 +259,44 @@ class CommerceController extends Controller
     public function checkout(Request $r, string $company)
     {
         $d = $r->validate(array_merge(\App\Services\SalePayments::rules(), ['request_key' => 'required|uuid', 'customer_id' => 'nullable|exists:tenant.customers,id', 'payment_method' => 'required_without:payments|in:cash,pix,credit,debit,transfer,invoice','payment_option'=>'nullable|string|max:60', 'paid' => 'required_without:payments|boolean', 'due_date' => ($r->has('payments')?'nullable|date_format:Y-m-d':'nullable|required_if:paid,0|date_format:Y-m-d'), 'installments' => 'nullable|integer|min:1|max:24', 'notes' => 'nullable|string|max:1000', 'items' => 'required|array|min:1|max:50', 'items.*.kind' => 'required|in:product,service', 'items.*.id' => 'required|integer|min:1', 'items.*.measure_unit'=>'nullable|string|max:10','items.*.factor_seen'=>'nullable|string|max:20','items.*.quantity' => 'required|numeric|min:0.001|max:999999|decimal:0,3', 'items.*.unit_price' => 'required|numeric|min:0|max:999999999999.99|decimal:0,2', 'seller_id'=>'nullable|integer|exists:tenant.users,id','salesperson_id'=>'nullable|integer|exists:tenant.sellers,id','items.*.discount_percent'=>'nullable|numeric|min:0|max:100|decimal:0,2','items.*.catalog_price_seen'=>'nullable|numeric|min:0|max:999999999999.99|decimal:0,2']));
-        $d['installments'] = $r->integer('installments', 1);
-        $sale = app(Checkout::class)->complete($d, $r->attributes->get('currentUser')->id);
+        $tenant = $r->attributes->get('tenant');
+        $actor = $r->attributes->get('currentUser');
+        $fiscal = $r->validate([
+            'issue_nfce' => 'nullable|accepted|required_with:consumer_cpf',
+            'consumer_cpf' => ['nullable', 'string', 'max:14', function ($attribute, $value, $fail) {
+                if (! \App\Fiscal\TaxpayerDocument::cpf($value)) $fail('Informe um CPF válido para a NFC-e.');
+            }],
+            'nfce_pix_mode' => 'nullable|in:dynamic,static',
+        ]);
+        $issue = $r->boolean('issue_nfce');
+        if ($issue) {
+            ProductInvoiceGate::assertEnabled(65);
+            abort_unless($actor->allows('fiscal.manage'), 403);
+            abort_if(isset($r->attributes->get('restrictedModules', [])['fiscal']), 402);
+        }
 
-        return redirect()->route('sale.show', ['company' => $company, 'id' => $sale->id])->with('success', 'Venda registrada.')
+        $d['installments'] = $r->integer('installments', 1);
+        $sale = app(Checkout::class)->complete($d, $actor->id);
+        $saleUrl = route('sale.show', ['company' => $company, 'id' => $sale->id]);
+        $response = redirect()->to($saleUrl.($issue ? '#nfce' : ''))->with('success', 'Venda registrada.')
             ->with('stock_warning', app(Inventory::class)->saleWarning($sale->id));
+        if (!$issue) return $response;
+
+        try {
+            $doc = app(\App\Fiscal\QueueNfce::class)->enqueue($tenant, $sale->id, $actor->id, [
+                'destination_state' => \App\Models\BusinessProfile::find(1)?->state,
+                'presence' => '1', 'consumer_final' => true, 'not_taxpayer' => true,
+                'consumer_cpf' => $fiscal['consumer_cpf'] ?? null, 'pix_mode' => $fiscal['nfce_pix_mode'] ?? null,
+            ]);
+            return $response->with('nfce_auto_open', $doc->id);
+        } catch (ValidationException $e) {
+            return $response->withErrors($e->errors())->withInput([
+                'return_to_sale' => '1', 'consumer_cpf' => $fiscal['consumer_cpf'] ?? null,
+                'pix_mode' => $fiscal['nfce_pix_mode'] ?? null,
+            ]);
+        } catch (\App\Fiscal\FiscalTransportException) {
+            return $response->withErrors(['fiscal' => 'A venda foi registrada, mas o XML da NFC-e não pôde ser preparado. Confira a configuração fiscal na venda.']);
+        }
     }
 
     public function sale(Request $r, string $company, int $id)

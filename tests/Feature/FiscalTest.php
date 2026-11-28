@@ -1061,6 +1061,26 @@ class FiscalTest extends TestCase
         $this->get($saleUrl)->assertOk()->assertSee('Imprimir DANFE térmico')->assertSee('data-nfce-auto-open="0"', false);
     }
 
+    public function test_cash_checkout_can_send_nfce_with_a_cpf_without_creating_a_customer(): void
+    {
+        $this->configuredFiscal();
+        $this->login();
+        $data = [
+            'request_key' => (string) Str::uuid(),
+            'payment_method' => 'cash', 'paid' => '1', 'issue_nfce' => '1',
+            'consumer_cpf' => '529.982.247-25',
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']],
+        ];
+        $submitted = $this->post('/app/a/sales', $data);
+        app(TenantConnection::class)->connect($this->tenant);
+        $sale = \App\Models\Sale::where('request_key', $data['request_key'])->sole();
+        $doc = FiscalDocument::where('sale_id', $sale->id)->sole();
+        $this->assertNull($sale->customer_id);
+        $this->assertSame('pending', $doc->state);
+        $this->assertStringContainsString('<CPF>52998224725</CPF>', $doc->signed_xml);
+        $submitted->assertRedirect(url('/app/a/sales/'.$sale->id).'#nfce')->assertSessionHas('nfce_auto_open', $doc->id);
+    }
+
     public function test_fiscal_cancel_preserves_sale_and_late_authorization_cannot_resurrect_note(): void
     {
         [, $cert] = $this->configuredFiscal();

@@ -186,7 +186,7 @@ class FiscalEmissionController extends Controller
     {
         $doc = $this->documentFor($r, $id);
 
-        return response()->json($doc->only(['state', 'official_code', 'protocol', 'operator_message']))
+        return response()->json($doc->only(['state', 'official_code', 'protocol', 'operator_message']) + ['label' => $doc->statusLabel()])
             ->header('Cache-Control', 'private, no-store');
     }
 

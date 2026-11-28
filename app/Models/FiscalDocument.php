@@ -30,6 +30,25 @@ class FiscalDocument extends Model
 
     public function sale() { return $this->belongsTo(Sale::class); }
 
+    public function statusLabel(): string
+    {
+        if ($this->state === 'uncertain' && in_array((string) $this->official_code, ['110', '301', '302', '303'], true)) {
+            return 'Denegação informada · consulta necessária';
+        }
+
+        return match ($this->state) {
+            'prepared' => 'Preparada',
+            'pending' => 'Pendente de envio',
+            'sent' => 'Aguardando resposta da SEFAZ',
+            'uncertain' => 'Consulta necessária',
+            'authorized' => 'Autorizada em homologação',
+            'rejected' => 'Rejeitada',
+            'cancelled' => 'Cancelada',
+            'voided' => 'Numeração inutilizada',
+            default => (string) $this->state,
+        };
+    }
+
     protected function casts(): array
     {
         return ['snapshot' => 'array', 'signed_xml' => 'encrypted', 'authorized_at' => 'datetime', 'cancelled_at' => 'datetime'];
