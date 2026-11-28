@@ -273,8 +273,14 @@ class CommerceController extends Controller
             ->selectRaw('COUNT(*) AS entry_count, COALESCE(SUM(paid_amount), 0) AS received,
                 COALESCE(SUM(CASE WHEN cancelled_at IS NULL THEN amount - paid_amount ELSE 0 END), 0) AS outstanding')
             ->first();
+        $receipts = collect();
+        if (ProductInvoiceGate::enabled(65) && $r->attributes->get('currentUser')->allows('fiscal.manage')) {
+            $receipts = \App\Models\Payment::whereIn('entry_id', $sale->entries()->select('id'))
+                ->where('direction', 'in')->where('kind', 'payment')->whereDoesntHave('reversal')
+                ->selectRaw('method, SUM(amount) as amount')->groupBy('method')->pluck('amount', 'method');
+        }
         return view('sales.show', [
-            'sale'=>$sale, 'received'=>$ledger->received, 'receiptLedger'=>$ledger,
+            'sale'=>$sale, 'received'=>$ledger->received, 'receiptLedger'=>$ledger, 'receipts'=>$receipts, 'hasPixReceipt'=>$receipts->has('pix'),
             'fiscalDocuments'=>ProductInvoiceGate::enabled(65) ? \App\Models\FiscalDocument::accessible()->where('sale_id',$id)->orderBy('id')->get() : collect(),
         ]);
     }

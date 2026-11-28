@@ -136,6 +136,8 @@ Route::prefix('app/{company}')->where(['company' => '[a-z0-9-]+'])->middleware(R
             Route::get('fiscal/products/{id}', [FiscalEmissionController::class,'product'])->whereNumber('id')->name('fiscal.product');
             Route::post('fiscal/products/{id}', [FiscalEmissionController::class,'saveProduct'])->whereNumber('id')->name('fiscal.product.save');
             Route::post('sales/{id}/fiscal/emit', [FiscalEmissionController::class,'emit'])->whereNumber('id')->name('fiscal.emit');
+            Route::get('fiscal/documents/{id}/status', [FiscalEmissionController::class, 'status'])->whereNumber('id')->name('fiscal.status');
+            Route::get('fiscal/documents/{id}/thermal', [FiscalEmissionController::class, 'thermal'])->whereNumber('id')->name('fiscal.thermal');
             Route::get('fiscal/documents/{id}', [FiscalEmissionController::class,'show'])->whereNumber('id')->name('fiscal.document');
             Route::post('fiscal/documents/{id}/consult', [FiscalEmissionController::class,'consult'])->whereNumber('id')->name('fiscal.consult');
             Route::post('fiscal/documents/{id}/resend', [FiscalEmissionController::class,'resend'])->whereNumber('id')->name('fiscal.resend');

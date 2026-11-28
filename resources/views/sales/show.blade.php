@@ -58,7 +58,7 @@
 @endif
 @endif
 @if($nfceAvailable)
-<div class="form-note no-print"><strong>Situação fiscal</strong>@forelse($fiscalDocuments as $fiscalDocument)<p>{{ (string)$fiscalDocument->model === '55' ? 'NF-e' : 'NFC-e' }} {{ $fiscalDocument->number }} / série {{ $fiscalDocument->series }} · {{ ['pending'=>'Na fila','sent'=>'Enviada, aguardando confirmação','uncertain'=>'Consulta necessária','authorized'=>'Autorizada em homologação','rejected'=>'Rejeitada','cancelled'=>'Cancelada'][$fiscalDocument->state]??$fiscalDocument->state }} @if($currentUser->allows('fiscal.manage'))<a href="{{ route((string)$fiscalDocument->model === '55' ? 'nfe.document' : 'fiscal.document',['company'=>$tenant->slug,'id'=>$fiscalDocument->id]) }}">Acompanhar documento</a>@endif</p>@empty<p>Nenhuma emissão solicitada.</p>@endforelse<p>Cancelar a venda não cancela automaticamente o documento fiscal. O cancelamento fiscal é solicitado separadamente.</p></div>
+@include('fiscal.sale-nfce')
 @endif
 <p class="hint">Este comprovante interno não substitui nota fiscal. Não realiza cobranças ou reembolsos automáticos.</p></section>
 @endif

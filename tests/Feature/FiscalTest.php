@@ -1029,6 +1029,34 @@ class FiscalTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_nfce_can_be_issued_tracked_and_printed_from_its_sale(): void
+    {
+        [, $cert] = $this->configuredFiscal();
+        $this->login();
+        $saleUrl = '/app/a/sales/'.$this->sale->id;
+        $this->get($saleUrl)->assertOk()->assertSee('Emitir NFC-e em homologação');
+        $submitted = $this->post($saleUrl.'/fiscal/emit', $this->operation() + [
+            'homologation_consent' => '1', 'return_to_sale' => '1',
+        ]);
+        app(TenantConnection::class)->connect($this->tenant);
+        $doc = FiscalDocument::where('sale_id', $this->sale->id)->sole();
+        $submitted->assertRedirect(url($saleUrl).'#nfce')->assertSessionHas('nfce_auto_open', $doc->id);
+        $url = '/app/a/fiscal/documents/'.$doc->id;
+        $this->get($saleUrl)->assertOk()->assertSee('data-nfce-auto-open="1"', false);
+        $this->getJson($url.'/status')->assertOk()->assertJsonPath('state', 'pending');
+        $this->get($url.'/thermal')->assertNotFound();
+
+        app(TenantConnection::class)->connect($this->tenant);
+        $this->fakeAuthorization($doc, $cert);
+        $this->runFiscalWorker(DB::connection('tenant')->table('fiscal_outbox')->value('id'));
+
+        $this->getJson($url.'/status')->assertOk()->assertJsonPath('state', 'authorized')->assertJsonPath('official_code', '100');
+        $pdf = $this->get($url.'/thermal')->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('inline;', $pdf->headers->get('Content-Disposition'));
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+        $this->get($saleUrl)->assertOk()->assertSee('Imprimir DANFE térmico')->assertSee('data-nfce-auto-open="0"', false);
+    }
+
     public function test_fiscal_cancel_preserves_sale_and_late_authorization_cannot_resurrect_note(): void
     {
         [, $cert] = $this->configuredFiscal();

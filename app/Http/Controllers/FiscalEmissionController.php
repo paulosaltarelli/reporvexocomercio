@@ -165,6 +165,11 @@ class FiscalEmissionController extends Controller
         $operation['not_taxpayer'] = $r->boolean('not_taxpayer');
         $doc = $queue->enqueue($r->attributes->get('tenant'), $id, $r->attributes->get('currentUser')->id, $operation);
 
+        if ($r->boolean('return_to_sale')) {
+            return redirect()->to(route('sale.show', ['company' => $company, 'id' => $id]).'#nfce')
+                ->with('nfce_auto_open', $doc->id);
+        }
+
         return redirect()->route('fiscal.document', ['company' => $company, 'id' => $doc->id]);
     }
 
@@ -175,6 +180,27 @@ class FiscalEmissionController extends Controller
         abort_unless((int) ($doc->snapshot['tenant_id'] ?? 0) === (int) $r->attributes->get('tenant')->id, 404);
 
         return $doc;
+    }
+
+    public function status(Request $r, string $company, int $id)
+    {
+        $doc = $this->documentFor($r, $id);
+
+        return response()->json($doc->only(['state', 'official_code', 'protocol', 'operator_message']))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function thermal(Request $r, string $company, int $id, PrivateFiscalFiles $files)
+    {
+        $doc = $this->documentFor($r, $id);
+        abort_unless($doc->state === 'authorized', 404);
+
+        return response($files->get($r->attributes->get('tenant')->id, $doc->id, 'danfe'))->withHeaders([
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="danfe-nfce-'.$doc->number.'.pdf"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function show(Request $r, string $company, int $id)
