@@ -3,6 +3,7 @@
     @if($currentUser->allows('products.manage'))<div class="quick-create-buttons">@if($operationConfig['catalog_mode']!=='services')<button type="button" class="button secondary" data-quick-create="products" hidden>+ Novo produto</button>@endif @if($operationConfig['catalog_mode']!=='products')<button type="button" class="button secondary" data-quick-create="services" hidden>+ Novo serviço</button>@endif</div>@endif
     </div>
     @if($isPos??false)
+    <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Digite o nome do item ou passe o código de barras.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
     <ul class="pos-key-guide" aria-label="Atalhos para lançar itens">
         <li><kbd>F2</kbd> Buscar ou ler código de barras</li>
         <li><kbd>↑</kbd> <kbd>↓</kbd> Escolher resultado</li>
@@ -12,7 +13,6 @@
         @endif
         <li><kbd>F9</kbd> Ir para pagamento</li>
     </ul>
-    <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Digite o nome do item ou passe o código de barras.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
     <p id="pos-empty-cart" class="pos-empty-cart">Busque ou leia o primeiro item para começar a venda.</p>
     @else
     <p class="hint">Reduzir o preço unitário também conta como desconto. O limite é conferido pelo servidor contra o preço de cadastro.</p>

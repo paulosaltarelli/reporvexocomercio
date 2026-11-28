@@ -9,15 +9,17 @@
         <div class="pos-cart">
             @include('components.sales.entry-items',['itemsHeading'=>'Itens da venda','isPos'=>true])
         </div>
-        <aside class="panel pos-stage-summary" hidden>
-            <h2>Venda em andamento</h2>
-            <p data-pos-fiscal-summary></p>
-            <p><strong data-pos-stage-total>R$ 0,00</strong></p>
-            <div class="actions">
-                <button type="button" class="button secondary" data-pos-start>Iniciar venda</button>
-                <button type="button" class="primary" data-pos-payment @disabled($checkoutBlocked)>Ir para pagamento <kbd>F9</kbd></button>
+        <section class="panel pos-stage-summary" aria-labelledby="pos-stage-title" hidden>
+            <div class="pos-stage-amount">
+                <h2 id="pos-stage-title">Total a pagar</h2>
+                <strong data-pos-stage-total aria-live="polite">R$ 0,00</strong>
             </div>
-        </aside>
+            <div class="pos-stage-controls">
+                <p class="hint" data-pos-fiscal-summary></p>
+                <button type="button" class="primary" data-pos-payment @disabled($checkoutBlocked)>Pagamento <kbd>F9</kbd></button>
+                <button type="button" class="button secondary" data-pos-start>Iniciar venda</button>
+            </div>
+        </section>
         <dialog class="pos-stage-dialog" id="pos-payment-dialog" aria-labelledby="pos-payment-title"></dialog>
         <dialog class="pos-stage-dialog panel" id="pos-start-dialog" aria-labelledby="pos-start-title">
             <h2 id="pos-start-title">Iniciar venda</h2>
