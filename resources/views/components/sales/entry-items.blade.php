@@ -3,7 +3,16 @@
     @if($currentUser->allows('products.manage'))<div class="quick-create-buttons">@if($operationConfig['catalog_mode']!=='services')<button type="button" class="button secondary" data-quick-create="products" hidden>+ Novo produto</button>@endif @if($operationConfig['catalog_mode']!=='products')<button type="button" class="button secondary" data-quick-create="services" hidden>+ Novo serviço</button>@endif</div>@endif
     </div>
     @if($isPos??false)
-    <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Enter adiciona o item encontrado.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
+    <ul class="pos-key-guide" aria-label="Atalhos para lançar itens">
+        <li><kbd>F2</kbd> Buscar ou ler código de barras</li>
+        <li><kbd>↑</kbd> <kbd>↓</kbd> Escolher resultado</li>
+        <li><kbd>Enter</kbd> Adicionar item</li>
+        @if($nfceAvailable && $operationConfig['nfce'] && $currentUser->allows('fiscal.manage') && !isset(request()->attributes->get('restrictedModules', [])['fiscal']))
+            <li><kbd>F8</kbd> CPF na nota</li>
+        @endif
+        <li><kbd>F9</kbd> Ir para pagamento</li>
+    </ul>
+    <div class="pos-search-field"><label for="pos-search">Produto, serviço ou código de barras <kbd>F2</kbd></label><input id="pos-search" type="search" autocomplete="off" placeholder="Leia o código ou digite o nome do item" maxlength="200" autofocus><p id="pos-search-status" class="hint" role="status" aria-live="polite">Digite o nome do item ou passe o código de barras.</p><div id="pos-results" class="pos-results" aria-label="Itens encontrados"></div></div>
     <p id="pos-empty-cart" class="pos-empty-cart">Busque ou leia o primeiro item para começar a venda.</p>
     @else
     <p class="hint">Reduzir o preço unitário também conta como desconto. O limite é conferido pelo servidor contra o preço de cadastro.</p>
@@ -17,9 +26,10 @@
 @if($isPos??false)
 <dialog id="pos-catalog-dialog" aria-labelledby="pos-catalog-title">
     <h2 id="pos-catalog-title">Selecionar item</h2>
+    <p class="hint" id="pos-catalog-help">Use as setas para escolher um item, Enter para adicionar ou Esc para voltar à venda.</p>
     <label for="pos-catalog">Produto ou serviço</label>
-    <select id="pos-catalog"><option value="">Selecione</option>@include('components.sales.catalog-options')</select>
-    <div class="actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="primary" data-select>Usar item</button></div>
+    <select id="pos-catalog" aria-describedby="pos-catalog-help"><option value="">Selecione</option>@include('components.sales.catalog-options')</select>
+    <div class="actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="primary" data-select>Usar item <kbd>Enter</kbd></button></div>
 </dialog>
 @endif
 <template id="row">

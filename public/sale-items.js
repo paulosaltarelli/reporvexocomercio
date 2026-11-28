@@ -35,7 +35,13 @@
     }
     if(isPos){
         picker.querySelector('[data-cancel]').addEventListener('click',()=>picker.close());
-        picker.querySelector('[data-select]').addEventListener('click',()=>{
+        const useItem = picker.querySelector('[data-select]');
+        catalogSelect.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || event.isComposing || !catalogSelect.value) return;
+            event.preventDefault();
+            useItem.click();
+        });
+        useItem.addEventListener('click',()=>{
             if(!catalogSelect.value){catalogSelect.focus();return;}
             const row=pickerRow||add();
             const choice=row.querySelector('.choice');
@@ -208,15 +214,25 @@
             search.value='';results.replaceChildren();status.textContent='Adicionado: '+option.dataset.name;search.focus();
         }
         search.addEventListener('input',()=>{
-            results.replaceChildren();const found=matches(normalize(search.value),8);status.textContent=search.value.trim()?(found.length?'Selecione um item ou pressione Enter para um código exato.':'Nenhum item encontrado.'):'Enter adiciona o item encontrado.';
+            results.replaceChildren();const found=matches(normalize(search.value),8);status.textContent=search.value.trim()?(found.length?'Use as setas para escolher. Enter adiciona o item selecionado.':'Nenhum item encontrado.'):'Digite o nome do item ou passe o código de barras.';
             found.forEach(option=>{const button=document.createElement('button');button.type='button';button.className='pos-result';button.textContent=option.dataset.name+' · '+option.dataset.sku+' · '+Vendra.centsText(Vendra.decimalUnits(option.dataset.price,2)??0n);button.addEventListener('click',()=>insert(option));results.append(button);});
         });
         search.addEventListener('keydown',event=>{
             if(event.key==='ArrowDown'){const first=results.querySelector('button');if(first){event.preventDefault();first.focus();}return;}
             if(event.key!=='Enter')return;event.preventDefault();const term=normalize(search.value);
-            const found=exactCodes.get(term)||matches(term,2);if(found.length===1)insert(found[0]);else status.textContent=found.length?'Selecione um dos itens encontrados.':'Nenhum item encontrado.';
+            const found=exactCodes.get(term)||matches(term,2);if(found.length===1)insert(found[0]);else status.textContent=found.length?'Há mais de um resultado. Use ↓ para escolher e Enter para adicionar.':'Nenhum item encontrado.';
         });
-        results.addEventListener('keydown',event=>{if(event.key==='Escape'){results.replaceChildren();search.focus();}});
+        results.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                results.replaceChildren();
+                search.focus();
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                const next = event.key === 'ArrowDown' ? event.target.nextElementSibling : event.target.previousElementSibling;
+                (next || (event.key === 'ArrowUp' ? search : event.target)).focus();
+            }
+        });
     }
     addButton.addEventListener('click',()=>{if(container.children.length>=50)return;if(isPos)openPicker(null);else add().querySelector('.choice').focus();});
     const savedRows=Object.values(previous);

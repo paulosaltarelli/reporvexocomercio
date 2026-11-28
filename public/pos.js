@@ -2,6 +2,34 @@
 (() => {
     const form=document.querySelector('#checkout-form');
     if(!form)return;
+    const fullscreenButton = document.querySelector('[data-pos-fullscreen]');
+    if (fullscreenButton) {
+        const workspace = fullscreenButton.closest('.workspace');
+        const message = document.querySelector('[data-pos-fullscreen-status]');
+        function syncFullscreen() {
+            const expanded = document.fullscreenElement === workspace;
+            fullscreenButton.setAttribute('aria-pressed', String(expanded));
+            fullscreenButton.querySelector('span').textContent = expanded ? 'Sair da tela cheia' : 'Tela cheia';
+        }
+        async function toggleFullscreen() {
+            try {
+                if (document.fullscreenElement === workspace) await document.exitFullscreen();
+                else await workspace.requestFullscreen();
+                message.textContent = '';
+            } catch {
+                message.textContent = 'O navegador não abriu a tela cheia. Use F11.';
+            }
+        }
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+        document.addEventListener('fullscreenchange', syncFullscreen);
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'F10' || event.repeat || event.defaultPrevented
+                || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            event.preventDefault();
+            toggleFullscreen();
+        });
+    }
+
     const button=form.querySelector('#checkout-submit'),search=form.querySelector('#pos-search');
     const method=form.querySelector('[name="payment_option"]'),paid=form.querySelector('[name="paid"]');
     const cash=form.querySelector('#pos-cash-received'),cashFields=form.querySelector('#pos-cash-fields');
