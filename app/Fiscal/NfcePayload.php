@@ -133,7 +133,12 @@ final class NfcePayload
         }
         // Required legal homologation label; business/issuer data are never fixtures.
         $payload['items'][0]['descricao'] = 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
-        $document = TaxpayerDocument::normalize((string) $sale->customer?->document);
+        $consumerCpf = (string) ($operation['consumer_cpf'] ?? '');
+        if ($consumerCpf !== '' && ! TaxpayerDocument::cpf($consumerCpf)) {
+            throw ValidationException::withMessages(['consumer_cpf' => 'Informe um CPF válido para a NFC-e.']);
+        }
+        $document = TaxpayerDocument::normalize($consumerCpf !== '' ? $consumerCpf : (string) $sale->customer?->document);
+        unset($operation['consumer_cpf']);
         if ($document !== '') {
             if (TaxpayerDocument::cpf($document)) {
                 $payload['cpf_destinatario'] = $document;

@@ -1,6 +1,11 @@
 <form method="post" action="{{ route('fiscal.emit',['company'=>$tenant->slug,'id'=>$sale->id]) }}">@csrf
 @if($returnToSale ?? false)<input type="hidden" name="return_to_sale" value="1">@endif
 <div class="form-grid"><div class="field"><label for="destination_state">UF de destino desta venda</label><input id="destination_state" name="destination_state" maxlength="2" value="{{ old('destination_state', ($returnToSale ?? false) ? ($companyProfile?->state ?? '') : '') }}" required></div><div class="field"><label for="presence">Presença do comprador</label><select id="presence" name="presence"><option value="1">Presencial</option></select></div></div>
+<div class="field">
+    <label for="nfce-consumer-cpf">CPF na nota (opcional)</label>
+    <input id="nfce-consumer-cpf" name="consumer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" value="{{ old('consumer_cpf') }}" placeholder="000.000.000-00">
+    <small class="hint">Preencha se o cliente pedir CPF na nota. Em branco, o sistema usa o documento do cliente vinculado à venda, se houver.</small>
+</div>
 @include('fiscal.work-order-consent')
 @if($hasPixReceipt)
 <div class="field"><label for="pix_mode">Modalidade do Pix recebido</label><select id="pix_mode" name="pix_mode" required><option value="">Confirme como o Pix foi recebido</option><option value="dynamic" @selected(old('pix_mode')==='dynamic')>Pix dinâmico · cobrança específica para esta venda</option><option value="static" @selected(old('pix_mode')==='static')>Pix estático · chave ou QR Code reutilizável</option></select><small class="hint">Informe a modalidade real do recebimento. A forma de pagamento “Pix” sozinha não determina esta informação.</small></div>
