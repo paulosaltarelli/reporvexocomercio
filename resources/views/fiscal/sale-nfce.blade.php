@@ -52,7 +52,7 @@
             <p>Use o botão de impressão do PDF. <a data-nfce-open-pdf target="_blank" rel="noopener">Abrir PDF em outra aba</a></p>
             <iframe title="Prévia do DANFE térmico" style="display:block;width:100%;height:65vh;border:0"></iframe>
         </dialog>
-        <script src="/nfce-sale-print.js" defer></script>
+        <script src="/nfce-sale-print.js?v={{ filemtime(public_path('nfce-sale-print.js')) }}" defer></script>
     @endif
     <p class="hint">Cancelar a venda e cancelar o documento fiscal são ações separadas.</p>
 </section>

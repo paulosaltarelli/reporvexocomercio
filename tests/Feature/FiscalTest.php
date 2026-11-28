@@ -1035,14 +1035,16 @@ class FiscalTest extends TestCase
         $this->login();
         $saleUrl = '/app/a/sales/'.$this->sale->id;
         $this->get($saleUrl)->assertOk()->assertSee('Emitir NFC-e em homologação')->assertSee('CPF na nota (opcional)');
-        $this->post($saleUrl.'/fiscal/emit', $this->operation() + [
+        $operation = array_diff_key($this->operation(), ['consumer_final' => true]);
+        $this->post($saleUrl.'/fiscal/emit', $operation + [
             'homologation_consent' => '1', 'return_to_sale' => '1', 'consumer_cpf' => '111.111.111-11',
         ])->assertSessionHasErrors('consumer_cpf');
-        $submitted = $this->post($saleUrl.'/fiscal/emit', $this->operation() + [
+        $submitted = $this->post($saleUrl.'/fiscal/emit', $operation + [
             'homologation_consent' => '1', 'return_to_sale' => '1', 'consumer_cpf' => '529.982.247-25',
         ]);
         app(TenantConnection::class)->connect($this->tenant);
         $doc = FiscalDocument::where('sale_id', $this->sale->id)->sole();
+        $this->assertStringContainsString('<indFinal>1</indFinal>', $doc->signed_xml);
         $this->assertStringContainsString('<CPF>52998224725</CPF>', $doc->signed_xml);
         $submitted->assertRedirect(url($saleUrl).'#nfce')->assertSessionHas('nfce_auto_open', $doc->id);
         $url = '/app/a/fiscal/documents/'.$doc->id;

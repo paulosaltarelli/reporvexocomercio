@@ -30,7 +30,7 @@
             @if($nfceAvailable && $operationConfig['nfce'] && $currentUser->allows('fiscal.manage') && !isset(request()->attributes->get('restrictedModules', [])['fiscal']))
                 <div class="pos-optionals">
                     <div class="field">
-                        <label for="checkout-nfce-cpf">CPF na nota (opcional)</label>
+                        <label for="checkout-nfce-cpf">CPF na nota (opcional) <kbd>F8</kbd></label>
                         <input id="checkout-nfce-cpf" name="consumer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" value="{{ old('consumer_cpf') }}" placeholder="000.000.000-00">
                     </div>
                     <label class="checkbox-line">

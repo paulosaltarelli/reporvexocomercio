@@ -1,4 +1,15 @@
 (() => {
+    const cpf = document.querySelector('#nfce #nfce-consumer-cpf');
+    if (cpf) document.addEventListener('keydown', event => {
+        if (event.key !== 'F8' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+            || event.defaultPrevented || document.querySelector('dialog[open]')) return;
+        event.preventDefault();
+        const disclosure = cpf.closest('details');
+        if (disclosure) disclosure.open = true;
+        cpf.focus();
+        cpf.select();
+    });
+
     const dialog = document.querySelector('#nfce-print-dialog');
     if (!dialog || typeof dialog.showModal !== 'function') return;
 

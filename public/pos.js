@@ -64,6 +64,14 @@
                 (split.querySelector('.split-payment-row [data-field="payment_option"]')||split.querySelector('.split-add')).focus();
             }else method.focus();
         }
+        if (event.key === 'F8') {
+            const cpf = form.querySelector('#checkout-nfce-cpf');
+            if (cpf) {
+                event.preventDefault();
+                cpf.focus();
+                cpf.select();
+            }
+        }
         if(event.key==='F9'){event.preventDefault();if(!button.disabled)form.requestSubmit(button);}
     });
     window.addEventListener('pageshow',()=>{delete form.dataset.sending;button.disabled=initiallyDisabled;button.innerHTML='Registrar venda <kbd>F9</kbd>';});
