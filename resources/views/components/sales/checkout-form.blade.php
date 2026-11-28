@@ -60,14 +60,18 @@
                         Enviar NFC-e em homologação ao registrar a venda
                     </label>
                     <p class="hint" data-pos-inline-issue>Marque para venda presencial dentro do estado a consumidor final não contribuinte do ICMS. A nota de teste é enviada à SEFAZ.</p>
-                    <div class="field" data-pos-fiscal-pix>
-                        <label for="checkout-nfce-pix">Modalidade do Pix (se usado)</label>
-                        <select id="checkout-nfce-pix" name="nfce_pix_mode">
-                            <option value="">Selecione se recebeu por Pix</option>
-                            <option value="dynamic" @selected(old('nfce_pix_mode')==='dynamic')>Pix dinâmico</option>
-                            <option value="static" @selected(old('nfce_pix_mode')==='static')>Pix estático</option>
-                        </select>
-                    </div>
+                    @php($defaultPix = config('fiscal.nfce_pix_defaults.'.$tenant->slug))
+                    <details class="disclosure pos-optionals" data-pos-fiscal-pix @if(!$defaultPix) open @endif>
+                        <summary>{{ $defaultPix === 'static' ? 'Pix estático · alterar modalidade' : 'Modalidade do Pix recebido' }}</summary>
+                        <div class="disclosure-content field">
+                            <label for="checkout-nfce-pix">Modalidade do Pix recebido</label>
+                            <select id="checkout-nfce-pix" name="nfce_pix_mode">
+                                <option value="">Selecione se recebeu por Pix</option>
+                                <option value="static" @selected(old('nfce_pix_mode', $defaultPix) === 'static')>Pix estático</option>
+                                <option value="dynamic" @selected(old('nfce_pix_mode', $defaultPix) === 'dynamic')>Pix dinâmico</option>
+                            </select>
+                        </div>
+                    </details>
                 </div>
             @endif
             <p class="notice error" data-pos-fiscal-payment-error role="status" hidden></p>

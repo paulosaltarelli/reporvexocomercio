@@ -8,9 +8,18 @@
 </div>
 @include('fiscal.work-order-consent')
 @if($hasPixReceipt)
-<div class="field"><label for="pix_mode">Modalidade do Pix recebido</label><select id="pix_mode" name="pix_mode" required><option value="">Confirme como o Pix foi recebido</option><option value="dynamic" @selected(old('pix_mode')==='dynamic')>Pix dinâmico · cobrança específica para esta venda</option><option value="static" @selected(old('pix_mode')==='static')>Pix estático · chave ou QR Code reutilizável</option></select><small class="hint">Informe a modalidade real do recebimento. A forma de pagamento “Pix” sozinha não determina esta informação.</small></div>
+@php($defaultPix = config('fiscal.nfce_pix_defaults.'.$tenant->slug))
+<details class="disclosure" @if(!$defaultPix) open @endif>
+    <summary>{{ $defaultPix === 'static' ? 'Pix estático · alterar modalidade' : 'Modalidade do Pix recebido' }}</summary>
+    <div class="disclosure-content field">
+        <label for="pix_mode">Modalidade do Pix recebido</label>
+        <select id="pix_mode" name="pix_mode" required>
+            <option value="">Selecione</option>
+            <option value="static" @selected(old('pix_mode', $defaultPix) === 'static')>Pix estático</option>
+            <option value="dynamic" @selected(old('pix_mode', $defaultPix) === 'dynamic')>Pix dinâmico</option>
+        </select>
+    </div>
+</details>
 @endif
-<p class="hint">A NFC-e é emitida para consumidor final.</p>
-<label class="checkbox-line"><input type="checkbox" name="not_taxpayer" value="1" required> Destinatário não contribuinte de ICMS nesta operação.</label>
-<label class="checkbox-line"><input type="checkbox" name="homologation_consent" value="1" required> Autorizo transmitir os dados desta empresa e venda à SEFAZ para teste em homologação, sem valor fiscal.</label>
+<p class="hint">A solicitação envia a NFC-e de consumidor final não contribuinte à SEFAZ em homologação.</p>
 <button class="primary">Solicitar emissão em homologação</button></form>

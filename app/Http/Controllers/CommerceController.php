@@ -295,7 +295,8 @@ class CommerceController extends Controller
             $doc = app(\App\Fiscal\QueueNfce::class)->enqueue($tenant, $sale->id, $actor->id, [
                 'destination_state' => \App\Models\BusinessProfile::find(1)?->state,
                 'presence' => '1', 'consumer_final' => true, 'not_taxpayer' => true,
-                'consumer_cpf' => $fiscal['consumer_cpf'] ?? null, 'pix_mode' => $fiscal['nfce_pix_mode'] ?? null,
+                'consumer_cpf' => $fiscal['consumer_cpf'] ?? null,
+                'pix_mode' => $fiscal['nfce_pix_mode'] ?? config('fiscal.nfce_pix_defaults.'.$company),
             ]);
             return $response->with('nfce_auto_open', $doc->id);
         } catch (ValidationException $e) {
