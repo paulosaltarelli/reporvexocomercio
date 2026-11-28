@@ -111,6 +111,7 @@ final class VerifiedSefazSoap extends SoapBase
         if (parse_url($url, PHP_URL_SCHEME) !== 'https' || ! defined('CURLOPT_SSLCERT_BLOB') || ! defined('CURLOPT_SSLKEY_BLOB')) {
             throw new FiscalTransportException('verified_tls_unavailable');
         }
+        $action = trim($action, '"');
         $envelope = $this->makeEnvelopeSoap($request, $namespaces, $soapver, $soapheader);
         $handle = curl_init($url);
         try {
