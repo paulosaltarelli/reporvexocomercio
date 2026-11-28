@@ -490,10 +490,10 @@ class FiscalTest extends TestCase
         $this->from($url)->post($url, array_replace(FiscalFixtures::simplesNfce2026(), ['cfop' => $cfop, 'pis_code' => $cst, 'cofins_code' => $cst, 'accountant_reference' => 'Conferência sintética do ensaio.']))
             ->assertRedirect($url)->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->tenant);
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
         $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
             'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]], $this->user->id);
         $operation = array_replace($this->operation(), ['destination_state' => 'MG']);
-        $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
         if ($cfop === '5101') {
             FiscalSetting::whereKey(1)->update(['nfce_accredited' => false, 'accountant_name' => null]);
             try {
