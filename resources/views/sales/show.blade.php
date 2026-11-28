@@ -3,6 +3,9 @@
 @section('title','Venda #'.$sale->id)
 @section('subtitle','Comprovante interno. Este documento não é uma nota fiscal.')
 @section('actions')
+@if($nfceAvailable && $currentUser->allows('sales.create') && !request()->boolean('termica'))
+    @include('components.sales.operator-screen')
+@endif
 @if($sale->document_id && $currentUser->allows('documents.view') && $sale->document?->type==='work_order')
     @include('components.work-order-print',['orderId'=>$sale->document_id])
 @endif

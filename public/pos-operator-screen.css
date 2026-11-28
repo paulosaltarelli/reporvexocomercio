@@ -1,0 +1,8 @@
+.workspace:has([data-pos-fullscreen]) > main { max-width: none; }
+body[data-pos-expanded] > .app-sidebar,
+body[data-pos-expanded] > .sidebar-backdrop,
+body[data-pos-expanded] .workspace > header,
+body[data-pos-expanded] .workspace > footer { display: none; }
+body[data-pos-expanded] .workspace { margin: 0; }
+body[data-pos-expanded] .workspace > main { min-height: 100dvh; }
+.workspace:fullscreen { width: 100%; height: 100%; margin: 0; overflow: auto; background: var(--bg); }

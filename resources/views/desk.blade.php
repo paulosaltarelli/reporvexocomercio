@@ -2,7 +2,8 @@
 @section('title','Frente de caixa')
 @section('subtitle','Busque os itens, confira o total e finalize a venda.')
 @section('actions')
-<div class="actions pos-shortcuts">@if($currentUser->allows('sales.create'))<button type="button" class="button secondary" data-pos-fullscreen aria-pressed="false"><span>Tela cheia</span> <kbd>F10</kbd></button><span class="hint" data-pos-fullscreen-status role="status"></span>
+<div class="actions pos-shortcuts">@if($currentUser->allows('sales.create'))
+@include('components.sales.operator-screen')
 @endif
 @if($operationConfig['quotes'] && $currentUser->allows('documents.create'))<a class="button secondary" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'quote','salesperson_id'=>$selectedSalespersonId]) }}">Orçamento</a>@endif @if($operationConfig['work_orders'] && $currentUser->allows('documents.create'))<a class="button secondary" href="{{ route('document.new',['company'=>$tenant->slug,'type'=>'work_order','salesperson_id'=>$selectedSalespersonId]) }}">Ordem de serviço</a>@endif</div>
 @endsection

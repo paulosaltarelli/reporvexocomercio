@@ -13,7 +13,6 @@ use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use NFePHP\DA\NFe\Danfce;
 use NFePHP\DA\NFe\Danfe;
 
 final class ProcessFiscalOutbox
@@ -132,11 +131,11 @@ final class ProcessFiscalOutbox
                 // Generate DANFE from verified authorized XML, outside any DB transaction.
                 $pdf = null;
                 if ($result->state === DocumentState::Authorized && $result->xml) {
-                    $pdf = ((int) $doc->model === 55 ? new Danfe($result->xml) : new Danfce($result->xml))->render();
+                    $pdf = ((int) $doc->model === 55 ? new Danfe($result->xml) : new ThermalDanfe($result->xml))->render();
                 }
                 if ($result->state === DocumentState::Cancelled) {
                     $xml = app(PrivateFiscalFiles::class)->get($tenantId, $doc->id, 'xml');
-                    $danfe = (int) $doc->model === 55 ? new Danfe($xml) : new Danfce($xml);
+                    $danfe = (int) $doc->model === 55 ? new Danfe($xml) : new ThermalDanfe($xml);
                     if ((int) $doc->model === 55) { $danfe->setCancelFlag(true); } else { $danfe->setAsCanceled(); }
                     $pdf = $danfe->render();
                 }

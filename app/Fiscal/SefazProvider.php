@@ -5,7 +5,6 @@ namespace App\Fiscal;
 use App\Models\FiscalCredential;
 use App\Models\FiscalIssuer;
 use NFePHP\Common\Signer;
-use NFePHP\DA\NFe\Danfce;
 use NFePHP\DA\NFe\Danfe;
 use NFePHP\NFe\Complements;
 
@@ -227,7 +226,7 @@ final class SefazProvider implements FiscalProvider
     {
         try {
             $xml = $this->xml($reference);
-            return ($this->model === 55 ? new Danfe($xml) : new Danfce($xml))->render();
+            return ($this->model === 55 ? new Danfe($xml) : new ThermalDanfe($xml))->render();
         } catch (FiscalTransportException $e) {
             throw $e;
         } catch (\Throwable) {
