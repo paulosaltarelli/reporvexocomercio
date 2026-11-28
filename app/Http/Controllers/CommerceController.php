@@ -262,13 +262,16 @@ class CommerceController extends Controller
         $tenant = $r->attributes->get('tenant');
         $actor = $r->attributes->get('currentUser');
         $fiscal = $r->validate([
-            'issue_nfce' => 'nullable|accepted|required_with:consumer_cpf',
+            'issue_nfce' => 'nullable|boolean|required_with:consumer_cpf',
             'consumer_cpf' => ['nullable', 'string', 'max:14', function ($attribute, $value, $fail) {
                 if (! \App\Fiscal\TaxpayerDocument::cpf($value)) $fail('Informe um CPF válido para a NFC-e.');
             }],
             'nfce_pix_mode' => 'nullable|in:dynamic,static',
         ]);
         $issue = $r->boolean('issue_nfce');
+        if (!$issue && !empty($fiscal['consumer_cpf'])) {
+            throw ValidationException::withMessages(['issue_nfce' => 'Marque o envio da NFC-e para incluir o CPF na nota.']);
+        }
         if ($issue) {
             ProductInvoiceGate::assertEnabled(65);
             abort_unless($actor->allows('fiscal.manage'), 403);
