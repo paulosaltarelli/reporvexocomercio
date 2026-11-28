@@ -10,6 +10,14 @@
         cpf.select();
     });
 
+    const nextSale = document.querySelector('[data-pos-new-sale]');
+    if (nextSale) document.addEventListener('keydown', event => {
+        if (event.key !== 'F2' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+            || event.defaultPrevented || document.querySelector('dialog[open]')) return;
+        event.preventDefault();
+        nextSale.click();
+    });
+
     const dialog = document.querySelector('#nfce-print-dialog');
     if (!dialog || typeof dialog.showModal !== 'function') return;
 

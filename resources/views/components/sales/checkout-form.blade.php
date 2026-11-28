@@ -9,7 +9,29 @@
         <div class="pos-cart">
             @include('components.sales.entry-items',['itemsHeading'=>'Itens da venda','isPos'=>true])
         </div>
-        <section class="panel pos-payment" aria-labelledby="pos-payment-title">
+        <aside class="panel pos-stage-summary" hidden>
+            <h2>Venda em andamento</h2>
+            <p data-pos-fiscal-summary></p>
+            <p><strong data-pos-stage-total>R$ 0,00</strong></p>
+            <div class="actions">
+                <button type="button" class="button secondary" data-pos-start>Iniciar venda</button>
+                <button type="button" class="primary" data-pos-payment @disabled($checkoutBlocked)>Ir para pagamento <kbd>F9</kbd></button>
+            </div>
+        </aside>
+        <dialog class="pos-stage-dialog" id="pos-payment-dialog" aria-labelledby="pos-payment-title"></dialog>
+        <dialog class="pos-stage-dialog panel" id="pos-start-dialog" aria-labelledby="pos-start-title">
+            <h2 id="pos-start-title">Iniciar venda</h2>
+            <div class="field" data-pos-start-fiscal hidden>
+                <label for="pos-start-cpf">CPF na nota (opcional)</label>
+                <input id="pos-start-cpf" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00">
+                <p class="hint">Venda presencial no estado, a consumidor final não contribuinte do ICMS.</p>
+            </div>
+            <div class="actions">
+                <button type="button" class="primary" data-pos-start-confirm>Continuar <kbd>Enter</kbd></button>
+                <button type="button" class="button secondary" data-pos-start-without-note hidden>Continuar sem NFC-e <kbd>Esc</kbd></button>
+            </div>
+        </dialog>
+        <section class="panel pos-payment" data-pos-payment-panel aria-labelledby="pos-payment-title">
             <span class="eyebrow">VENDA ATUAL</span><h2 id="pos-payment-title">Resumo e pagamento</h2>
             <div class="pos-summary"><div><span>Subtotal</span><strong id="pos-gross-total">R$ 0,00</strong></div><div><span>Descontos</span><strong id="pos-discount-total">R$ 0,00</strong></div></div>
             <div class="pos-grand-total"><span>Total a pagar</span><strong id="pos-net-total" aria-live="polite">R$ 0,00</strong></div>
@@ -29,16 +51,16 @@
             <p class="pos-customer-summary">{{ $customers->firstWhere('id',(int)old('customer_id',$selectedCustomerId??0))?->name??'Consumidor final' }} · {{ $checkoutSeller?->name??'Selecione um vendedor' }}</p>
             @if($nfceAvailable && $operationConfig['nfce'] && $currentUser->allows('fiscal.manage') && !isset(request()->attributes->get('restrictedModules', [])['fiscal']))
                 <div class="pos-optionals">
-                    <div class="field">
+                    <div class="field" data-pos-inline-cpf>
                         <label for="checkout-nfce-cpf">CPF na nota (opcional) <kbd>F8</kbd></label>
                         <input id="checkout-nfce-cpf" name="consumer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" value="{{ old('consumer_cpf') }}" placeholder="000.000.000-00">
                     </div>
-                    <label class="checkbox-line">
+                    <label class="checkbox-line" data-pos-inline-issue>
                         <input type="checkbox" name="issue_nfce" value="1" @checked(old('issue_nfce'))>
                         Enviar NFC-e em homologação ao registrar a venda
                     </label>
-                    <p class="hint">Marque para venda presencial dentro do estado a consumidor final não contribuinte do ICMS. A nota de teste é enviada à SEFAZ.</p>
-                    <div class="field">
+                    <p class="hint" data-pos-inline-issue>Marque para venda presencial dentro do estado a consumidor final não contribuinte do ICMS. A nota de teste é enviada à SEFAZ.</p>
+                    <div class="field" data-pos-fiscal-pix>
                         <label for="checkout-nfce-pix">Modalidade do Pix (se usado)</label>
                         <select id="checkout-nfce-pix" name="nfce_pix_mode">
                             <option value="">Selecione se recebeu por Pix</option>
@@ -48,10 +70,12 @@
                     </div>
                 </div>
             @endif
-            <button id="checkout-submit" class="primary pos-finalize" @disabled($checkoutBlocked)>Registrar venda <kbd>F9</kbd></button>
+            <p class="notice error" data-pos-fiscal-payment-error role="status" hidden></p>
+            <button type="button" class="button secondary" data-pos-back hidden>Voltar aos itens <kbd>Esc</kbd></button>
+            <button id="checkout-submit" class="primary pos-finalize" @disabled($checkoutBlocked)>Registrar venda e recebimento <kbd>F9</kbd></button>
             <p class="hint pos-payment-note">Confira o recebimento antes de finalizar. Pix e cartões são registrados manualmente.</p>
         </section>
     </div>
 </form>
 @include('components.quick-create')
-@push('scripts')<script src="/pos.js?v={{ filemtime(public_path('pos.js')) }}"></script>@endpush
+@push('scripts')<link rel="stylesheet" href="/pos-stages.css?v={{ filemtime(public_path('pos-stages.css')) }}"><script src="/pos.js?v={{ filemtime(public_path('pos.js')) }}"></script>@endpush

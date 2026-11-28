@@ -1,0 +1,9 @@
+.pos-stage-summary { grid-column: 2; grid-row: 1; }
+.pos-stage-summary[hidden], .pos-stage-dialog [hidden] { display: none !important; }
+.pos-stage-dialog { width: min(620px, calc(100% - 32px)); max-height: calc(100vh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; padding: 20px; color: inherit; }
+.pos-stage-dialog::backdrop { background: rgb(15 28 48 / 55%); }
+.pos-stage-dialog .pos-payment { position: static; padding: 0; border: 0; box-shadow: none; }
+.pos-stage-dialog .pos-finalize { margin-top: 10px; }
+@media (max-width: 880px) {
+    .pos-stage-summary { grid-column: 1; grid-row: auto; }
+}
