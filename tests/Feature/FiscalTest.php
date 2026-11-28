@@ -493,6 +493,8 @@ class FiscalTest extends TestCase
         $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
         $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
             'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]], $this->user->id);
+        $entryIds = \App\Models\FinancialEntry::where('sale_id', $sale->id)->pluck('id');
+        \App\Models\Payment::whereIn('entry_id', $entryIds)->update(['paid_on' => now()->toDateString()]);
         $operation = array_replace($this->operation(), ['destination_state' => 'MG']);
         if ($cfop === '5101') {
             FiscalSetting::whereKey(1)->update(['nfce_accredited' => false, 'accountant_name' => null]);
