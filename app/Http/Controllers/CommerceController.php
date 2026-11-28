@@ -244,7 +244,13 @@ class CommerceController extends Controller
                     if (ctype_digit($search) && strlen($search) <= 18) { $q->orWhere('id', (int) $search); }
                 });
             })->latest('created_at')->latest('id')->paginate(20)->withQueryString();
-        return view('sales.index', compact('sales', 'sellerId', 'search', 'statusFilter', 'paymentStatus', 'from', 'to') + ['sellers' => Seller::orderBy('name')->get()]);
+        $showFiscal = ProductInvoiceGate::enabled(65);
+        $fiscalBySale = $showFiscal
+            ? \App\Models\FiscalDocument::accessible()->whereIn('sale_id', $sales->getCollection()->modelKeys())
+                ->orderBy('id')->get(['id', 'sale_id', 'model', 'number', 'series', 'state', 'official_code'])->groupBy('sale_id')
+            : collect();
+
+        return view('sales.index', compact('sales', 'sellerId', 'search', 'statusFilter', 'paymentStatus', 'from', 'to', 'showFiscal', 'fiscalBySale') + ['sellers' => Seller::orderBy('name')->get()]);
     }
 
     public function saleForm(Request $r)

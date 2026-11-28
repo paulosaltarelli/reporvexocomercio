@@ -15,11 +15,22 @@
         @if(request()->filled('q') || request()->filled('status') || request()->filled('payment_status') || request()->filled('from') || request()->filled('to') || $sellerId)<a href="{{ route('sales',['company'=>$tenant->slug]) }}">Limpar filtros</a>@endif
     </form>
     <p class="hint">{{ $sales->total() }} {{ $sales->total()===1?'venda encontrada':'vendas encontradas' }} · Datas pela realização da venda. Recebimentos e estornos podem ocorrer em outro período.</p>
-    <div class="scroll"><table><thead><tr><th>Venda</th><th>Data</th><th>Cliente</th><th>Vendedor creditado</th><th>Situação</th><th>Vencimento</th><th class="num">Total</th></tr></thead><tbody>
+    <div class="scroll"><table><thead><tr><th>Venda</th><th>Data</th><th>Cliente</th><th>Vendedor creditado</th><th>Situação</th>@if($showFiscal)<th>Documento fiscal</th>@endif<th>Vencimento</th><th class="num">Total</th></tr></thead><tbody>
     @forelse($sales as $sale)
-        <tr><td><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}" aria-label="Abrir venda #{{ $sale->id }}">#{{ $sale->id }}</a></td><td>{{ $sale->created_at->format('d/m/Y H:i') }}</td><td class="product-name">{{ $sale->customer?->name??'Consumidor final' }}</td><td class="product-name">{{ $sale->seller_name??'Não informado' }}</td><td><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span></td><td>{{ $sale->due_date?\Carbon\Carbon::parse($sale->due_date)->format('d/m/Y'):'—' }}</td><td class="num">R$ {{ number_format($sale->total,2,',','.') }}</td></tr>
+        <tr><td><a href="{{ route('sale.show',['company'=>$tenant->slug,'id'=>$sale->id]) }}" aria-label="Abrir venda #{{ $sale->id }}">#{{ $sale->id }}</a></td><td>{{ $sale->created_at->format('d/m/Y H:i') }}</td><td class="product-name">{{ $sale->customer?->name??'Consumidor final' }}</td><td class="product-name">{{ $sale->seller_name??'Não informado' }}</td><td><span class="badge {{ $sale->status==='cancelled'?'bad':(!$sale->paid?'warn':'') }}">{{ $sale->status==='cancelled'?'Cancelada':($sale->paid?'Recebida':'A receber') }}</span></td>@if($showFiscal)
+            <td>
+                @forelse($fiscalBySale->get($sale->id, []) as $document)
+                    <div>
+                        <a href="{{ route('sale.show', ['company' => $tenant->slug, 'id' => $sale->id]) }}#nfce">{{ (int) $document->model === 65 ? 'NFC-e' : 'NF-e' }} {{ $document->number }} · série {{ $document->series }}</a>
+                        <br><span class="badge {{ in_array($document->state, ['rejected', 'cancelled'], true) ? 'bad' : ($document->state === 'authorized' ? '' : 'warn') }}">{{ $document->statusLabel() }}</span>
+                    </div>
+                @empty
+                    <span class="hint">Sem nota emitida</span>
+                @endforelse
+            </td>
+        @endif<td>{{ $sale->due_date?\Carbon\Carbon::parse($sale->due_date)->format('d/m/Y'):'—' }}</td><td class="num">R$ {{ number_format($sale->total,2,',','.') }}</td></tr>
     @empty
-        <tr><td colspan="7" class="empty">Nenhuma venda encontrada para este filtro.</td></tr>
+        <tr><td colspan="{{ $showFiscal ? 8 : 7 }}" class="empty">Nenhuma venda encontrada para este filtro.</td></tr>
     @endforelse
     </tbody></table></div>{{ $sales->links() }}
 </section>

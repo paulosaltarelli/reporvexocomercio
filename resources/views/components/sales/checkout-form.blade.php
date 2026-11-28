@@ -2,7 +2,7 @@
 @php($checkoutSellerId=old('salesperson_id',$selectedSalespersonId??$currentSalesperson?->id))
 @php($checkoutSeller=$sellers->firstWhere('id',(int)$checkoutSellerId)??$currentSalesperson)
 @php($checkoutBlocked=!$currentUser->allows('sales.seller') && (!$currentSalesperson || !$currentSalesperson->active))
-<form id="checkout-form" class="pos-checkout" method="post" action="{{ route('sales',['company'=>$tenant->slug]) }}">
+<form id="checkout-form" class="pos-checkout" data-stock-policy="{{ $operationConfig['inventory'] ? $operationConfig['negative_stock'] : 'allow' }}" method="post" action="{{ route('sales',['company'=>$tenant->slug]) }}">
     @csrf
     <input type="hidden" name="request_key" value="{{ old('request_key',\Illuminate\Support\Str::uuid()) }}">
     <div class="pos-grid">
@@ -28,17 +28,16 @@
             </div></details>
             <p class="pos-customer-summary">{{ $customers->firstWhere('id',(int)old('customer_id',$selectedCustomerId??0))?->name??'Consumidor final' }} · {{ $checkoutSeller?->name??'Selecione um vendedor' }}</p>
             @if($nfceAvailable && $operationConfig['nfce'] && $currentUser->allows('fiscal.manage') && !isset(request()->attributes->get('restrictedModules', [])['fiscal']))
-                <details class="pos-optionals" @if(old('issue_nfce') || $errors->hasAny(['issue_nfce', 'consumer_cpf', 'nfce_pix_mode'])) open @endif>
-                    <summary>NFC-e <span>opcional</span></summary>
+                <div class="pos-optionals">
+                    <div class="field">
+                        <label for="checkout-nfce-cpf">CPF na nota (opcional)</label>
+                        <input id="checkout-nfce-cpf" name="consumer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" value="{{ old('consumer_cpf') }}" placeholder="000.000.000-00">
+                    </div>
                     <label class="checkbox-line">
                         <input type="checkbox" name="issue_nfce" value="1" @checked(old('issue_nfce'))>
                         Enviar NFC-e em homologação ao registrar a venda
                     </label>
                     <p class="hint">Marque para venda presencial dentro do estado a consumidor final não contribuinte do ICMS. A nota de teste é enviada à SEFAZ.</p>
-                    <div class="field">
-                        <label for="checkout-nfce-cpf">CPF na nota (opcional)</label>
-                        <input id="checkout-nfce-cpf" name="consumer_cpf" inputmode="numeric" autocomplete="off" maxlength="14" value="{{ old('consumer_cpf') }}" placeholder="000.000.000-00">
-                    </div>
                     <div class="field">
                         <label for="checkout-nfce-pix">Modalidade do Pix (se usado)</label>
                         <select id="checkout-nfce-pix" name="nfce_pix_mode">
@@ -47,7 +46,7 @@
                             <option value="static" @selected(old('nfce_pix_mode')==='static')>Pix estático</option>
                         </select>
                     </div>
-                </details>
+                </div>
             @endif
             <button id="checkout-submit" class="primary pos-finalize" @disabled($checkoutBlocked)>Registrar venda <kbd>F9</kbd></button>
             <p class="hint pos-payment-note">Confira o recebimento antes de finalizar. Pix e cartões são registrados manualmente.</p>

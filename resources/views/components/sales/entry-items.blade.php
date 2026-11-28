@@ -35,6 +35,7 @@
             <div class="line-total-field"><span class="line-total-label">Líquido do item</span><strong class="line-total">R$ 0,00</strong></div>
             <button type="button" class="text-button remove">Remover</button>
         </div>
+        @if($isPos??false)<p class="notice error line-stock-warning" role="status" hidden></p>@endif
         <p class="hint line-discount-note" role="status"></p>
     </div>
 </template>

@@ -52,19 +52,44 @@
     }
     function updateTotals(){
         let gross=0n,discount=0n,net=0n,products=0n,services=0n;
-        container.querySelectorAll('.sale-line-block').forEach(block=>{
+        const lines = Array.from(container.querySelectorAll('.sale-line-block'), block => {
+            const choice = block.querySelector('.choice');
+            const quantity = block.querySelector('.qty');
+            const factor = block.querySelector('.factor-seen')?.value || '1';
+            const scaled = (Vendra.decimalUnits(quantity.value, 3) ?? 0n) * (Vendra.decimalUnits(factor, 6) ?? 0n);
+            return {block, choice, quantity, scaled, milli: scaled / 1000000n, option: choice.selectedOptions[0]};
+        });
+        const stockPolicy = isPos ? container.closest('form').dataset.stockPolicy : 'allow';
+        const requested = new Map();
+        if (stockPolicy !== 'allow') {
+            for (const {choice, option, milli, scaled} of lines) {
+                if (option?.dataset.stockQuantity !== undefined && milli > 0n && scaled % 1000000n === 0n) {
+                    requested.set(choice.value, (requested.get(choice.value) ?? 0n) + milli);
+                }
+            }
+        }
+        lines.forEach(({block, choice, quantity, scaled, milli, option}) => {
+
             const row=block.querySelector('.sale-row');
-            const choice=row.querySelector('.choice');
-            const option=choice.selectedOptions[0];
-            const price=row.querySelector('.price');
-            const explicit=row.querySelector('.discount');
-            const note=block.querySelector('.line-discount-note');
+            const price = row.querySelector('.price');
+            const explicit = row.querySelector('.discount');
+            const note = block.querySelector('.line-discount-note');
             price.setCustomValidity('');
-            const quantity=row.querySelector('.qty');
-            const factor=row.querySelector('.factor-seen')?.value || '1';
-            const scaled=(Vendra.decimalUnits(quantity.value,3) ?? 0n) * (Vendra.decimalUnits(factor,6) ?? 0n);
-            quantity.setCustomValidity(scaled % 1000000n ? 'A quantidade convertida exige mais de três casas decimais.' : '');
-            const milli=scaled / 1000000n;
+            const conversionError = scaled % 1000000n ? 'A quantidade convertida exige mais de três casas decimais.' : '';
+            let stockError = '';
+            if (stockPolicy !== 'allow' && requested.has(choice.value)) {
+                const available = Vendra.decimalUnits(option.dataset.stockQuantity, 3);
+                if (available !== null && requested.get(choice.value) > available) {
+                    const formatted = new Intl.NumberFormat('pt-BR', {maximumFractionDigits: 3}).format(Number(available) / 1000);
+                    stockError = available <= 0n ? 'Sem saldo em estoque.' : 'Quantidade acima do saldo disponível (' + formatted + ').';
+                }
+            }
+            if (isPos) {
+                const warning = block.querySelector('.line-stock-warning');
+                warning.textContent = stockError;
+                warning.hidden = !stockError;
+            }
+            quantity.setCustomValidity(conversionError || (stockPolicy === 'block' ? stockError : ''));
             const baseQuantity=String(milli/1000n)+'.'+String(milli%1000n).padStart(3,'0');
             const result=Vendra.commercialLine(baseQuantity,option?.dataset.price||'0',price.value,explicit.value);
             if(!choice.value||!result){row.querySelector('.line-total').textContent='—';note.textContent=choice.value?'Confira quantidade, preço e desconto.':'Selecione um item para conferir preço e desconto permitido.';return;}
@@ -153,7 +178,7 @@
         if(event.detail.targetForm!==container.closest('form'))return;
         const item=event.detail.item,value='product:'+item.id,template=catalogSelect;
         let option=catalogIndex.get(value)?.option;
-        if(!option){option=new Option((item.type==='service'?'Serviço':'Produto')+' · '+item.sku+' · '+item.name+(item.controls_stock?' (saldo '+item.quantity+')':''),value);Object.assign(option.dataset,{itemType:item.type,sku:item.sku,barcode:item.barcode||'',name:item.name,price:item.price,discountEnabled:item.discount_enabled?'1':'0',discountLimit:item.discount_limit});template.add(option);indexOption(option);if(!isPos)container.querySelectorAll('.choice').forEach(choice=>choice.add(option.cloneNode(true)));}
+        if(!option){option=new Option((item.type==='service'?'Serviço':'Produto')+' · '+item.sku+' · '+item.name+(item.controls_stock?' (saldo '+item.quantity+')':''),value);Object.assign(option.dataset,{itemType:item.type,sku:item.sku,barcode:item.barcode||'',name:item.name,price:item.price,discountEnabled:item.discount_enabled?'1':'0',discountLimit:item.discount_limit});if(isPos && item.type==='product' && item.controls_stock)option.dataset.stockQuantity=String(item.quantity);template.add(option);indexOption(option);if(!isPos)container.querySelectorAll('.choice').forEach(choice=>choice.add(option.cloneNode(true)));}
         const empty=[...container.querySelectorAll('.sale-line-block')].find(block=>!block.querySelector('.choice').value);
         if(!empty&&container.children.length>=50)return;
         const block=empty||add();const choice=block.querySelector('.choice');setSelection(choice,option);choice.dispatchEvent(new Event('change'));event.detail.used=true;
