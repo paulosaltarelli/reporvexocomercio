@@ -491,10 +491,9 @@ class FiscalTest extends TestCase
             ->assertRedirect($url)->assertSessionHasNoErrors();
         app(TenantConnection::class)->connect($this->tenant);
         $this->travelTo(\Carbon\Carbon::parse('2026-11-27T10:00:00-03:00'));
-        $sale = app(Checkout::class)->complete(['request_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'paid' => true,
-            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]], $this->user->id);
-        $entryIds = \App\Models\FinancialEntry::where('sale_id', $sale->id)->pluck('id');
-        \App\Models\Payment::whereIn('entry_id', $entryIds)->update(['paid_on' => now()->toDateString()]);
+        $saleData = ['payment_method' => 'cash', 'paid' => true,
+            'items' => [['kind' => 'product', 'id' => $this->product->id, 'quantity' => '1', 'unit_price' => '39.90']]];
+        $sale = app(Checkout::class)->complete($saleData + ['request_key' => (string) Str::uuid()], $this->user->id);
         $operation = array_replace($this->operation(), ['destination_state' => 'MG']);
         if ($cfop === '5101') {
             FiscalSetting::whereKey(1)->update(['nfce_accredited' => false, 'accountant_name' => null]);
@@ -530,6 +529,7 @@ class FiscalTest extends TestCase
         ], FiscalCredential::where('issuer_id', $issuer->id)->firstOrFail());
         $this->assertSame($doc->access_key, $evidence['key']);
 
+        $nextSale = app(Checkout::class)->complete($saleData + ['request_key' => (string) Str::uuid()], $this->user->id);
         $next = DB::connection('tenant')->table('fiscal_sequences')->where('model', 65)->value('next_number');
         $this->app->instance(\App\Fiscal\NfceXmlBuilder::class, new class {
             public function prepare(): array
@@ -538,7 +538,7 @@ class FiscalTest extends TestCase
             }
         });
         try {
-            app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $operation);
+            app(QueueNfce::class)->enqueue($this->tenant, $nextSale->id, $this->user->id, $operation);
             $this->fail('O XML fora do esquema chegou à fila.');
         } catch (FiscalTransportException $e) {
             $this->assertSame('nfce_signed_schema_invalid', $e->getMessage());
@@ -550,7 +550,7 @@ class FiscalTest extends TestCase
         $this->assertSame(1, FiscalDocument::count());
         $this->travelTo(\Carbon\Carbon::parse('2027-01-01T00:00:00-03:00'));
         try {
-            app(QueueNfce::class)->enqueue($this->tenant, $this->sale->id, $this->user->id, $operation);
+            app(QueueNfce::class)->enqueue($this->tenant, $nextSale->id, $this->user->id, $operation);
             $this->fail('O perfil convencional de 2026 ultrapassou a vigência.');
         } catch (ValidationException $exception) {
             $this->assertStringContainsString('vigência', $exception->errors()['fiscal'][0]);
